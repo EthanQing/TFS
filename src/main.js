@@ -8,7 +8,8 @@ import * as echarts from 'echarts'
 
 import router from '@/router'
 
-import "./styles/globol.css"
+import "@/styles/reset.css";
+import "@/styles/global.css";
 
 // 创建全局 EventBus
 Vue.prototype.EventBus = new Vue()

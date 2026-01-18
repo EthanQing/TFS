@@ -9,15 +9,13 @@
 </template>
 
 <script>
-import Navigation from './components/Navigation/Navigation.vue';
-import Datasets from './components/Datasets/Datasets.vue';
+import Navigation from './components/Navigation/TopNav.vue';
 
 export default {
   name: 'App',
   components: {
     // HelloWorld
-    Navigation,
-    Datasets
+    Navigation
   }
 }
 </script>
