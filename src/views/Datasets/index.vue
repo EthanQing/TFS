@@ -134,8 +134,7 @@
 </template>
 
 <script>
-import { fetchDatasets, deleteDataset, FetchDatasetStatistics, FetchDatasetDetail } from "@/api/datasets";
-import { API_BASE } from "@/utils/request";
+import { fetchDatasets, deleteDataset, FetchDatasetStatistics, FetchDatasetPreviewImage, FetchDatasetClassNames } from "@/api/datasets";
 import UploadZip from "@/components/Upload/index.vue";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
@@ -299,15 +298,21 @@ export default {
       const jobs = this.datasets.map(async d => {
         try {
           const s = await FetchDatasetStatistics(d.dataset_id);
-          this.$set(d, 'num_classes', s.num_classes || 0);
+          // 后端 v2 统计字段：total_images / total_size_mb 等
           this.$set(d, 'num_images', s.num_images || 0);
           this.$set(d, 'dataset_size_mb', s.dataset_size_mb || '0MB');
-          this.$set(d, 'dataset_type', s.dataset_type || '未知');
+
+          // 类别数：优先从 data.yaml 读取（例如 coco128），避免首页一直显示 0 分类
+          try {
+            const names = await FetchDatasetClassNames(d.storage_path || d.dataset_name || d.name);
+            this.$set(d, 'num_classes', Array.isArray(names) ? names.length : 0);
+          } catch (_) {
+            this.$set(d, 'num_classes', 0);
+          }
         } catch (_) {
           this.$set(d, 'num_classes', 0);
           this.$set(d, 'num_images', 0);
           this.$set(d, 'dataset_size_mb', '0MB');
-          this.$set(d, 'dataset_type', '未知');
         }
       });
       await Promise.allSettled(jobs);
@@ -319,19 +324,7 @@ export default {
           const d = queue.shift();
           if (!d) return;
           try {
-            const detail = await FetchDatasetDetail(d.dataset_id);
-            const first = (detail && Array.isArray(detail.images) && detail.images[0]) || null;
-            let url = '';
-            if (first) {
-              // 优先使用后端返回的绝对地址，最稳定
-              if (first.image_url) {
-                url = first.image_url;
-              } else {
-                const rel = (first.image_path || '').replace(/\\/g, '/');
-                if (rel) url = `${API_BASE}/static/datasets/${d.dataset_name}/${rel}`;
-              }
-            }
-            if (url) url = encodeURI(url);
+            const url = await FetchDatasetPreviewImage(d.dataset_id);
             this.$set(d, 'preview_image_url', url || '');
             // 仅当 URL 有效且非默认占位时写入缓存
             if (url && !/images\/image\.png$/.test(url)) {

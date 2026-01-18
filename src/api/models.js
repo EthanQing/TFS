@@ -1,11 +1,31 @@
 import { API_BASE } from '@/utils/request';
 
+async function safeJson(res) {
+    try {
+        return await res.json();
+    } catch (_) {
+        return null;
+    }
+}
+
 // FetchArchitectureDetail 获取架构信息接口
 export async function FetchArchitectureDetail() {
     try {
         const response = await fetch(`${API_BASE}/api/v2/architectures`);
-        const architecture = await response.json();
-        return architecture;
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            throw new Error(msg);
+        }
+
+        const list = Array.isArray(data) ? data : [];
+        // 兼容字段：旧前端用 model_family/model_variant/arch_id
+        return list.map((it) => ({
+            ...it,
+            arch_id: it.arch_id || it.architecture_id || it.id,
+            model_family: it.model_family || it.family,
+            model_variant: it.model_variant || it.variant,
+        }));
     } catch (error) {
         console.error('获取架构信息失败:', error);
         throw error;
