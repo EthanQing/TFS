@@ -82,11 +82,14 @@ export default {
             streamStatus: null,
             currentEpoch: 0,
             totalEpochs: 0,
+            progress: 0,
             seededFromHttp: false,
         };
     },
     computed: {
         epochPercent() {
+            const p = Number(this.progress);
+            if (Number.isFinite(p) && p > 0) return Math.max(0, Math.min(100, p));
             const t = Number(this.totalEpochs) || 0;
             const c = Number(this.currentEpoch) || 0;
             if (!t || c <= 0) return 0;
@@ -139,7 +142,10 @@ export default {
         // WebSocket: 连接
         connectStream() {
             if (!this.jobId) return;
-            if (this.status !== 'running') return;
+            // 终态任务无需再建立 WS；避免刷新时“先连后关”导致浏览器报 1006
+            const st = String(this.status || '').toLowerCase();
+            const terminal = ['completed', 'failed', 'cancelled', 'deleted'];
+            if (terminal.includes(st)) return;
             this.closeStream();
             // 优先使用显式 WS_BASE，否则根据 HTTP 基础地址推导 ws/wss
             let wsBase = (this.$WS_BASE && this.$WS_BASE()) || '';
@@ -148,11 +154,11 @@ export default {
                 const httpBase = (this.$API_BASE && this.$API_BASE()) || window.location.origin;
                 wsBase = httpBase.replace(/^http(s?):\/\//, isHttps ? 'wss://' : 'ws://');
             }
-            const url = `${wsBase}/api/v1/training-jobs/${this.jobId}/metrics/stream`;
+            const url = `${wsBase}/api/v2/training-runs/${this.jobId}/metrics/stream`;
             try {
                 this.ws = new WebSocket(url);
                 this.ws.onopen = () => {
-                    this.streamStatus = 'running';
+                    this.streamStatus = this.status || 'connected';
                     try { console.log('[WS] open:', url); } catch (_) {}
                     // 首次连接后，用 HTTP 详细指标补齐历史曲线
                     if (!this.seededFromHttp) {
@@ -180,45 +186,64 @@ export default {
         handleStreamMessage(payload) {
             if (!payload) return;
             if (payload.error) { this.error = payload.error; return; }
-            try { console.log('[WS] payload:', payload); } catch (_) {}
-            this.streamStatus = payload.status || this.streamStatus;
-            this.currentEpoch = payload.current_epoch || 0;
-            this.totalEpochs = payload.total_epochs || this.totalEpochs || 0;
-            if (!this.metrics) {
-                this.metrics = { metrics: {}, total_epochs: this.totalEpochs };
-            }
-            this.metrics.total_epochs = this.totalEpochs;
-            const epochIdx = Math.max(0, Number(this.currentEpoch) || 0);
-            const kv = payload.metrics || {};
-            try { console.log('[WS] epochIdx:', epochIdx, 'keys:', Object.keys(kv || {})); } catch (_) {}
-            Object.keys(kv).forEach(key => {
-                const v = kv[key];
-                if (Array.isArray(v)) {
-                    const series = [];
-                    v.forEach((it, i) => {
-                        const e = (it && typeof it.epoch === 'number') ? it.epoch : i;
-                        const val = (it && typeof it.value !== 'undefined') ? Number(it.value) : Number(it);
-                        series[e] = Number.isFinite(val) ? val : null;
-                    });
-                    // 合并：如果已存在历史数组，按位保留已有值，缺位用新值或保持
-                    if (!this.metrics.metrics[key]) this.$set(this.metrics.metrics, key, []);
-                    const arr = this.metrics.metrics[key];
-                    const maxLen = Math.max(arr.length, series.length);
-                    for (let i = 0; i < maxLen; i++) {
-                        const nv = series[i];
-                        if (typeof nv !== 'undefined') {
-                            arr[i] = nv;
-                        } else if (typeof arr[i] === 'undefined') {
-                            arr[i] = null;
-                        }
-                    }
-                } else {
-                    if (!this.metrics.metrics[key]) this.$set(this.metrics.metrics, key, []);
-                    const arr = this.metrics.metrics[key];
-                    while (arr.length < epochIdx) arr.push(null);
-                    arr[epochIdx] = Number.isFinite(Number(v)) ? Number(v) : null;
+            // v2 WebSocket: {type:'status'|'metric'|'event'|'done', data:{...}}
+            const type = payload.type || '';
+            const data = payload.data || {};
+
+            const normalizeStatus = (s) => {
+                const v = String(s || '').toLowerCase();
+                if (v === 'created') return 'pending';
+                return v || null;
+            };
+
+            if (type === 'status') {
+                const st = normalizeStatus(data.status);
+                if (st) {
+                    this.status = st;
+                    this.streamStatus = st;
                 }
-            });
+                if (Number.isFinite(Number(data.progress))) this.progress = Number(data.progress);
+                // 后端 current_epoch 为 0-based，这里界面显示 1-based
+                if (Number.isFinite(Number(data.current_epoch))) this.currentEpoch = Number(data.current_epoch) + 1;
+                if (Number.isFinite(Number(data.total_epochs))) this.totalEpochs = Number(data.total_epochs) || this.totalEpochs || 0;
+
+                if (!this.metrics) this.metrics = { metrics: {}, total_epochs: this.totalEpochs };
+                if (this.totalEpochs) this.metrics.total_epochs = this.totalEpochs;
+                return;
+            }
+
+            if (type === 'metric') {
+                const epoch0 = Number(data.epoch);
+                if (!Number.isFinite(epoch0) || epoch0 < 0) return;
+                const idx = Math.max(0, Math.floor(epoch0));
+                this.currentEpoch = Math.max(this.currentEpoch, idx + 1);
+                if (Number.isFinite(Number(data.progress))) this.progress = Number(data.progress);
+
+                if (!this.metrics) this.metrics = { metrics: {}, total_epochs: this.totalEpochs || (idx + 1) };
+                this.metrics.total_epochs = this.totalEpochs || Math.max(this.metrics.total_epochs || 0, idx + 1);
+
+                const kv = (data && data.metrics && typeof data.metrics === 'object') ? data.metrics : {};
+                Object.keys(kv).forEach(key => {
+                    if (!this.metrics.metrics[key]) this.$set(this.metrics.metrics, key, []);
+                    const arr = this.metrics.metrics[key];
+                    while (arr.length < idx) arr.push(null);
+                    const n = Number(kv[key]);
+                    arr[idx] = Number.isFinite(n) ? n : null;
+                });
+                return;
+            }
+
+            if (type === 'done') {
+                const st = normalizeStatus(data.status);
+                if (st) {
+                    this.status = st;
+                    this.streamStatus = st;
+                }
+                return;
+            }
+
+            // Fallback: old payload shape (keep for compatibility)
+            try { console.log('[WS] payload:', payload); } catch (_) {}
         },
         // WebSocket: 关闭
         closeStream() {
@@ -231,8 +256,8 @@ export default {
             // 立即获取一次状态
             this.fetchStatus();
 
-            // 设置状态轮询间隔（5秒）
-            this.statusPollingInterval = setInterval(this.fetchStatus, 5000);
+            // 降低轮询频率：WS 为主，HTTP 仅作兜底
+            this.statusPollingInterval = setInterval(this.fetchStatus, 15000);
         },
         
         // 获取任务状态
@@ -245,43 +270,40 @@ export default {
             try {
                 const statusResponse = await FetchTrainingJobsStatus(this.jobId);
                 this.status = statusResponse.status;
+                // HTTP 兜底也同步进度/轮次（WS 断开或任务结束时仍能显示）
+                if (Number.isFinite(Number(statusResponse.progress))) this.progress = Number(statusResponse.progress);
+                if (Number.isFinite(Number(statusResponse.total_epochs))) this.totalEpochs = Number(statusResponse.total_epochs) || this.totalEpochs || 0;
+                if (Number.isFinite(Number(statusResponse.current_epoch))) {
+                    // 后端 current_epoch 为 0-based，这里界面显示 1-based
+                    this.currentEpoch = Number(statusResponse.current_epoch) + 1;
+                }
                 console.log('Status fetched:', this.status);
 
                 // 根据状态决定下一步操作
-                if (this.status === 'completed') {
-                    // 完成状态：只获取一次详细指标
+                const terminalNeedMetrics = ['completed', 'failed', 'cancelled'];
+                if (terminalNeedMetrics.includes(this.status)) {
+                    // 终态：尽量补齐一次历史曲线（即便失败也可查看已产出的曲线）
                     if (!this.hasCompletedMetricsFetch) {
                         await this.fetchMetrics();
                         this.hasCompletedMetricsFetch = true;
                     }
-                    // 停止所有轮询
-                    this.cleanupAllPolling();
-                    this.closeStream();
                 } else if (this.status === 'running') {
-                    // 运行状态才连接 WebSocket 实时流
-                    if (!this.ws || this.ws.readyState !== 1) {
-                        this.connectStream();
-                    }
-                    // 启动高频指标轮询（2秒）
-                    if (!this.metricsPollingInterval) {
-                        this.startMetricsPolling(2000);
+                    // 运行中：确保 WS 已连接，并用一次 HTTP 拉取补齐历史曲线
+                    if (!this.ws || this.ws.readyState !== 1) this.connectStream();
+                    if (!this.seededFromHttp) {
+                        await this.fetchMetrics();
+                        this.seededFromHttp = true;
                     }
                 } else {
-                    // 其他状态：停止指标轮询（如果有的话）
-                    this.cleanupMetricsPolling();
-                    // 非运行状态不使用 WebSocket
+                    // 非 running（pending/queued 等）也保持 WS 连接，便于等待队列 -> running 的实时切换
+                    if (!this.ws || this.ws.readyState !== 1) this.connectStream();
+                }
+
+                // 终止状态：停止轮询并关闭 WS（避免页面一直请求）
+                const terminalStates = ['completed', 'failed', 'cancelled', 'deleted'];
+                if (terminalStates.includes(this.status)) {
+                    this.cleanupAllPolling();
                     this.closeStream();
-                    
-                    // 检查是否是终止状态
-                    const terminalStates = ['failed', 'stopped', 'cancelled'];
-                    if (terminalStates.includes(this.status)) {
-                        // 终止状态：停止所有轮询
-                        this.cleanupAllPolling();
-                        // 终端状态且无数据时，显示暂无数据
-                        if (!this.metrics) {
-                            this.metrics = null;
-                        }
-                    }
                 }
             } catch (err) {
                 this.error = '获取任务状态失败，请稍后重试。';

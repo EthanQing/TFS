@@ -61,6 +61,14 @@
                               class="start-button"
                             >开始训练</el-button>
                         </span>
+                        <span class="detail3" v-else-if="model.status === 'queued'">
+                            <el-button
+                              type="primary"
+                              size="mini"
+                              disabled
+                              class="start-button"
+                            >排队中</el-button>
+                        </span>
                         <span class="detail1">{{ model.status }}</span>
                         <span class="detail2">{{ formatProgress(model) }}</span>
                         <span class="detail-size">大小: {{ formatModelSize(model.model_size_mb) }}</span>
@@ -97,6 +105,49 @@
                 @close="dialogVisible = false"
             />
         </el-dialog>
+
+        <!-- 导出模型弹窗 -->
+        <el-dialog
+            title="导出模型"
+            :visible.sync="exportDialogVisible"
+            width="480px"
+            append-to-body
+        >
+            <div class="export-form">
+                <div class="row">
+                    <span class="label">格式</span>
+                    <el-radio-group v-model="exportForm.format" :disabled="exporting">
+                        <el-radio label="pt">原模型 (.pt)</el-radio>
+                        <el-radio label="onnx">ONNX (YOLOv8)</el-radio>
+                    </el-radio-group>
+                </div>
+                <div class="row">
+                    <span class="label">权重</span>
+                    <el-select v-model="exportForm.weights" size="small" :disabled="exporting" style="width: 180px;">
+                        <el-option label="best.pt" value="best" />
+                        <el-option label="last.pt" value="last" />
+                    </el-select>
+                </div>
+
+                <div v-if="exportForm.format === 'onnx'" class="row">
+                    <span class="label">Opset</span>
+                    <el-input-number v-model="exportForm.opset" :min="9" :max="20" :disabled="exporting" />
+                </div>
+                <div v-if="exportForm.format === 'onnx'" class="row">
+                    <span class="label">动态 Shape</span>
+                    <el-switch v-model="exportForm.dynamic" :disabled="exporting" />
+                </div>
+                <div v-if="exportForm.format === 'onnx'" class="row">
+                    <span class="label">imgsz</span>
+                    <el-input-number v-model="exportForm.imgsz" :min="32" :max="4096" :step="32" :disabled="exporting" />
+                </div>
+            </div>
+
+            <span slot="footer" class="dialog-footer">
+                <el-button @click="exportDialogVisible = false" :disabled="exporting">取消</el-button>
+                <el-button type="primary" @click="confirmExport" :loading="exporting">开始导出</el-button>
+            </span>
+        </el-dialog>
     </div>
 </template>
 
@@ -105,6 +156,7 @@ import { FetchProjectsDetail } from '@/api/projects';
 import { fetchTrainingJobs, startTrainingJob, DeleteTrainingJob, FetchTrainingJobsStatus, ExportModel, FetchTrainingJobModelSize } from '@/api/training';
 import { API_BASE, WS_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue'
+import { referenceStore, loadDatasets } from "@/store/referenceStore";
 
 export default {
     name: 'ProjectsDetail',
@@ -123,7 +175,17 @@ export default {
             startingJobs: {},
             wsMap: {},
             wsLimit: 5,
-            statusTimer: null
+            statusTimer: null,
+            exportDialogVisible: false,
+            exporting: false,
+            exportTargetJobId: null,
+            exportForm: {
+                format: 'pt',
+                weights: 'best',
+                opset: 12,
+                dynamic: true,
+                imgsz: 640,
+            },
         }
     },
     computed: {
@@ -230,7 +292,8 @@ export default {
         update();
         window.addEventListener('resize', this._resizeHandler);
         // 定时兜底：每5秒刷新一次运行中任务状态
-        this.statusTimer = setInterval(this.refreshRunningStatuses, 5000)
+        // 降低轮询频率：详情实时状态以 WS 为主，HTTP 仅作兜底
+        this.statusTimer = setInterval(this.refreshRunningStatuses, 15000)
     },
     methods: {
         goBackToProjects(){
@@ -260,8 +323,13 @@ export default {
             if (!this.startingJobs) this.$set(this, 'startingJobs', {})
             this.$set(this.startingJobs, jobId, true)
             try {
-                await startTrainingJob(jobId)
-                this.$message.success('训练已开始')
+                const updated = await startTrainingJob(jobId)
+                // 立即更新本地列表状态，避免“点了没反应”
+                try {
+                    const idx = Array.isArray(this.projectModels) ? this.projectModels.findIndex(m => m && m.job_id === jobId) : -1
+                    if (idx >= 0 && updated && updated.status) this.$set(this.projectModels[idx], 'status', updated.status)
+                } catch (e) {}
+                this.$message.success('已加入训练队列')
                 const pid = this.projectInfo?.project_id || this.$route.query.projectId
                 if (pid) this.loadProjectDetails(pid)
                 // 启动后尝试建立 WS
@@ -274,12 +342,25 @@ export default {
         },
         handlePDCommand(command, jobId) {
             if (command === 'delete') this.deletePDJob(jobId)
-            if (command === 'export') this.exportPDJob(jobId)
+            if (command === 'export') this.openExportDialog(jobId)
         },
-        async exportPDJob(jobId) {
+        openExportDialog(jobId) {
+            this.exportTargetJobId = jobId
+            // 默认导出 best.pt；用户可切换到 ONNX
+            this.exportForm = {
+                ...this.exportForm,
+                format: 'pt',
+                weights: 'best',
+            }
+            this.exportDialogVisible = true
+        },
+        async confirmExport() {
+            const jobId = this.exportTargetJobId
+            if (!jobId) return
+            this.exporting = true
             try {
                 this.$message({ type: 'info', message: '开始导出，请稍候...' })
-                const res = await ExportModel(jobId)
+                const res = await ExportModel(jobId, this.exportForm)
                 const raw = res && (res.download_url || res.url || res.file_url || res.path || res.link)
                 if (!raw) {
                     this.$message({ type: 'error', message: '导出失败：未返回下载地址' })
@@ -294,8 +375,11 @@ export default {
                 a.click()
                 document.body.removeChild(a)
                 this.$message({ type: 'success', message: '已开始下载，如未自动下载请检查浏览器拦截' })
+                this.exportDialogVisible = false
             } catch (error) {
                 this.$message({ type: 'error', message: '导出失败: ' + (error.message || error) })
+            } finally {
+                this.exporting = false
             }
         },
         async deletePDJob(jobId) {
@@ -326,19 +410,33 @@ export default {
         // 初始化实时连接（运行中的前 wsLimit 个任务）
         initRealtime(){
             if (!Array.isArray(this.projectModels)) return
-            const running = this.projectModels.filter(j => (j.status||'').toLowerCase()==='running')
+            // 连接 running/queued 的任务，便于从队列状态实时切换到 running
+            const running = this.projectModels.filter(j => {
+                const s = String(j.status||'').toLowerCase()
+                return s === 'running' || s === 'queued'
+            })
             const wsBase = (WS_BASE) || (API_BASE.startsWith('https://') ? API_BASE.replace('https://','wss://') : API_BASE.replace('http://','ws://'))
             running.slice(0, this.wsLimit).forEach(job => {
                 const id = job.job_id
                 if (!id || this.wsMap[id]) return
                 try{
-                    const ws = new WebSocket(`${wsBase}/api/v1/training-jobs/${id}/metrics/stream`)
+                    const self = this
+                    const ws = new WebSocket(`${wsBase}/api/v2/training-runs/${id}/metrics/stream`)
                     ws.onmessage = (e)=>{
                         try{
                             const p = JSON.parse(e.data||'{}')
-                            if (p && !p.error){
-                                if (typeof p.current_epoch === 'number') this.$set(job,'current_epoch',p.current_epoch)
-                                if (typeof p.status === 'string') this.$set(job,'status',p.status)
+                            if (!p || p.error) return
+                            // v2 WebSocket: {type:'status'|'metric'|'event'|'done', data:{...}}
+                            if (p.type === 'status' && p.data) {
+                                // NOTE: loadProjectDetails() 会整体替换 projectModels 数组；这里必须通过 id 找到当前对象再更新
+                                const idx = Array.isArray(self.projectModels) ? self.projectModels.findIndex(m => m && m.job_id === id) : -1
+                                if (idx >= 0) {
+                                    if (typeof p.data.current_epoch === 'number') self.$set(self.projectModels[idx],'current_epoch',p.data.current_epoch)
+                                    if (typeof p.data.status === 'string') self.$set(self.projectModels[idx],'status',p.data.status)
+                                }
+                            } else if (p.type === 'metric' && p.data) {
+                                const idx = Array.isArray(self.projectModels) ? self.projectModels.findIndex(m => m && m.job_id === id) : -1
+                                if (idx >= 0 && typeof p.data.epoch === 'number') self.$set(self.projectModels[idx],'current_epoch',p.data.epoch)
                             }
                         }catch(_){/* ignore */}
                     }
@@ -351,7 +449,11 @@ export default {
         // 兜底：定时用 HTTP 刷新运行中任务的 current_epoch
         async refreshRunningStatuses(){
             if (!Array.isArray(this.projectModels)) return
-            const running = this.projectModels.filter(j => (j.status||'').toLowerCase()==='running')
+            // 同时刷新 queued/running（避免“已开始训练但列表还显示排队中”）
+            const running = this.projectModels.filter(j => {
+                const s = String(j.status||'').toLowerCase()
+                return s === 'running' || s === 'queued'
+            })
             await Promise.allSettled(running.map(async (job)=>{
                 try{
                     const s = await FetchTrainingJobsStatus(job.job_id)
@@ -479,6 +581,20 @@ export default {
                 
                 // 更新项目信息
                 this.projectInfo = projectDetailResponse;
+
+                // 后端 v2 项目详情只返回 dataset_id；这里补齐 dataset 基本信息，避免训练弹窗/页面显示为空。
+                try {
+                    await loadDatasets();
+                    const list = Array.isArray(referenceStore.datasets) ? referenceStore.datasets : [];
+                    const ds = list.find((d) => d.dataset_id === this.projectInfo.dataset_id);
+                    if (ds) {
+                        this.projectInfo.dataset = {
+                            dataset_id: ds.dataset_id,
+                            dataset_name: ds.dataset_name,
+                            dataset_type: ds.dataset_type,
+                        };
+                    }
+                } catch (e) {}
                 
                 // 强制以后端最新统计为准，不再覆盖为父级传参
                 
@@ -550,11 +666,13 @@ export default {
         formatProgress(model) {
             if (model.status === 'completed') return '已完成'
             if (model.status === 'running') {
-                const current = model.current_epoch || 0
+                // 后端 epoch 为 0-based，界面显示 1-based
+                const current = (typeof model.current_epoch === 'number' ? model.current_epoch + 1 : 0)
                 const total = model.parameters?.epochs || '-'
                 return `${current}/${total}`
             }
             if (model.status === 'pending') return '待开始'
+            if (model.status === 'queued') return '排队中'
             return model.status || '未知'
         },
         formatCreateTime(dateStr) {
@@ -573,6 +691,7 @@ export default {
             const s = String(status).toLowerCase()
             if(s==='completed' || s==='copleted') return 'status-completed'
             if(s==='pending') return 'status-pending'
+            if(s==='queued') return 'status-pending'
             if(s==='fail' || s==='failed' || s==='error') return 'status-fail'
             if(s==='running' || s==='training') return 'status-running'
             return 'status-pending'
@@ -808,5 +927,17 @@ export default {
 @keyframes spin {
     0% { transform: rotate(0deg); }
     100% { transform: rotate(360deg); }
+}
+
+.export-form .row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 10px 0;
+}
+.export-form .label {
+    width: 90px;
+    color: #333;
+    font-size: 13px;
 }
 </style>

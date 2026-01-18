@@ -58,9 +58,11 @@ export default {
             isCreating: false, // 创建状态
             isAdding: false,
             trainParams: {
+                project_id: null,
                 project_name: this.selectedProject ? this.selectedProject.project_name : '',
                 dataset_name: this.selectedProject ? this.selectedProject.dataset.dataset_name : '',
                 model_architecture: "",
+                architecture_id: null,
                 epochs: 100,
                 batch_size: 16,
                 learning_rate: 0.01,
@@ -96,6 +98,7 @@ export default {
         handleModelSelected(modelData) {
             this.selectedModel = modelData.model;
             this.trainParams.model_architecture = modelData.model;
+            this.trainParams.architecture_id = modelData.architecture_id || null;
             console.log('接收到模型选择:', modelData);
         },
         // 处理子组件的配置变化事件
@@ -166,6 +169,7 @@ export default {
             try {
                 const trainingData = {
                     ...this.trainParams,
+                    project_id: this.selectedProject.project_id,
                     project_name: this.selectedProject.project_name,
                     model_architecture: this.selectedModel
                 };
@@ -186,10 +190,11 @@ export default {
         updateProjectInfo(project) {
             this.selectedProject = project;
             this.value = project.project_name;
+            this.trainParams.project_id = project.project_id;
             this.trainParams.project_name = project.project_name;
             
             // 如果项目关联了数据集，自动填充数据集名称
-            if (project.dataset.dataset_name) {
+            if (project && project.dataset && project.dataset.dataset_name) {
                 this.trainParams.dataset_name = project.dataset.dataset_name;
             }
             

@@ -11,6 +11,8 @@ import router from '@/router'
 import "@/styles/reset.css";
 import "@/styles/global.css";
 
+import { preloadReferenceData } from "@/store/referenceStore";
+
 // 创建全局 EventBus
 Vue.prototype.EventBus = new Vue()
 
@@ -20,6 +22,9 @@ Vue.prototype.$echarts = echarts
 Vue.config.productionTip = false
 
 Vue.use(ElementUI);
+
+// Preload small reference lists so pages/components don't depend on visit order.
+preloadReferenceData();
 
 new Vue({
   render: h => h(App),

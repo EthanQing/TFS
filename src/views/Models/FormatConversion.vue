@@ -4,7 +4,7 @@
         <div class="top-bar">
             <div>
                 <h3>模型格式转换</h3>
-                <p class="subtitle">支持 PyTorch/Paddle 转 ONNX 或 TensorRT，查看转换进度与性能对比</p>
+                <p class="subtitle">YOLOv8：支持 PyTorch (.pt/.pth) 导出 ONNX，查看转换进度与日志</p>
             </div>
             <div class="top-actions">
                 <el-button class="custom-default-btn" @click="handleReset" :disabled="converting">
@@ -28,7 +28,7 @@
                     <label class="group-label">源格式</label>
                     <el-radio-group v-model="form.sourceFormat" :disabled="converting">
                         <el-radio-button label="pt">PyTorch (.pt/.pth)</el-radio-button>
-                        <el-radio-button label="pdmodel">Paddle (.pdmodel)</el-radio-button>
+                        <el-radio-button label="pdmodel" disabled>Paddle (.pdmodel) (暂未支持)</el-radio-button>
                     </el-radio-group>
                 </div>
 
@@ -36,7 +36,7 @@
                     <label class="group-label">目标格式</label>
                     <el-radio-group v-model="form.targetFormat" :disabled="converting">
                         <el-radio-button label="onnx">ONNX</el-radio-button>
-                        <el-radio-button label="tensorrt">TensorRT</el-radio-button>
+                        <el-radio-button label="tensorrt" disabled>TensorRT (暂未支持)</el-radio-button>
                     </el-radio-group>
                 </div>
 
@@ -49,7 +49,7 @@
                         :auto-upload="false"
                         :on-change="handleFileChange"
                         :disabled="converting"
-                        :accept="form.sourceFormat === 'pt' ? '.pt,.pth' : '.pdmodel'"
+                        accept=".pt,.pth"
                     >
                         <i class="el-icon-upload"></i>
                         <div class="upload-text">点击或拖拽模型文件到此处</div>
@@ -132,18 +132,33 @@
                     <div class="stat-grid">
                         <div class="stat-card">
                             <div class="stat-label">延迟 (ms)</div>
-                            <div class="stat-value">{{ compare.latency.new }} <span class="diff" :class="{ good: compare.latency.delta < 0 }">{{ formatDelta(compare.latency.delta) }}</span></div>
-                            <div class="stat-sub">原始: {{ compare.latency.base }} ms</div>
+                            <div class="stat-value">
+                                {{ isNumber(compare.latency.new) ? compare.latency.new : '-' }}
+                                <span v-if="isNumber(compare.latency.delta)" class="diff" :class="{ good: compare.latency.delta < 0 }">
+                                    {{ formatDelta(compare.latency.delta) }}
+                                </span>
+                            </div>
+                            <div class="stat-sub">原始: {{ isNumber(compare.latency.base) ? compare.latency.base : '-' }} ms</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-label">吞吐 (img/s)</div>
-                            <div class="stat-value">{{ compare.throughput.new }} <span class="diff good">{{ formatDelta(compare.throughput.delta) }}</span></div>
-                            <div class="stat-sub">原始: {{ compare.throughput.base }} img/s</div>
+                            <div class="stat-value">
+                                {{ isNumber(compare.throughput.new) ? compare.throughput.new : '-' }}
+                                <span v-if="isNumber(compare.throughput.delta)" class="diff" :class="{ good: compare.throughput.delta > 0 }">
+                                    {{ formatDelta(compare.throughput.delta) }}
+                                </span>
+                            </div>
+                            <div class="stat-sub">原始: {{ isNumber(compare.throughput.base) ? compare.throughput.base : '-' }} img/s</div>
                         </div>
                         <div class="stat-card">
                             <div class="stat-label">模型大小</div>
-                            <div class="stat-value">{{ compare.size.new }} MB <span class="diff" :class="{ good: compare.size.delta < 0 }">{{ formatDelta(compare.size.delta) }} MB</span></div>
-                            <div class="stat-sub">原始: {{ compare.size.base }} MB</div>
+                            <div class="stat-value">
+                                {{ isNumber(compare.size.new) ? compare.size.new : '-' }} MB
+                                <span v-if="isNumber(compare.size.delta)" class="diff" :class="{ good: compare.size.delta < 0 }">
+                                    {{ formatDelta(compare.size.delta) }} MB
+                                </span>
+                            </div>
+                            <div class="stat-sub">原始: {{ isNumber(compare.size.base) ? compare.size.base : '-' }} MB</div>
                         </div>
                     </div>
                     <div class="badge-row">
@@ -162,19 +177,22 @@
                     <div v-if="result" class="result-grid">
                         <div class="result-item">
                             <span class="label">输出文件</span>
-                            <span class="value">{{ result.filename }}</span>
+                            <span class="value" :title="result.filename || ''">{{ result.filename }}</span>
                         </div>
                         <div class="result-item">
                             <span class="label">路径</span>
-                            <span class="value">/outputs/{{ result.filename }}</span>
+                            <span class="value" :title="result.download_url || ''">{{ result.download_url || '-' }}</span>
                         </div>
                         <div class="result-item">
                             <span class="label">大小</span>
-                            <span class="value">{{ compare.size.new }} MB</span>
+                            <span class="value">{{ isNumber(compare.size.new) ? (compare.size.new + ' MB') : '-' }}</span>
                         </div>
                         <div class="result-item">
                             <span class="label">配置摘要</span>
-                            <span class="value">Opset {{ form.opset }} · BS {{ form.batchSize }} · {{ form.precision }}</span>
+                            <span
+                                class="value"
+                                :title="`Opset ${form.opset} · BS ${form.batchSize} · ${form.precision}`"
+                            >Opset {{ form.opset }} · BS {{ form.batchSize }} · {{ form.precision }}</span>
                         </div>
                         <div class="result-actions">
                             <el-button type="primary" size="small" class="custom-primary-btn" @click="downloadResult">
@@ -191,6 +209,9 @@
 </template>
 
 <script>
+import { API_BASE } from "@/utils/request";
+import { createModelConversion, fetchModelConversion } from "@/api/modelConversions";
+
 export default {
     name: 'ModelFormatConversion',
     data() {
@@ -212,14 +233,66 @@ export default {
             progress: 0,
             logs: [],
             result: null,
+            jobId: null,
+            pollTimer: null,
+            polling: false,
             compare: {
-                latency: { base: 35, new: 24, delta: -11 },
-                throughput: { base: 120, new: 178, delta: 58 },
-                size: { base: 180, new: 96, delta: -84 }
+                latency: { base: null, new: null, delta: null },
+                throughput: { base: null, new: null, delta: null },
+                size: { base: null, new: null, delta: null }
             }
         };
     },
     methods: {
+        isNumber(v) {
+            return typeof v === 'number' && !isNaN(v);
+        },
+        round(v, digits = 2) {
+            const n = Number(v);
+            if (!Number.isFinite(n)) return null;
+            const d = Number(digits) || 0;
+            const p = Math.pow(10, d);
+            return Math.round(n * p) / p;
+        },
+        updatePerformanceFromStatus(st) {
+            const perf = st && (st.performance || st.perf);
+            if (!perf) return;
+
+            const pt = (perf && perf.pt) || {};
+            const onnx = (perf && perf.onnx) || {};
+
+            const ptLat = this.isNumber(pt.latency_ms) ? this.round(pt.latency_ms, 2) : null;
+            const onnxLat = this.isNumber(onnx.latency_ms) ? this.round(onnx.latency_ms, 2) : null;
+            const ptThr = this.isNumber(pt.throughput_img_s) ? this.round(pt.throughput_img_s, 2) : null;
+            const onnxThr = this.isNumber(onnx.throughput_img_s) ? this.round(onnx.throughput_img_s, 2) : null;
+            const ptSize = this.isNumber(pt.size_mb) ? this.round(pt.size_mb, 2) : null;
+            const onnxSize = this.isNumber(onnx.size_mb) ? this.round(onnx.size_mb, 2) : null;
+
+            this.compare = {
+                latency: {
+                    base: ptLat,
+                    new: onnxLat,
+                    delta: (this.isNumber(ptLat) && this.isNumber(onnxLat)) ? this.round(onnxLat - ptLat, 2) : null
+                },
+                throughput: {
+                    base: ptThr,
+                    new: onnxThr,
+                    delta: (this.isNumber(ptThr) && this.isNumber(onnxThr)) ? this.round(onnxThr - ptThr, 2) : null
+                },
+                size: {
+                    base: ptSize,
+                    new: onnxSize,
+                    delta: (this.isNumber(ptSize) && this.isNumber(onnxSize)) ? this.round(onnxSize - ptSize, 2) : null
+                },
+            };
+        },
+        stopPolling() {
+            if (this.pollTimer) {
+                clearInterval(this.pollTimer);
+                this.pollTimer = null;
+            }
+            this.polling = false;
+        },
         handleFileChange(file) {
             this.uploadFile = file.raw || file;
         },
@@ -227,45 +300,95 @@ export default {
             if (this.converting) return;
             this.uploadFile = null;
         },
-        startConversion() {
+        async startConversion() {
             if (!this.uploadFile) {
                 this.$message.warning('请先选择模型文件');
                 return;
             }
+
+            // 目前仅实现 YOLOv8: PT -> ONNX
+            if (this.form.sourceFormat !== 'pt') {
+                this.$message.warning('目前仅支持 YOLOv8 PyTorch (.pt/.pth) 转换');
+                return;
+            }
+            if (this.form.targetFormat !== 'onnx') {
+                this.$message.warning('目前仅支持导出 ONNX（YOLOv8）');
+                return;
+            }
+
+            this.stopPolling();
             this.converting = true;
             this.progress = 0;
-            this.logs = ['开始转换：' + this.uploadFile.name];
+            this.logs = [];
             this.result = null;
+            this.jobId = null;
+            this.compare = {
+                latency: { base: null, new: null, delta: null },
+                throughput: { base: null, new: null, delta: null },
+                size: { base: null, new: null, delta: null }
+            };
 
-            const steps = [
-                '校验文件与格式...',
-                '导出中间表示...',
-                this.form.targetFormat === 'onnx' ? '生成 ONNX 文件...' : '构建 TensorRT Engine...',
-                '应用优化与精度配置...',
-                '写入输出...' 
-            ];
+            try {
+                const job = await createModelConversion({
+                    file: this.uploadFile,
+                    source_format: this.form.sourceFormat,
+                    target_format: this.form.targetFormat,
+                    opset: this.form.opset,
+                    dynamic: this.form.dynamicShape,
+                });
 
-            let idx = 0;
-            const timer = setInterval(() => {
-                if (this.progress < 100) {
-                    this.progress = Math.min(100, this.progress + 12);
-                    if (idx < steps.length) {
-                        this.logs.push(steps[idx]);
-                        idx++;
-                    }
-                } else {
-                    clearInterval(timer);
+                this.jobId = job && job.job_id;
+                this.logs = Array.isArray(job?.logs) ? job.logs : ['已提交转换任务'];
+                this.progress = Number(job?.progress ?? 0) || 0;
+
+                // 轮询状态
+                this.pollTimer = setInterval(() => {
+                    if (this.polling) return;
+                    this.polling = true;
+                    this.pollStatus().finally(() => { this.polling = false; });
+                }, 1000);
+
+                // 立即拉一次
+                await this.pollStatus();
+            } catch (e) {
+                this.converting = false;
+                this.stopPolling();
+                this.$message.error('转换启动失败: ' + (e?.message || e));
+            }
+        },
+        async pollStatus() {
+            if (!this.jobId) return;
+            try {
+                const st = await fetchModelConversion(this.jobId);
+                if (Number.isFinite(Number(st?.progress))) this.progress = Number(st.progress);
+                if (Array.isArray(st?.logs)) this.logs = st.logs;
+                this.updatePerformanceFromStatus(st);
+
+                const status = String(st?.status || '').toLowerCase();
+                if (status === 'completed') {
                     this.converting = false;
-                    this.logs.push('转换完成');
-                    const ext = this.form.targetFormat === 'onnx' ? 'onnx' : 'engine';
+                    this.stopPolling();
                     this.result = {
-                        filename: `${this.uploadFile.name.split('.')[0]}_export.${ext}`
+                        filename: st.output_filename || 'output.onnx',
+                        download_url: st.output_url || null,
                     };
                     this.$message.success('转换完成');
+                } else if (status === 'failed') {
+                    this.converting = false;
+                    this.stopPolling();
+                    const err = st?.error_message || '转换失败';
+                    this.logs = Array.isArray(this.logs) ? [...this.logs, String(err)] : [String(err)];
+                    this.$message.error('转换失败: ' + err);
                 }
-            }, 500);
+            } catch (e) {
+                // 网络波动时不立刻判失败
+                try {
+                    this.logs = Array.isArray(this.logs) ? [...this.logs, '轮询失败: ' + (e?.message || e)] : ['轮询失败'];
+                } catch (_) {}
+            }
         },
         handleReset() {
+            this.stopPolling();
             this.form = {
                 sourceFormat: 'pt',
                 targetFormat: 'onnx',
@@ -282,20 +405,42 @@ export default {
             this.progress = 0;
             this.logs = [];
             this.result = null;
+            this.jobId = null;
+            this.converting = false;
+            this.compare = {
+                latency: { base: null, new: null, delta: null },
+                throughput: { base: null, new: null, delta: null },
+                size: { base: null, new: null, delta: null }
+            };
         },
         formatDelta(val) {
             const sign = val > 0 ? '+' : '';
             return `${sign}${val}`;
         },
         downloadResult() {
-            this.$message.success('模拟下载：' + (this.result ? this.result.filename : ''));
+            const raw = this.result && (this.result.download_url || this.result.url);
+            if (!raw) {
+                this.$message.warning('暂无可下载的文件');
+                return;
+            }
+            const href = String(raw).startsWith('http') ? raw : `${API_BASE}${raw}`;
+            const a = document.createElement('a');
+            a.href = href;
+            a.download = '';
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         },
         copyLog() {
             const text = this.logs.join('\n');
             navigator.clipboard && navigator.clipboard.writeText(text);
             this.$message.success('日志已复制');
         }
-    }
+    },
+    beforeDestroy() {
+        this.stopPolling();
+    },
 };
 </script>
 
@@ -592,18 +737,27 @@ export default {
     border-radius: 10px;
     background: #f9fafb;
     display: flex;
-    justify-content: space-between;
     align-items: center;
+    gap: 10px;
     font-size: 13px;
 }
 
 .result-item .label {
     color: #6c757d;
+    flex: 0 0 72px;
+    white-space: nowrap;
 }
 
 .result-item .value {
     color: #111f68;
     font-weight: 600;
+    flex: 1 1 auto;
+    min-width: 0;
+    margin-left: auto;
+    text-align: right;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
 .result-actions {

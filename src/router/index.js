@@ -32,7 +32,7 @@ const Hyperparameter = () => import('@/views/Training/Hyperparameter.vue')
 const BaseChart = () => import('@/components/Chart/BaseChart.vue') // Kept as route for now if used as demo
 const AlarmRule = () => import('@/views/Configuration/AlarmRule.vue')
 const DataConversion = () => import('@/views/Datasets/components/DataConversion.vue')
-const Deployment = () => import('@/views/Deployment/index.vue')
+const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
 const InferenceTest = () => import('@/views/Models/InferenceTest.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
 const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
@@ -79,8 +79,12 @@ export default new VueRouter({
             path: '/alarmrule',
             component: AlarmRule
         }, {
+            path: '/deployment',
+            component: DeploymentCenter
+        }, {
+            // Backward-compatible entry (old route)
             path: '/deploymentprocess',
-            component: Deployment
+            redirect: { path: '/deployment' }
         }, {
             path: '/modelinferencetest',
             component: InferenceTest

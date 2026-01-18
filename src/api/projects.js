@@ -1,33 +1,75 @@
 import { API_BASE } from '@/utils/request';
 
-// fetchProjects 项目接口
-export async function fetchProjects() {
+async function safeJson(res) {
     try {
-        const response = await fetch(`${API_BASE}/api/v2/projects`);
-        const projects = await response.json();
-        return projects;
+        return await res.json();
+    } catch (_) {
+        return null;
+    }
+}
+
+function pickPageItems(data) {
+    if (Array.isArray(data)) return data;
+    if (data && Array.isArray(data.items)) return data.items;
+    if (data && Array.isArray(data.data)) return data.data;
+    return [];
+}
+
+function mapProjectOut(p) {
+    if (!p || typeof p !== 'object') return p;
+    return {
+        ...p,
+        project_id: p.project_id || p.id,
+        project_name: p.project_name || p.name,
+        // Keep backend fields too for later API calls.
+        name: p.name || p.project_name,
+    };
+}
+
+// fetchProjects 项目接口（v2 返回 Page{items, meta}）
+export async function fetchProjects(page = 1, pageSize = 500) {
+    try {
+        const url = `${API_BASE}/api/v2/projects?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
+        const response = await fetch(url);
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            throw new Error(msg);
+        }
+        return pickPageItems(data).map(mapProjectOut);
     } catch (error) {
         console.error('获取项目失败:', error);
+        throw error;
     }
 }
 
 // createProject 创建项目接口
 export async function createProject(projectData) {
     try {
+        // 兼容旧前端字段：project_name -> name；并补齐 v2 必填 task_type
+        const payload = {
+            name: projectData?.name || projectData?.project_name || projectData?.projectName,
+            description: projectData?.description,
+            dataset_id: projectData?.dataset_id ?? projectData?.dataset,
+            task_type: projectData?.task_type || 'detection',
+            created_by: projectData?.created_by || projectData?.user || '',
+            tags: projectData?.tags,
+        };
+
         const response = await fetch(`${API_BASE}/api/v2/projects`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
             },
-            body: JSON.stringify(projectData)
+            body: JSON.stringify(payload)
         });
 
-        const result = await response.json();
+        const result = await safeJson(response);
 
         if (response.ok) {
-            return result;
+            return mapProjectOut(result);
         } else {
-            throw new Error(result.detail || '创建项目失败');
+            throw new Error((result && result.detail) || '创建项目失败');
         }
     } catch (error) {
         console.error('创建项目错误:', error);
@@ -39,10 +81,35 @@ export async function createProject(projectData) {
 export async function FetchProjectsDetail(projectId) {
     try {
         const response = await fetch(`${API_BASE}/api/v2/projects/${projectId}`);
-        const projects = await response.json();
-        return projects;
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            throw new Error(msg);
+        }
+        return mapProjectOut(data);
     } catch (error) {
         console.error('获取项目失败:', error);
+        throw error;
+    }
+}
+
+// deleteProject 删除项目接口（v2: DELETE /projects/{id}）
+export async function deleteProject(projectId) {
+    try {
+        const id = Number(projectId);
+        if (!Number.isFinite(id)) throw new Error('无效的 projectId');
+
+        const response = await fetch(`${API_BASE}/api/v2/projects/${id}`, {
+            method: 'DELETE',
+        });
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            throw new Error(msg);
+        }
+        return data;
+    } catch (error) {
+        console.error('删除项目失败:', error);
         throw error;
     }
 }
@@ -51,10 +118,33 @@ export async function FetchProjectsDetail(projectId) {
 export async function FetchProjectModelsSize(projectId) {
     try {
         const response = await fetch(`${API_BASE}/api/v2/projects/${projectId}/model-size`);
-        const size = await response.json();
-        return size;
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            throw new Error(msg);
+        }
+        return data;
     } catch (error) {
         console.error('获取项目模型大小失败:', error);
+        throw error;
+    }
+}
+
+// FetchProjectsModelsSize 批量获取项目模型大小（更高性能，避免逐个请求）
+export async function FetchProjectsModelsSize(projectIds = []) {
+    try {
+        const ids = Array.isArray(projectIds) ? projectIds.map(x => Number(x)).filter(x => Number.isFinite(x)) : [];
+        if (!ids.length) return [];
+        const q = ids.join(',');
+        const response = await fetch(`${API_BASE}/api/v2/projects/model-sizes?project_ids=${encodeURIComponent(q)}`);
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            throw new Error(msg);
+        }
+        return Array.isArray(data) ? data : [];
+    } catch (error) {
+        console.error('批量获取项目模型大小失败:', error);
         throw error;
     }
 }

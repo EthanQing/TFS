@@ -22,6 +22,13 @@
           </a>
         </li>
 
+        <li @click="goDeployment" :class="{ active: isDeploymentActive }">
+          <a href="javascript:void(0)">
+            <img :src="getIconPath('deployment', isDeploymentActive)" alt="部署">
+            <span>部署</span>
+          </a>
+        </li>
+
         <!-- <li @click="goModels" :class="{ active: isModelActive }">
           <a href="javascript:void(0)">任务</a>
         </li> -->
@@ -55,6 +62,13 @@ export default {
     isArchitectureActive() {
       return this.$route.path === "/architecture";
     },
+    isDeploymentActive() {
+      return (
+        this.$route.path === "/deployment" ||
+        this.$route.path.startsWith("/deployment") ||
+        this.$route.path.startsWith("/deploymentprocess")
+      );
+    },
     isModelActive() {
       return false;
     },
@@ -75,6 +89,11 @@ export default {
         this.$router.push("/architecture");
       }
     },
+    goDeployment() {
+      if (this.$route.path !== "/deployment") {
+        this.$router.push({ path: "/deployment" });
+      }
+    },
     goModels() {
       // 任务列表页已移除，此入口不做跳转
     },
@@ -82,7 +101,9 @@ export default {
       const iconMap = {
         data: '图片',
         architecture: '模型', 
-        project: '项目'
+        project: '项目',
+        // 暂无专用图标，复用“模型”图标
+        deployment: '模型'
       };
       
       const iconName = iconMap[type];

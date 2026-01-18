@@ -39,8 +39,16 @@
             <div class="project-image">
               <img :src="getImageSource(project.imageUrl)" alt="项目图片" />
             </div>
-            <div class="status-badge">
-              <i class="el-icon-unlock"></i>
+            <div class="status-badge" @click.stop>
+              <el-dropdown trigger="click" @command="handleProjectCommand($event, project)">
+                <span class="el-dropdown-link">
+                  <i class="el-icon-more"></i>
+                </span>
+                <el-dropdown-menu slot="dropdown">
+                  <el-dropdown-item command="view">查看</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </el-dropdown>
             </div>
           </div>
           
@@ -122,7 +130,7 @@
 </template>
 
 <script>
-import { fetchProjects, createProject, FetchProjectModelsSize } from "@/api/projects";
+import { fetchProjects, createProject, deleteProject, FetchProjectModelsSize, FetchProjectsModelsSize } from "@/api/projects";
 import { fetchDatasets } from "@/api/datasets";
 export default {
   name: "Projects",
@@ -164,6 +172,70 @@ export default {
     }
   },
   methods: {
+    handleProjectCommand(command, project) {
+      if (!project) return;
+      if (command === "view") {
+        this.goProjectsDetail(project);
+        return;
+      }
+      if (command === "delete") {
+        this.deleteOneProject(project);
+      }
+    },
+    async deleteOneProject(project) {
+      const pid = project && project.project_id;
+      const pname = project && (project.project_name || project.name) || '';
+      try {
+        await this.$confirm(
+          `确定要删除项目「${pname || pid}」吗？（如果项目下还有训练任务/模型版本，后端可能会拒绝删除）`,
+          '提示',
+          {
+            confirmButtonText: '确定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        );
+      } catch (_) {
+        return;
+      }
+
+      try {
+        await deleteProject(pid);
+        this.projects = Array.isArray(this.projects) ? this.projects.filter(p => Number(p.project_id) !== Number(pid)) : [];
+
+        // 清理本地缓存的 currentProject（避免删除后仍进入详情）
+        try {
+          const stored = localStorage.getItem('currentProject');
+          if (stored) {
+            const cp = JSON.parse(stored);
+            if (cp && Number(cp.project_id) === Number(pid)) {
+              localStorage.removeItem('currentProject');
+            }
+          }
+        } catch (_) {}
+
+        this.$message({ type: 'success', message: '项目已删除' });
+      } catch (e) {
+        this.$message({ type: 'error', message: '删除失败: ' + (e && e.message ? e.message : e) });
+      }
+    },
+    // 用 dataset_id 将项目补齐 dataset 信息（后端 ProjectOut 只返回 dataset_id）
+    hydrateProjectsWithDatasets() {
+      if (!Array.isArray(this.projects) || !Array.isArray(this.datasetList) || this.datasetList.length === 0) return;
+      const dsMap = new Map(this.datasetList.map(d => [Number(d.dataset_id), d]));
+      this.projects = this.projects.map(p => {
+        const ds = dsMap.get(Number(p.dataset_id));
+        if (!ds) return p;
+        return {
+          ...p,
+          dataset: {
+            dataset_id: ds.dataset_id,
+            dataset_name: ds.dataset_name,
+            dataset_type: ds.dataset_type
+          }
+        };
+      });
+    },
     // 处理图片路径（支持本地和网络图片）
     getImageSource(src) {
       // 使用静态导入避免 webpack 警告
@@ -250,20 +322,36 @@ export default {
 
           try {
             console.log("创建项目数据:", newProject);
-            const result = await createProject(newProject);
+            const result = await createProject({
+              ...newProject,
+              // project 的 task_type 由所选数据集决定（与后端校验保持一致）
+              task_type: (this.datasetList.find(d => Number(d.dataset_id) === Number(newProject.dataset_id))?.dataset_type) || 'detection'
+            });
             console.log("创建项目结果:", result);
+
+            const created = result || newProject;
+            // 补齐 dataset 用于列表展示
+            const ds = this.datasetList.find(d => Number(d.dataset_id) === Number(created.dataset_id));
+            if (ds) {
+              created.dataset = {
+                dataset_id: ds.dataset_id,
+                dataset_name: ds.dataset_name,
+                dataset_type: ds.dataset_type
+              };
+            }
+
+            // 添加到项目列表（用后端返回为准，避免缺字段）
+            this.projects.unshift(created);
+            this.$message({ message: "项目创建成功", type: "success" });
+
+            // 重置状态
+            this.resetForm();
+            return;
           } catch (error) {
             console.error("创建项目失败:", error);
             this.$message.error("创建项目失败，请稍后再试");
             return;
           }
-
-          // 添加到项目列表
-          this.projects.unshift(newProject);
-          this.$message({ message: "项目创建成功", type: "success" });
-
-          // 重置状态
-          this.resetForm();
         } else {
           this.$message.error("请填写必填字段");
           return false;
@@ -280,25 +368,25 @@ export default {
       try {
         const result = await fetchProjects();
         this.projects = result;
+        this.hydrateProjectsWithDatasets();
         // console.log("获取项目列表:", this.projects);
-        
-        // 为每个项目获取模型大小信息
-        for (const project of this.projects) {
-          const projectId = project.project_id;
-          // console.log("项目ID:", projectId);
-          
-          try {
-            // 获取项目模型大小
-            const sizeResult = await FetchProjectModelsSize(projectId);
-            // console.log("项目模型大小:", sizeResult);
-            
-            // 将结果保存到对应的项目对象中
-            project.completed_models_count = sizeResult.completed_models_count || 0;
-            project.total_size_mb = sizeResult.total_size_mb || '0MB';
-            
-          } catch (error) {
-            console.error(`获取项目 ${projectId} 的模型大小失败:`, error);
-            // 设置默认值，避免显示错误
+
+        // 批量获取所有项目的模型数量/大小（更高性能，避免逐个请求）
+        try {
+          const ids = Array.isArray(this.projects) ? this.projects.map(p => p && p.project_id).filter(Boolean) : [];
+          const sizeList = await FetchProjectsModelsSize(ids);
+          const sizeMap = new Map((Array.isArray(sizeList) ? sizeList : []).map(s => [Number(s.project_id), s]));
+
+          for (const project of this.projects) {
+            const projectId = Number(project && project.project_id);
+            const s = sizeMap.get(projectId);
+            project.completed_models_count = (s && s.completed_models_count) || 0;
+            project.total_size_mb = (s && s.total_size_mb) || '0MB';
+          }
+        } catch (error) {
+          console.error("批量获取项目模型大小失败:", error);
+          // 回退：全部置零，避免页面报错
+          for (const project of this.projects) {
             project.completed_models_count = 0;
             project.total_size_mb = '0MB';
           }
@@ -316,6 +404,7 @@ export default {
         const result = await fetchDatasets();
         // console.log("获取数据集列表:", result);
         this.datasetList = result;
+        this.hydrateProjectsWithDatasets();
       } catch (error) {
         console.error("获取数据集列表失败:", error);
       }
@@ -495,6 +584,18 @@ export default {
   justify-content: center;
   color: white;
   font-size: 14px;
+  cursor: pointer;
+  z-index: 2;
+}
+
+.status-badge .el-dropdown,
+.status-badge .el-dropdown-link {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
 }
 
 /* 卡片内容 */

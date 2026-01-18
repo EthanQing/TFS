@@ -5,39 +5,35 @@
     <!-- 显示关联的数据集信息 -->
     <div class="dataset-info" v-if="selectedProject">
       <span class="dataset-label">关联数据集:</span>
-      <span class="dataset-name">{{ selectedProject.dataset.dataset_name || '未关联数据集' }}</span>
+      <span class="dataset-name">{{ (selectedProject.dataset && selectedProject.dataset.dataset_name) || '未关联数据集' }}</span>
     </div>
 
     <div class="detectArchitecture">检测架构</div>
     <div class="showModelArchitectureList">
-      <ul>
-        <div>YOLO11</div>
-        <div class="list">
-          <li v-for="model in [
-            'YOLO11n',
-            'YOLO11s',
-            'YOLO11m',
-            'YOLO11l',
-            'YOLO11x',
-          ]" :key="model" :class="{ active: selectedModel === model }" @click="selectedModel = model">
-            {{ model }}
-          </li>
-        </div>
-      </ul>
-      <ul>
-        <div>YOLOv8</div>
-        <div class="list">
-          <li v-for="model in [
-            'YOLOv8n',
-            'YOLOv8s',
-            'YOLOv8m',
-            'YOLOv8l',
-            'YOLOv8x',
-          ]" :key="model" :class="{ active: selectedModel === model }" @click="selectedModel = model">
-            {{ model }}
-          </li>
-        </div>
-      </ul>
+      <div v-if="archLoading" class="arch-state">
+        <i class="el-icon-loading"></i>
+        <span>正在加载模型架构...</span>
+      </div>
+      <div v-else-if="archError" class="arch-state error">
+        <i class="el-icon-warning"></i>
+        <span>{{ archError }}</span>
+        <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
+      </div>
+      <template v-else>
+        <ul v-for="group in architectureGroups" :key="group.family">
+          <div>{{ group.family }}</div>
+          <div class="list">
+            <li
+              v-for="arch in group.items"
+              :key="arch.arch_id || arch.model_variant"
+              :class="{ active: selectedModel === arch.model_variant }"
+              @click="onSelectArchitecture(arch)"
+            >
+              {{ formatVariant(arch.model_variant) }}
+            </li>
+          </div>
+        </ul>
+      </template>
       <!-- <ul>
         <div>YOLOv5u</div>
         <div class="list">
@@ -151,6 +147,8 @@
 </template>
 
 <script>
+import { referenceStore, loadArchitectures } from "@/store/referenceStore";
+
 export default {
   name: "Official",
   props: {
@@ -161,7 +159,9 @@ export default {
   },
   data() {
     return {
+      ref: referenceStore,
       selectedModel: null, // 用于记录当前选中的模型
+      selectedArchitectureId: null, // 选中的架构ID（后端 v2 需要 architecture_id）
       isRotated: false,
       input1: "100",
       input2: "640",
@@ -205,13 +205,69 @@ export default {
     };
   },
   computed: {
+    archLoading() {
+      return !!this.ref?.loading?.architectures;
+    },
+    archError() {
+      return this.ref?.error?.architectures || "";
+    },
+    architectureGroups() {
+      const list = Array.isArray(this.ref?.architectures) ? this.ref.architectures : [];
+
+      const detected = list.filter((it) => {
+        const tt = String(it?.task_type || "").toLowerCase();
+        return !tt || tt === "detection";
+      });
+
+      const fallback = [
+        {
+          family: "YOLOv8",
+          items: [
+            { model_variant: "yolov8n" },
+            { model_variant: "yolov8s" },
+            { model_variant: "yolov8m" },
+            { model_variant: "yolov8l" },
+            { model_variant: "yolov8x" },
+          ],
+        },
+      ];
+
+      const items = detected.length ? detected : fallback[0].items;
+      const map = {};
+      items.forEach((it) => {
+        const fam = it.model_family || it.family || fallback[0].family || "未分类";
+        (map[fam] = map[fam] || []).push(it);
+      });
+
+      const sizeOrder = { n: 0, s: 1, m: 2, l: 3, x: 4 };
+      const sizeRank = (variant = "") => {
+        const base = String(variant || "").replace(/-(cls|seg)$/i, "");
+        const letter = base.slice(-1).toLowerCase();
+        return letter in sizeOrder ? sizeOrder[letter] : 999;
+      };
+
+      return Object.entries(map)
+        .sort((a, b) =>
+          a[0] === "未分类" ? 1 : b[0] === "未分类" ? -1 : String(a[0]).localeCompare(String(b[0]), "zh-CN")
+        )
+        .map(([family, arr]) => ({
+          family,
+          items: arr.slice().sort((a, b) => {
+            const sa = sizeRank(a.model_variant);
+            const sb = sizeRank(b.model_variant);
+            if (sa !== sb) return sa - sb;
+            return String(a.model_variant || "").localeCompare(String(b.model_variant || ""), "zh-CN");
+          }),
+        }));
+    },
     metrics() {
       const def = { accuracy: 37.3, speedMs: 80.4 };
       if (!this.selectedModel) return def;
-      return this.modelMetrics[this.selectedModel] || def;
+      const key = this.formatVariantKey(this.selectedModel);
+      return this.modelMetrics[key] || def;
     },
     currentSeriesKey() {
-      const m = this.selectedModel || '';
+      const m = this.formatVariantKey(this.selectedModel);
       if (/^YOLO11/.test(m)) return 'YOLO11';
       if (/^YOLOv8/.test(m)) return 'YOLOv8';
       return null;
@@ -282,11 +338,19 @@ export default {
     }
   },
   watch: {
+    // 当架构列表加载完成时，确保有一个默认选择，避免“必须先点架构页”导致此处为空。
+    'ref.architectures': {
+      handler() {
+        this.ensureDefaultModel();
+      },
+      immediate: true
+    },
     // 监听模型选择变化
     selectedModel(newModel) {
       if (newModel) {
         this.$emit('model-selected', {
-          model: newModel
+          model: newModel,
+          architecture_id: this.selectedArchitectureId || null
         });
       }
     },
@@ -317,6 +381,28 @@ export default {
     }
   },
   methods: {
+    reloadArchitectures() {
+      loadArchitectures({ force: true });
+    },
+    ensureDefaultModel() {
+      if (this.selectedModel) return;
+      const first = this.architectureGroups?.[0]?.items?.[0];
+      if (first) this.onSelectArchitecture(first);
+    },
+    onSelectArchitecture(arch) {
+      // 设置 ID 再设置 model，确保 watch(selectedModel) 发出去的是正确的 architecture_id
+      this.selectedArchitectureId = arch?.arch_id || arch?.architecture_id || arch?.id || null;
+      this.selectedModel = arch?.model_variant || null;
+    },
+    formatVariantKey(v) {
+      const s = String(v || "").trim();
+      if (!s) return "";
+      // Backend variants are usually "yolov8n"; UI wants "YOLOv8n".
+      return s.replace(/^yolo/i, "YOLO");
+    },
+    formatVariant(v) {
+      return this.formatVariantKey(v);
+    },
     showAdvancedModelConfiguration() {
       this.isRotated = !this.isRotated;
     },
@@ -332,7 +418,7 @@ export default {
         optimizer: this.value.toLowerCase(),
         use_pretrained: this.pretrainedEnabled,
         // 如果项目关联了数据集，自动填充
-        dataset_name: this.selectedProject?.dataset.dataset_name || ''
+        dataset_name: this.selectedProject?.dataset?.dataset_name || ''
       };
 
       this.$emit('config-changed', configData);
@@ -354,11 +440,9 @@ export default {
     }
   },
   mounted() {
-    // 默认选择第一个检测架构并发送事件
-    if (!this.selectedModel) {
-      this.selectedModel = 'YOLO11n';
-    }
-    this.$emit('model-selected', { model: this.selectedModel });
+    // Ensure architectures are loaded even if user never visits the Architecture page.
+    loadArchitectures();
+    this.ensureDefaultModel();
     this.$nextTick(() => {
       this.emitConfigChange();
     });
@@ -411,6 +495,23 @@ export default {
 
 .showModelArchitectureList {
   width: 100%;
+}
+
+.arch-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  color: #666;
+  font-size: 12px;
+}
+
+.arch-state.error {
+  color: #f56c6c;
+}
+
+.arch-state i {
+  font-size: 16px;
 }
 
 .showModelArchitectureList div {

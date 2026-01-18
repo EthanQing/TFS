@@ -510,16 +510,26 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500 } = {}) {
 // FetchDatasetType 获取数据集类型接口（旧接口，后端 v2 暂无该路由；保留以避免直接报错）
 export async function FetchDatasetType(jobId) {
     try {
-        const url = `${API_BASE}/api/v2/statistics/dataset-type?job_id=${encodeURIComponent(jobId)}`;
-        const response = await fetch(url);
-        const data = await safeJson(response);
-        if (!response.ok) {
-            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
-            throw new Error(msg);
-        }
-        return data;
+        const id = String(jobId || '').trim();
+        if (!id) return { dataset_type: 'detection' };
+
+        // v2：通过 training-run -> project -> task_type 推断数据集类型，避免请求不存在的 /statistics/dataset-type
+        const runRes = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}`);
+        const runData = await safeJson(runRes);
+        if (!runRes.ok) throw new Error(pickErrorMessage(runData, runRes));
+
+        const projectId = runData && (runData.project_id || runData.projectId);
+        if (!projectId) return { dataset_type: 'detection' };
+
+        const projRes = await fetch(`${API_BASE}/api/v2/projects/${encodeURIComponent(projectId)}`);
+        const projData = await safeJson(projRes);
+        if (!projRes.ok) throw new Error(pickErrorMessage(projData, projRes));
+
+        const taskType = projData && (projData.task_type || projData.taskType);
+        return { dataset_type: taskType || 'detection' };
     } catch (error) {
         console.error('获取数据集类型失败:', error);
-        throw error;
+        // 默认 detection，避免影响推理/预览页面
+        return { dataset_type: 'detection' };
     }
 }
