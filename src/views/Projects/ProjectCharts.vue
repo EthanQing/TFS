@@ -44,6 +44,10 @@
             :class="{ active: activeTab === 'config' }"
             @click="setActiveTab('config'),goConfiguration()"
         >配置</div>
+        <div 
+            :class="{ active: activeTab === 'logs' }"
+            @click="setActiveTab('logs'),goLogsPart()"
+        >日志</div>
         <!-- <div 
             :class="{ active: activeTab === 'charts' }"
             @click="setActiveTab('charts'),goChartsPart()"
@@ -150,6 +154,8 @@ export default {
         // 根据当前路径设置激活的选项卡
         if (this.$route.path.includes('/projectscharts/trainpart')) {
             this.activeTab = 'train';
+        } else if (this.$route.path.includes('/projectscharts/logs')) {
+            this.activeTab = 'logs';
         } else if (this.$route.path.includes('/projectscharts/configuration')) {
             this.activeTab = 'config';
         } else if (this.$route.path.includes('/projectscharts/chartspart')) {
@@ -238,6 +244,14 @@ export default {
             if(this.$route.path!=='/projectscharts/configuration'){
                 this.$router.push({
                     path: '/projectscharts/configuration',
+                    query: { jobId: this.jobId }
+                });
+            }
+        },
+        goLogsPart(){
+            if(this.$route.path!=='/projectscharts/logs'){
+                this.$router.push({
+                    path: '/projectscharts/logs',
                     query: { jobId: this.jobId }
                 });
             }

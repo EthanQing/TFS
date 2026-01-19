@@ -24,6 +24,7 @@ const ProjectCharts = () => import('@/views/Projects/ProjectCharts.vue')
 const TrainManager = () => import('@/views/Training/TrainManager.vue')
 const Configuration = () => import('@/views/Training/Configuration.vue')
 const Preview = () => import('@/views/Training/Preview.vue')
+const TrainLogs = () => import('@/views/Training/TrainLogs.vue')
 
 const DataVersionHistoryComparison = () => import('@/views/Datasets/DataVersionHistoryComparison.vue')
 const TrainingTaskComparison = () => import('@/views/Training/TrainingTaskComparison.vue')
@@ -108,6 +109,10 @@ export default new VueRouter({
                 {
                     path: 'trainpart',
                     component: TrainManager
+                },
+                {
+                    path: 'logs',
+                    component: TrainLogs
                 },
                 {
                     path: 'configuration',
