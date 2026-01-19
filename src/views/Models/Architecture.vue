@@ -1,52 +1,75 @@
 <template>
-  <div class="architecture-wrapper">
-    <h2 class="title">当前已支持的模型架构</h2>
-
-    <!-- 加载状态 -->
-    <div v-if="loading" class="state loading">
-      <i class="el-icon-loading"></i>
-      <span>加载中...</span>
-    </div>
-
-    <!-- 错误状态 -->
-    <div v-else-if="error" class="state error">
-      <i class="el-icon-warning"></i>
-      <span>{{ error }}</span>
-      <el-button
-        size="mini"
-        type="primary"
-        @click="fetchArchitectures"
-        style="margin-left: 12px"
-        >重试</el-button
-      >
-    </div>
-
-    <!-- 空状态 -->
-  <div v-else-if="groupedList.length === 0" class="state empty">
-      <i class="el-icon-info"></i>
-      <span>暂无架构数据</span>
-    </div>
-
-    <!-- 分组数据列表（按 model_family 分类，仅显示指定字段） -->
-    <div v-else class="family-groups">
-      <div class="family-group" v-for="group in groupedList" :key="group.family">
-        <h3 class="family-title">{{ group.family }} <span class="family-count">{{ group.items.length }}</span></h3>
-        <ul class="arch-list">
-      <li v-for="item in group.items" :key="item.arch_id || item.model_variant" class="arch-item">
-            <div class="arch-header">
-        <span class="arch-name" :title="formatVariant(item.model_variant)">{{ formatVariant(item.model_variant) || '未命名' }}</span>
-            </div>
-            <div class="simple-fields">
-              <div class="field" v-if="item.arch_id"><span class="label">ID:</span><span class="value" :title="item.arch_id">{{ item.arch_id }}</span></div>
-              <div class="field" v-if="item.task_type"><span class="label">分类:</span><span class="value" :title="displayTaskType(item.task_type)">{{ displayTaskType(item.task_type) }}</span></div>
-              <div class="field" v-if="item.pretrained_path"><span class="label">预训练:</span><span class="value" :title="item.pretrained_path">{{ truncate(item.pretrained_path) }}</span></div>
-            </div>
-          </li>
-        </ul>
+  <div class="architecture-page page-container">
+    <header class="arch-hero">
+      <div class="arch-hero-left">
+        <div class="arch-eyebrow">模型库</div>
+        <h1 class="arch-title">模型架构</h1>
+        <p class="arch-subtitle">浏览支持的主干网络和变体。</p>
       </div>
-    </div>
+      <div class="arch-hero-right">
+        <div class="arch-stat glass-panel-sm">
+          <div class="arch-stat-label">系列</div>
+          <div class="arch-stat-value">{{ groupedList.length }}</div>
+        </div>
+        <div class="arch-stat glass-panel-sm">
+          <div class="arch-stat-label">总数</div>
+          <div class="arch-stat-value">{{ totalArchitectures }}</div>
+        </div>
+        <el-button type="primary" class="primary-action" @click="fetchArchitectures">刷新</el-button>
+      </div>
+    </header>
+
+    <section class="arch-body">
+      <div v-if="loading" class="state loading">
+        <i class="el-icon-loading"></i>
+        <span>正在加载架构...</span>
+      </div>
+
+      <div v-else-if="error" class="state error">
+        <i class="el-icon-warning"></i>
+        <span>{{ error }}</span>
+        <el-button size="mini" type="primary" class="primary-action" @click="fetchArchitectures">重试</el-button>
+      </div>
+
+      <div v-else-if="groupedList.length === 0" class="state empty">
+        <i class="el-icon-info"></i>
+        <span>暂无架构数据。</span>
+      </div>
+
+      <div v-else class="family-groups">
+        <section class="family-group glass-panel" v-for="group in groupedList" :key="group.family">
+          <header class="family-header">
+            <div class="family-title">{{ group.family }}</div>
+            <div class="family-count">{{ group.items.length }}</div>
+          </header>
+          <div class="arch-grid">
+            <article v-for="item in group.items" :key="item.arch_id || item.model_variant" class="arch-card">
+              <div class="arch-card-header">
+                <div class="arch-name" :title="formatVariant(item.model_variant) || '未命名'">
+                  {{ formatVariant(item.model_variant) || '未命名' }}
+                </div>
+                <span v-if="item.task_type" class="arch-tag">{{ displayTaskType(item.task_type) }}</span>
+              </div>
+              <div class="arch-meta">
+                <div class="meta-row" v-if="item.arch_id">
+                  <span class="meta-label">ID</span>
+                  <span class="meta-value">{{ item.arch_id }}</span>
+                </div>
+                <div class="meta-row" v-if="item.pretrained_path">
+                  <span class="meta-label">预训练模型</span>
+                  <el-tooltip :content="item.pretrained_path" placement="top" :open-delay="500">
+                    <span class="meta-value">{{ truncate(item.pretrained_path) }}</span>
+                  </el-tooltip>
+                </div>
+              </div>
+            </article>
+          </div>
+        </section>
+      </div>
+    </section>
   </div>
 </template>
+
 
 <script>
 import { FetchArchitectureDetail } from "@/api/models";
@@ -65,14 +88,14 @@ export default {
       if (!Array.isArray(this.architectures)) return [];
       const map = {};
       this.architectures.forEach(it => {
-        const fam = it.model_family || '未分类';
+        const fam = it.model_family || 'Uncategorized';
         (map[fam] = map[fam] || []).push(it);
       });
       const sizeOrder = { n:0, s:1, m:2, l:3, x:4 };
       const taskOrder = (variant='') => {
-        if (variant.endsWith('-seg')) return 2; // 分割最后
-        if (variant.endsWith('-cls')) return 1; // 分类居中
-        return 0; // 无后缀视作检测最前
+        if (variant.endsWith('-seg')) return 2;
+        if (variant.endsWith('-cls')) return 1;
+        return 0;
       };
       const sizeRank = (variant='') => {
         const base = variant.replace(/-(cls|seg)$/,'');
@@ -80,7 +103,7 @@ export default {
         return letter in sizeOrder ? sizeOrder[letter] : 999;
       };
       return Object.entries(map)
-        .sort((a,b)=> a[0] === '未分类' ? 1 : b[0] === '未分类' ? -1 : a[0].localeCompare(b[0],'zh-CN'))
+        .sort((a,b)=> a[0] === 'Uncategorized' ? 1 : b[0] === 'Uncategorized' ? -1 : a[0].localeCompare(b[0]))
         .map(([family, items]) => ({
           family,
           items: items.slice().sort((a,b)=> {
@@ -90,10 +113,13 @@ export default {
             const sa = sizeRank(a.model_variant);
             const sb = sizeRank(b.model_variant);
             if (sa !== sb) return sa - sb;
-            return (a.model_variant || '').localeCompare(b.model_variant || '', 'zh-CN');
+            return (a.model_variant || '').localeCompare(b.model_variant || '');
           })
         }));
-    }
+    },
+    totalArchitectures() {
+      return Array.isArray(this.architectures) ? this.architectures.length : 0;
+    },
   },
   methods: {
     async fetchArchitectures() {
@@ -103,15 +129,15 @@ export default {
         const response = await FetchArchitectureDetail();
         this.architectures = response;
       } catch (error) {
-        this.error = error.message || "获取失败";
-        console.error("获取模型架构失败:", error);
+        this.error = error.message || "加载架构失败。";
+        console.error("Failed to fetch architectures:", error);
       } finally {
         this.loading = false;
       }
     },
     truncate(str){
       if(!str) return '-';
-      return str.length > 40 ? str.slice(0,37)+'...' : str;
+      return str.length > 25 ? str.slice(0,22)+'...' : str;
     },
     formatVariant(v){
       if(!v) return '';
@@ -121,13 +147,13 @@ export default {
       if(!t) return '-';
       const norm = String(t).toLowerCase();
       const map = {
-        detection: 'detection(目标检测)',
-        classify: 'classification(分类)', // 兼容某些后端写法
-        classification: 'classification(分类)',
-        segment: 'segmentation(实例分割)',
-        segmentation: 'segmentation(实例分割)'
+        detection: '目标检测',
+        classify: '图像分类',
+        classification: '图像分类',
+        segment: '图像分割',
+        segmentation: '图像分割'
       };
-      return map[norm] || t; // 未识别则原样返回
+      return map[norm] || t;
     }
   },
   mounted() {
@@ -137,138 +163,233 @@ export default {
 </script>
 
 <style scoped>
-.architecture-wrapper {
-  padding: 20px;
+.architecture-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
-.title {
-  font-size: 22px;
+
+.arch-hero {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2rem;
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: var(--text-main);
+  position: relative;
+  overflow: hidden;
+}
+
+.arch-hero::before {
+  content: none;
+}
+
+.arch-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.arch-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary);
   font-weight: 600;
-  margin: 0 0 16px;
-  color: #111f68;
 }
-.state {
+
+.arch-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.arch-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.arch-hero-right {
   display: flex;
   align-items: center;
-  padding: 40px 10px;
-  font-size: 14px;
-  color: #666;
+  gap: 1rem;
+  position: relative;
+  z-index: 1;
 }
-.state i {
-  margin-right: 10px;
-  font-size: 18px;
-}
-.state.error {
-  color: #f56c6c;
-}
-.state.empty {
-  color: #909399;
-}
-.arch-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
-  gap: 16px;
-}
-.arch-item {
-  background: #fff;
+
+.arch-stat {
+  padding: 0.5rem 1rem;
+  min-width: 80px;
+  background: #f3f4f6;
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
-  padding: 14px 16px 16px;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  transition: box-shadow 0.25s ease, transform 0.25s ease;
-  cursor: pointer;
+  border-radius: var(--radius-md);
+  text-align: center;
 }
-.arch-item:hover {
-  box-shadow: 0 4px 12px -2px rgba(0, 0, 0, 0.12), 0 2px 6px rgba(0, 0, 0, 0.06);
-  transform: translateY(-2px);
+
+.arch-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
 }
+
+.arch-stat-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-primary);
+}
+
+.primary-action {
+  border-radius: var(--radius-full) !important;
+  font-weight: 600;
+}
+
+.arch-body {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+  padding-bottom: 2rem;
+}
+
+/* Family Groups */
 .family-groups {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 2rem;
 }
+
 .family-group {
+  padding: 1.5rem;
+}
+
+.family-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.family-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.family-count {
+  padding: 0.2rem 0.6rem;
+  border-radius: var(--radius-full);
+  background: rgba(0,0,0,0.05); /* Adaptive */
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+/* Grid */
+.arch-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 1.5rem;
+}
+
+.arch-card {
+  background: rgba(255,255,255,0.6);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 1rem;
+  transition: all 0.2s ease;
 }
-.family-title {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #111f68;
+
+.arch-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  background: #fff;
+  border-color: var(--color-primary-light);
+}
+
+.arch-card-header {
   display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.family-count {
-  font-size: 12px;
-  background: #eef2ff;
-  color: #4f46e5;
-  padding: 2px 8px;
-  border-radius: 999px;
-  line-height: 1;
-}
-.arch-header {
-  display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 4px;
+  align-items: flex-start;
+  gap: 0.5rem;
 }
+
 .arch-name {
-  font-size: 16px;
-  font-weight: 600;
-  color: #111f68;
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-main);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.arch-version {
-  font-size: 12px;
-  background: #eef2ff;
-  color: #4f46e5;
-  padding: 2px 8px;
-  border-radius: 999px;
+
+.arch-tag {
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-full);
+  background: var(--color-primary-light);
+  color: #fff; /* or dark text if light bg */
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--color-primary);
+  font-size: 0.7rem;
+  font-weight: 600;
+  flex-shrink: 0;
 }
-.arch-desc {
-  font-size: 13px;
-  color: #555;
-  margin: 4px 0 10px;
-  line-height: 1.4;
-  max-height: 3.6em;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  line-clamp: 3;
-  -webkit-box-orient: vertical;
+
+.arch-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(0,0,0,0.05);
 }
-.meta {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 4px;
-}
+
 .meta-row {
   display: flex;
-  font-size: 12px;
-  line-height: 1.3;
+  justify-content: space-between;
+  font-size: 0.8rem;
 }
-.meta-row .k {
-  color: #666;
-  margin-right: 4px;
-  flex: 0 0 auto;
+
+.meta-label {
+  color: var(--text-secondary);
 }
-.meta-row .v {
-  color: #222;
+
+.meta-value {
+  color: var(--text-main);
+  font-weight: 500;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1 1 auto;
+  max-width: 150px;
 }
-@media (min-width: 640px) {
-  .meta {
-    grid-template-columns: 1fr 1fr;
+
+/* States */
+.state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  padding: 4rem;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.state i {
+  font-size: 1.5rem;
+}
+
+@media (max-width: 960px) {
+  .arch-hero {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

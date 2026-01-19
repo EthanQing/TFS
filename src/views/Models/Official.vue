@@ -1,146 +1,105 @@
 <template>
-  <div class="Official">
-    <div class="description">从官方的Ultralytics预训练模型开始训练</div>
-
-    <!-- 显示关联的数据集信息 -->
-    <div class="dataset-info" v-if="selectedProject">
-      <span class="dataset-label">关联数据集:</span>
-      <span class="dataset-name">{{ (selectedProject.dataset && selectedProject.dataset.dataset_name) || '未关联数据集' }}</span>
+  <div class="official-panel">
+    <div class="panel-top">
+      <div>
+        <div class="panel-title">Official Model Catalog</div>
+        <div class="panel-subtitle">Start from Ultralytics pre-trained models.</div>
+      </div>
+      <div class="dataset-chip" v-if="selectedProject">
+        <span class="label">Dataset</span>
+        <span class="value">{{ datasetLabel }}</span>
+      </div>
     </div>
 
-    <div class="detectArchitecture">检测架构</div>
-    <div class="showModelArchitectureList">
+    <div class="arch-section">
+      <div class="section-title">Detection Architectures</div>
       <div v-if="archLoading" class="arch-state">
         <i class="el-icon-loading"></i>
-        <span>正在加载模型架构...</span>
+        <span>Loading architectures...</span>
       </div>
       <div v-else-if="archError" class="arch-state error">
         <i class="el-icon-warning"></i>
         <span>{{ archError }}</span>
-        <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
+        <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">Retry</el-button>
       </div>
-      <template v-else>
-        <ul v-for="group in architectureGroups" :key="group.family">
-          <div>{{ group.family }}</div>
-          <div class="list">
-            <li
+      <div v-else class="arch-groups">
+        <div v-for="group in architectureGroups" :key="group.family" class="arch-group">
+          <div class="group-title">{{ group.family }}</div>
+          <div class="group-list">
+            <button
               v-for="arch in group.items"
               :key="arch.arch_id || arch.model_variant"
-              :class="{ active: selectedModel === arch.model_variant }"
+              :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
               @click="onSelectArchitecture(arch)"
             >
               {{ formatVariant(arch.model_variant) }}
-            </li>
+            </button>
           </div>
-        </ul>
-      </template>
-      <!-- <ul>
-        <div>YOLOv5u</div>
-        <div class="list">
-          <li
-            v-for="model in [
-              'YOLOv5nu',
-              'YOLOv5su',
-              'YOLOv5mu',
-              'YOLOv5lu',
-              'YOLOv5xu',
-            ]"
-            :key="model"
-            :class="{ active: selectedModel === model }"
-            @click="selectedModel = model"
-          >
-            {{ model }}
-          </li>
-        </div>
-      </ul>
-      <ul>
-        <div>YOLOv5u6</div>
-        <div class="list">
-          <li
-            v-for="model in [
-              'YOLOv5n6u',
-              'YOLOv5s6u',
-              'YOLOv5m6u',
-              'YOLOv5l6u',
-              'YOLOv5x6u',
-            ]"
-            :key="model"
-            :class="{ active: selectedModel === model }"
-            @click="selectedModel = model"
-          >
-            {{ model }}
-          </li>
-        </div>
-      </ul> -->
-    </div>
-    <div class="value">
-      <div class="Accuracy">
-        <div class="AccuracyTitle">Accuracy -{{ accuracyLabel }}%</div>
-        <div class="progress-container">
-          <div class="AccuracyValue" :style="{ width: accuracyWidth + '%' }"></div>
-        </div>
-      </div>
-      <div class="Speed">
-        <div class="SpeedTitle">Speed -{{ speedLabel }}ms</div>
-        <div class="progress-container">
-          <div class="SpeedValue" :style="{ width: speedWidth + '%' }"></div>
         </div>
       </div>
     </div>
-    <div class="ModelConfiguration">
-      <div class="ModelConfigurationTitle" @click="showAdvancedModelConfiguration">
-        <div class="arrow" :class="{ rotated: isRotated }"></div>
-        <div>高级模型配置</div>
-      </div>
-    </div>
-    <div class="AdvancedModelConfiguration" v-show="isRotated">
-      <div class="PreTrained">
-        <span>预训练</span>
-        <label class="switch">
-          <input type="checkbox" :checked="pretrainedEnabled" @change="handlePretrainedChange" />
-          <span class="slider"></span>
-        </label>
-      </div>
-      <div class="Epochs">
-        <span>训练轮数</span>
-        <el-input v-model="input1" placeholder="请输入内容" class="ElInput"></el-input>
-      </div>
-      <div class="ImageSize">
-        <span>图像大小</span>
-        <el-input v-model="input2" placeholder="请输入内容" class="ElInput"></el-input>
-      </div>
-      <div class="Patience">
-        <span>耐心值</span>
-        <el-input v-model="input3" placeholder="请输入内容" class="ElInput"></el-input>
-      </div>
-      <div class="LearningRate">
-        <span>学习率</span>
-        <el-input v-model="input4" placeholder="请输入内容" class="ElInput"></el-input>
-      </div>
-      <div class="Device">
-        <span>设备</span>
-        <div class="DeviceSelect">
-          <button @click="selectedDevice = '默认'" :class="{ active: selectedDevice === '默认' }">
-            默认
-          </button>
-          <button @click="selectedDevice = 'GPU'" :class="{ active: selectedDevice === 'GPU' }">
-            GPU
-          </button>
-          <button @click="selectedDevice = 'CPU'" :class="{ active: selectedDevice === 'CPU' }">
-            CPU
-          </button>
+
+    <div class="metric-grid">
+      <div class="metric-card">
+        <div class="metric-label">Accuracy</div>
+        <div class="metric-value">{{ accuracyLabel }}%</div>
+        <div class="metric-bar">
+          <div class="metric-fill" :style="{ width: accuracyWidth + '%' }"></div>
         </div>
       </div>
-      <div class="BatchSize">
-        <span>批次大小</span>
-        <el-input v-model="batchSize" placeholder="请输入内容" class="ElInput"></el-input>
+      <div class="metric-card">
+        <div class="metric-label">Speed</div>
+        <div class="metric-value">{{ speedLabel }}ms</div>
+        <div class="metric-bar">
+          <div class="metric-fill" :style="{ width: speedWidth + '%' }"></div>
+        </div>
       </div>
-      <div class="Optimizer">
-        <span>优化器</span>
-        <el-select v-model="value" placeholder="请选择">
-          <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value">
-          </el-option>
-        </el-select>
+    </div>
+
+    <div class="advanced-panel">
+      <button class="advanced-toggle" type="button" @click="showAdvancedModelConfiguration">
+        <span>Advanced settings</span>
+        <span class="chevron" :class="{ open: isRotated }"></span>
+      </button>
+      <div v-show="isRotated" class="advanced-grid">
+        <div class="field-row">
+          <div class="field-label">Pretrained weights</div>
+          <el-switch v-model="pretrainedEnabled"></el-switch>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Epochs</div>
+          <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Image size</div>
+          <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Patience</div>
+          <el-input v-model="patience" size="small" placeholder="100" class="field-input"></el-input>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Learning rate</div>
+          <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Device</div>
+          <div class="device-toggle">
+            <button @click="selectedDevice = 'Auto'" :class="{ active: selectedDevice === 'Auto' }">Auto</button>
+            <button @click="selectedDevice = 'GPU'" :class="{ active: selectedDevice === 'GPU' }">GPU</button>
+            <button @click="selectedDevice = 'CPU'" :class="{ active: selectedDevice === 'CPU' }">CPU</button>
+          </div>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Batch size</div>
+          <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
+        </div>
+        <div class="field-row">
+          <div class="field-label">Optimizer</div>
+          <el-select v-model="optimizer" size="small" placeholder="Select">
+            <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
+          </el-select>
+        </div>
       </div>
     </div>
   </div>
@@ -160,35 +119,22 @@ export default {
   data() {
     return {
       ref: referenceStore,
-      selectedModel: null, // 用于记录当前选中的模型
-      selectedArchitectureId: null, // 选中的架构ID（后端 v2 需要 architecture_id）
+      selectedModel: null,
+      selectedArchitectureId: null,
       isRotated: false,
-      input1: "100",
-      input2: "640",
-      input3: "100",
-      input4: "0.01",
-      selectedDevice: "默认", // 记录选中的设备
+      epochs: "100",
+      imgSize: "640",
+      patience: "100",
+      learningRate: "0.01",
+      selectedDevice: "Auto",
       batchSize: "16",
-      custom: "",
       options: [
-        {
-          value: "Auto",
-          label: "Auto",
-        },
-        {
-          value: "Adam",
-          label: "Adam",
-        },
-        {
-          value: "AdamW",
-          label: "AdamW",
-        },
-        {
-          value: "SGD",
-          label: "SGD",
-        },
+        { value: "Auto", label: "Auto" },
+        { value: "Adam", label: "Adam" },
+        { value: "AdamW", label: "AdamW" },
+        { value: "SGD", label: "SGD" }
       ],
-      value: "Auto",
+      optimizer: "Auto",
       pretrainedEnabled: true,
       modelMetrics: {
         YOLO11n: { accuracy: 35.0, speedMs: 6.1 },
@@ -205,6 +151,9 @@ export default {
     };
   },
   computed: {
+    datasetLabel() {
+      return this.selectedProject?.dataset?.dataset_name || "No dataset linked";
+    },
     archLoading() {
       return !!this.ref?.loading?.architectures;
     },
@@ -219,23 +168,19 @@ export default {
         return !tt || tt === "detection";
       });
 
-      const fallback = [
-        {
-          family: "YOLOv8",
-          items: [
-            { model_variant: "yolov8n" },
-            { model_variant: "yolov8s" },
-            { model_variant: "yolov8m" },
-            { model_variant: "yolov8l" },
-            { model_variant: "yolov8x" },
-          ],
-        },
+      const fallbackFamily = "YOLOv8";
+      const fallbackItems = [
+        { model_variant: "yolov8n" },
+        { model_variant: "yolov8s" },
+        { model_variant: "yolov8m" },
+        { model_variant: "yolov8l" },
+        { model_variant: "yolov8x" }
       ];
 
-      const items = detected.length ? detected : fallback[0].items;
+      const items = detected.length ? detected : fallbackItems;
       const map = {};
       items.forEach((it) => {
-        const fam = it.model_family || it.family || fallback[0].family || "未分类";
+        const fam = it.model_family || it.family || fallbackFamily || "Uncategorized";
         (map[fam] = map[fam] || []).push(it);
       });
 
@@ -247,17 +192,19 @@ export default {
       };
 
       return Object.entries(map)
-        .sort((a, b) =>
-          a[0] === "未分类" ? 1 : b[0] === "未分类" ? -1 : String(a[0]).localeCompare(String(b[0]), "zh-CN")
-        )
+        .sort((a, b) => {
+          if (a[0] === "Uncategorized") return 1;
+          if (b[0] === "Uncategorized") return -1;
+          return String(a[0]).localeCompare(String(b[0]), "en");
+        })
         .map(([family, arr]) => ({
           family,
           items: arr.slice().sort((a, b) => {
             const sa = sizeRank(a.model_variant);
             const sb = sizeRank(b.model_variant);
             if (sa !== sb) return sa - sb;
-            return String(a.model_variant || "").localeCompare(String(b.model_variant || ""), "zh-CN");
-          }),
+            return String(a.model_variant || "").localeCompare(String(b.model_variant || ""), "en");
+          })
         }));
     },
     metrics() {
@@ -268,8 +215,8 @@ export default {
     },
     currentSeriesKey() {
       const m = this.formatVariantKey(this.selectedModel);
-      if (/^YOLO11/.test(m)) return 'YOLO11';
-      if (/^YOLOv8/.test(m)) return 'YOLOv8';
+      if (/^YOLO11/.test(m)) return "YOLO11";
+      if (/^YOLOv8/.test(m)) return "YOLOv8";
       return null;
     },
     seriesModelEntries() {
@@ -319,9 +266,9 @@ export default {
       const range = maxAcc - minAcc;
       if (range <= 0) return 50;
       const normalized = (acc - minAcc) / range;
-      const VIS_MIN = 15;
-      const VIS_MAX = 90;
-      const pct = VIS_MIN + normalized * (VIS_MAX - VIS_MIN);
+      const visMin = 15;
+      const visMax = 90;
+      const pct = visMin + normalized * (visMax - visMin);
       return Math.max(0, Math.min(100, pct));
     },
     speedWidth() {
@@ -331,52 +278,49 @@ export default {
       const range = maxMs - minMs;
       if (range <= 0) return 50;
       const normalized = (maxMs - ms) / range;
-      const VIS_MIN = 15;
-      const VIS_MAX = 90;
-      const pct = VIS_MIN + normalized * (VIS_MAX - VIS_MIN);
+      const visMin = 15;
+      const visMax = 90;
+      const pct = visMin + normalized * (visMax - visMin);
       return Math.max(0, Math.min(100, pct));
     }
   },
   watch: {
-    // 当架构列表加载完成时，确保有一个默认选择，避免“必须先点架构页”导致此处为空。
-    'ref.architectures': {
+    "ref.architectures": {
       handler() {
         this.ensureDefaultModel();
       },
       immediate: true
     },
-    // 监听模型选择变化
     selectedModel(newModel) {
       if (newModel) {
-        this.$emit('model-selected', {
+        this.$emit("model-selected", {
           model: newModel,
           architecture_id: this.selectedArchitectureId || null
         });
       }
     },
-    // 监听配置变化
-    input1(newVal) {
+    epochs() {
       this.emitConfigChange();
     },
-    input2(newVal) {
+    imgSize() {
       this.emitConfigChange();
     },
-    input3(newVal) {
+    patience() {
       this.emitConfigChange();
     },
-    input4(newVal) {
+    learningRate() {
       this.emitConfigChange();
     },
-    batchSize(newVal) {
+    batchSize() {
       this.emitConfigChange();
     },
-    selectedDevice(newVal) {
+    selectedDevice() {
       this.emitConfigChange();
     },
-    value(newVal) {
+    optimizer() {
       this.emitConfigChange();
     },
-    pretrainedEnabled(newVal) {
+    pretrainedEnabled() {
       this.emitConfigChange();
     }
   },
@@ -390,14 +334,12 @@ export default {
       if (first) this.onSelectArchitecture(first);
     },
     onSelectArchitecture(arch) {
-      // 设置 ID 再设置 model，确保 watch(selectedModel) 发出去的是正确的 architecture_id
       this.selectedArchitectureId = arch?.arch_id || arch?.architecture_id || arch?.id || null;
       this.selectedModel = arch?.model_variant || null;
     },
     formatVariantKey(v) {
       const s = String(v || "").trim();
       if (!s) return "";
-      // Backend variants are usually "yolov8n"; UI wants "YOLOv8n".
       return s.replace(/^yolo/i, "YOLO");
     },
     formatVariant(v) {
@@ -406,41 +348,33 @@ export default {
     showAdvancedModelConfiguration() {
       this.isRotated = !this.isRotated;
     },
-    // 发送配置变化事件到父组件
     emitConfigChange() {
       const configData = {
-        epochs: parseInt(this.input1) || 100,
-        img_size: parseInt(this.input2) || 640,
-        patience: parseInt(this.input3) || 100,
-        learning_rate: parseFloat(this.input4) || 0.01,
-        batch_size: parseInt(this.batchSize) || 16,
+        epochs: parseInt(this.epochs, 10) || 100,
+        img_size: parseInt(this.imgSize, 10) || 640,
+        patience: parseInt(this.patience, 10) || 100,
+        learning_rate: parseFloat(this.learningRate) || 0.01,
+        batch_size: parseInt(this.batchSize, 10) || 16,
         device: this.getDeviceValue(),
-        optimizer: this.value.toLowerCase(),
+        optimizer: String(this.optimizer || "auto").toLowerCase(),
         use_pretrained: this.pretrainedEnabled,
-        // 如果项目关联了数据集，自动填充
-        dataset_name: this.selectedProject?.dataset?.dataset_name || ''
+        dataset_name: this.selectedProject?.dataset?.dataset_name || ""
       };
 
-      this.$emit('config-changed', configData);
+      this.$emit("config-changed", configData);
     },
-    // 获取设备值
     getDeviceValue() {
       switch (this.selectedDevice) {
-        case 'GPU':
-          return '0';
-        case 'CPU':
-          return 'cpu';
+        case "GPU":
+          return "0";
+        case "CPU":
+          return "cpu";
         default:
-          return '0';
+          return "0";
       }
-    },
-    // 处理预训练开关变化
-    handlePretrainedChange(event) {
-      this.pretrainedEnabled = event.target.checked;
     }
   },
   mounted() {
-    // Ensure architectures are loaded even if user never visits the Architecture page.
     loadArchitectures();
     this.ensureDefaultModel();
     this.$nextTick(() => {
@@ -451,300 +385,255 @@ export default {
 </script>
 
 <style scoped>
-.Official {
-  margin-top: 10px;
-  color: #111f68;
+.official-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  color: #111315;
   width: 100%;
   max-width: 100%;
-  max-height: calc(100vh - 220px);
-  overflow: auto;
-  /* padding: 0 16px; */
 }
 
-.description {
-  margin-bottom: 10px;
+.panel-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
-/* 数据集信息样式 */
-.dataset-info {
-  background: #f8f9fa;
-  border: 1px solid #e8ecef;
-  border-radius: 8px;
-  padding: 12px 16px;
-  margin-bottom: 15px;
+.panel-title {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.panel-subtitle {
+  font-size: 13px;
+  color: #6a7482;
+  margin-top: 4px;
+}
+
+.dataset-chip {
   display: inline-flex;
   align-items: center;
   gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(79, 99, 199, 0.1);
+  color: #2b3a67;
+  font-size: 12px;
 }
 
-.dataset-label {
+.dataset-chip .label {
   font-weight: 600;
-  color: #111f68;
-  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  font-size: 10px;
 }
 
-.dataset-name {
-  color: #6c757d;
-  font-size: 14px;
-  font-style: italic;
+.arch-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
-.detectArchitecture {
-  margin-bottom: 10px;
-}
-
-.showModelArchitectureList {
-  width: 100%;
+.section-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #3e4a5b;
 }
 
 .arch-state {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 0;
-  color: #666;
+  color: #6a7482;
   font-size: 12px;
 }
 
 .arch-state.error {
-  color: #f56c6c;
+  color: #d64545;
 }
 
-.arch-state i {
-  font-size: 16px;
+.arch-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.showModelArchitectureList div {
+.arch-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.group-title {
   font-size: 12px;
-  margin-bottom: 2px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #6a7482;
 }
 
-/* 模型选择样式 */
-.showModelArchitectureList li {
-  background-color: rgb(239, 239, 239);
-  width: 85%;
-  height: 45px;
-  border-radius: 12px;
+.group-list {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  cursor: pointer;
-  box-sizing: border-box;
-}
-
-.showModelArchitectureList li.active {
-  border: #111f68 2px solid;
-}
-
-.showModelArchitectureList li:hover {
-  background-color: rgb(229, 229, 229);
-}
-
-.showModelArchitectureList .list {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 12px;
-  margin-bottom: 5px;
-}
-
-.showModelArchitectureList ul {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-}
-
-/* 进度条样式 */
-.value {
-  display: flex;
-  gap: 20px;
-  margin-top: 20px;
-}
-.value > div {
-  flex: 1;
-  min-width: 0;
-}
-
-.progress-container {
-  width: 85%;
-  height: 12px;
-  background-color: rgb(239, 239, 239);
-  border-radius: 4px;
-  overflow: hidden;
-}
-
-.AccuracyValue,
-.SpeedValue {
-  height: 100%;
-  background-color: #111f68;
-  transition: width 0.5s ease-in-out;
-  will-change: width;
-}
-
-.AccuracyTitle,
-.SpeedTitle {
-  margin-bottom: 5px;
-  font-size: 12px;
-}
-
-/* 高级配置折叠面板 */
-.ModelConfiguration {
-  margin-top: 10px;
-  display: flex;
-  align-items: center;
-  font-size: 16px;
-}
-
-.arrow {
-  width: 0;
-  height: 0;
-  border-left: 8px solid transparent;
-  border-right: 8px solid transparent;
-  border-bottom: 12px solid #111f68;
-  margin-right: 5px;
-  transition: transform 0.3s ease;
-}
-
-.rotated {
-  transform: rotate(180deg);
-}
-
-.AdvancedModelConfiguration>div {
-  width: 100%;
-  height: 50px;
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 1px;
-}
-
-/* 开关样式 */
-.switch {
-  position: relative;
-  display: inline-block;
-  width: 60px;
-  height: 26px;
-}
-
-.switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-
-.slider {
-  position: absolute;
-  cursor: pointer;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: #e0e0e0;
-  transition: 0.4s;
-  border-radius: 34px;
-  border: 1px solid #e0e0e0;
-}
-
-.slider::before {
-  position: absolute;
-  content: "";
-  height: 26px;
-  width: 25px;
-  left: 1px;
-  bottom: -1px;
-  background-color: #ffffff;
-  transition: 0.4s;
-  border-radius: 50%;
-}
-
-input:checked+.slider {
-  background-color: #111f68;
-  border-color: #111f68;
-}
-
-input:checked+.slider::before {
-  transform: translateX(31px);
-  background-color: white;
-}
-
-/* 输入框样式 */
-.ElInput {
-  width: 100px;
-}
-
-/* 设备选择按钮组 */
-.DeviceSelect {
-  width: auto;
-  height: 40px;
-  background-color: #f4f4f4;
-  border-radius: 12px;
-  display: flex;
-  align-items: center;
   flex-wrap: wrap;
+  gap: 10px;
 }
 
-.DeviceSelect button {
-  background-color: #f4f4f4;
-  color: #111f68;
-  width: 48px;
-  height: 36px;
-  border-radius: 12px;
-  margin: 1px 0px;
-  border: none;
+.arch-chip {
+  border: 1px solid #e4e7ee;
+  background: #f6f7fb;
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  color: #3e4a5b;
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
-.DeviceSelect button.active {
-  background-color: #111f68;
-  color: white;
+.arch-chip:hover {
+  border-color: #9bb0ff;
+  color: #2b3a67;
 }
 
-.DeviceSelect button:first-child {
-  margin-left: 4px;
+.arch-chip.active {
+  background: rgba(79, 99, 199, 0.18);
+  border-color: #4f63c7;
+  color: #2b3a67;
+  box-shadow: 0 6px 14px rgba(79, 99, 199, 0.2);
 }
-.ModelConfigurationTitle{
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.metric-card {
+  background: #f7f8fc;
+  border-radius: 14px;
+  padding: 12px;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: #6a7482;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.metric-value {
+  font-size: 16px;
+  font-weight: 700;
+  margin-top: 6px;
+  color: #111315;
+}
+
+.metric-bar {
+  margin-top: 8px;
+  height: 10px;
+  background: #e4e7ee;
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.metric-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #4f63c7, #9bb0ff);
+  transition: width 0.4s ease;
+}
+
+.advanced-panel {
+  border-top: 1px solid #e4e7ee;
+  padding-top: 12px;
+}
+
+.advanced-toggle {
+  width: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
+  background: none;
+  border: none;
+  font-size: 14px;
+  font-weight: 600;
+  color: #2b3a67;
   cursor: pointer;
+  padding: 6px 0;
 }
 
-/* 响应式：中小屏处理 */
-@media (max-width: 1024px) {
-  .value {
+.chevron {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #4f63c7;
+  border-bottom: 2px solid #4f63c7;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+}
+
+.chevron.open {
+  transform: rotate(-135deg);
+}
+
+.advanced-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.field-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: #f6f7fb;
+  border: 1px solid #e4e7ee;
+}
+
+.field-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #6a7482;
+}
+
+.field-input ::v-deep .el-input__inner {
+  border-radius: 10px;
+}
+
+.device-toggle {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.device-toggle button {
+  border: 1px solid #e4e7ee;
+  background: #fff;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #3e4a5b;
+  transition: all 0.2s ease;
+}
+
+.device-toggle button.active {
+  background: #4f63c7;
+  border-color: #4f63c7;
+  color: #fff;
+}
+
+@media (max-width: 720px) {
+  .panel-top {
     flex-direction: column;
-    gap: 12px;
+    align-items: flex-start;
   }
-}
-
-@media (max-width: 768px) {
-  .Official {
-    max-width: 100%;
-    max-height: calc(100vh - 180px);
-  }
-  .showModelArchitectureList li {
-    width: auto;
-  }
-  .ElInput {
-    width: 120px;
-    max-width: 40vw;
-  }
-}
-
-/* 栅格在不同屏宽下的列数 */
-@media (max-width: 1200px) {
-  .showModelArchitectureList .list {
-    grid-template-columns: repeat(4, 1fr);
-  }
-}
-@media (max-width: 900px) {
-  .showModelArchitectureList .list {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-@media (max-width: 600px) {
-  .showModelArchitectureList .list {
-    grid-template-columns: repeat(2, 1fr);
+  .advanced-grid {
+    grid-template-columns: 1fr;
   }
 }
 </style>

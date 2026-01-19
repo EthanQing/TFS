@@ -1,41 +1,46 @@
 <template>
-    <div class="deployment-process-container">
+    <div class="deployment-page page-container">
         <!-- 顶部标题 -->
-        <div class="top">
-            <h3>部署流程</h3>
-            <div class="top-actions">
+        <header class="deploy-hero">
+            <div class="deploy-hero-left">
+                <div class="deploy-eyebrow">DevOps Center</div>
+                <h1 class="deploy-title">Deployment Process</h1>
+                <p class="deploy-subtitle">Manage and monitor automatic deployment pipelines.</p>
+            </div>
+            <div class="deploy-hero-right">
                 <el-button
-                    class="custom-default-btn"
+                    class="glass-btn"
                     @click="handleRefreshLogs"
                     :disabled="!currentProcess"
                 >
-                    <i class="el-icon-refresh"></i> 刷新日志
+                    <i class="el-icon-refresh"></i> Refresh Logs
                 </el-button>
                 <el-button
                     type="primary"
-                    class="custom-primary-btn"
+                    class="primary-action"
                     @click="dialogFormVisible = true"
                 >
-                    + 创建流程
+                    + Create Pipeline
                 </el-button>
             </div>
-        </div>
+        </header>
 
         <!-- 主内容区域 -->
         <div class="content-wrapper">
             <!-- 左侧：流程列表和步骤配置 -->
-            <div class="config-section section-card">
+            <div class="config-section glass-panel">
                 <h4 class="section-title">
-                    <i class="el-icon-document"></i>
-                    流程配置
+                    <i class="el-icon-s-operation"></i>
+                    Pipeline Configuration
                 </h4>
 
                 <div class="filter-area">
                     <el-select
                         v-model="selectedProcessId"
-                        placeholder="选择部署流程"
+                        placeholder="Select Pipeline"
                         @change="handleProcessChange"
                         class="process-select"
+                        popper-class="glass-dropdown"
                     >
                         <el-option
                             v-for="process in processList"
@@ -44,8 +49,8 @@
                             :value="process.id"
                         >
                             <span style="float: left">{{ process.name }}</span>
-                            <span style="float: right; color: #8e9aaf; font-size: 12px">
-                                {{ process.steps.length }} 步骤
+                            <span style="float: right; color: var(--text-secondary); font-size: 12px">
+                                {{ process.steps.length }} steps
                             </span>
                         </el-option>
                     </el-select>
@@ -55,18 +60,19 @@
                     <!-- 流程信息 -->
                     <div class="process-info">
                         <div class="info-row">
-                            <span class="label">流程名称:</span>
+                            <span class="label">Name:</span>
                             <span class="value">{{ currentProcess.name }}</span>
                         </div>
                         <div class="info-row">
-                            <span class="label">创建时间:</span>
+                            <span class="label">Created:</span>
                             <span class="value">{{ currentProcess.createTime }}</span>
                         </div>
                         <div class="info-row">
-                            <span class="label">状态:</span>
+                            <span class="label">Status:</span>
                             <el-tag
                                 :type="getStatusType(currentProcess.status)"
                                 size="small"
+                                effect="dark"
                             >
                                 {{ currentProcess.status }}
                             </el-tag>
@@ -77,7 +83,7 @@
                     <div class="trigger-section">
                         <div class="trigger-title">
                             <i class="el-icon-bell"></i>
-                            触发条件
+                            Triggers
                         </div>
                         <div class="trigger-list">
                             <div
@@ -94,8 +100,8 @@
                                 </div>
                                 <el-switch
                                     v-model="trigger.enabled"
-                                    :active-color="'#10b981'"
-                                    :inactive-color="'#ccc'"
+                                    active-color="var(--color-primary)"
+                                    inactive-color="#ccc"
                                     size="small"
                                 ></el-switch>
                             </div>
@@ -106,7 +112,7 @@
                     <div class="steps-section">
                         <div class="steps-title">
                             <i class="el-icon-menu"></i>
-                            流程步骤
+                            Steps
                         </div>
                         <div class="steps-list">
                             <div
@@ -127,6 +133,7 @@
                                         <el-tag
                                             :type="getStepStatusType(step.status)"
                                             size="mini"
+                                            effect="plain"
                                         >
                                             {{ step.status }}
                                         </el-tag>
@@ -146,47 +153,51 @@
                             :disabled="currentProcess.status === '执行中'"
                         >
                             <i class="el-icon-video-play"></i>
-                            {{ isExecuting ? '执行中...' : '开始执行' }}
+                            {{ isExecuting ? 'Running...' : 'Run Pipeline' }}
                         </el-button>
                         <el-button
-                            class="custom-danger-btn"
+                            type="danger"
+                            plain
                             @click="handleStopProcess"
                             :disabled="!isExecuting"
                         >
                             <i class="el-icon-video-pause"></i>
-                            停止执行
+                            Stop
                         </el-button>
                         <el-button
+                            plain
                             @click="handleEditProcess"
                         >
                             <i class="el-icon-edit"></i>
-                            编辑流程
+                            Edit
                         </el-button>
                     </div>
                 </div>
 
                 <div v-else class="empty-state">
                     <i class="el-icon-document"></i>
-                    <p>请选择或创建一个部署流程</p>
+                    <p>Select or create a pipeline</p>
                 </div>
             </div>
 
             <!-- 右侧：执行进度和日志 -->
             <div class="right-section">
                 <!-- 执行进度 -->
-                <div class="progress-section section-card">
+                <div class="progress-section glass-panel">
                     <h4 class="section-title">
                         <i class="el-icon-loading"></i>
-                        执行进度
+                        Progress
                     </h4>
 
                     <div v-if="currentProcess && currentProcess.status !== '未开始'" class="progress-content">
                         <div class="overall-progress">
                             <div class="progress-header">
-                                <span class="label">整体进度</span>
+                                <span class="label">Overall Progress</span>
                                 <span class="percentage">{{ executionProgress.percentage }}%</span>
                             </div>
                             <el-progress
+                                :text-inside="true"
+                                :stroke-width="18"
                                 :percentage="executionProgress.percentage"
                                 :color="progressColor"
                                 :status="executionProgress.percentage === 100 ? 'success' : null"
@@ -199,7 +210,7 @@
                                     <i class="el-icon-document"></i>
                                 </div>
                                 <div class="stat-content">
-                                    <div class="stat-label">总步骤</div>
+                                    <div class="stat-label">Total Steps</div>
                                     <div class="stat-value">{{ executionProgress.total }}</div>
                                 </div>
                             </div>
@@ -208,7 +219,7 @@
                                     <i class="el-icon-success"></i>
                                 </div>
                                 <div class="stat-content">
-                                    <div class="stat-label">已完成</div>
+                                    <div class="stat-label">Completed</div>
                                     <div class="stat-value">{{ executionProgress.completed }}</div>
                                 </div>
                             </div>
@@ -217,7 +228,7 @@
                                     <i class="el-icon-loading"></i>
                                 </div>
                                 <div class="stat-content">
-                                    <div class="stat-label">进行中</div>
+                                    <div class="stat-label">Running</div>
                                     <div class="stat-value">{{ executionProgress.running }}</div>
                                 </div>
                             </div>
@@ -226,51 +237,52 @@
                                     <i class="el-icon-close"></i>
                                 </div>
                                 <div class="stat-content">
-                                    <div class="stat-label">失败</div>
+                                    <div class="stat-label">Failed</div>
                                     <div class="stat-value">{{ executionProgress.failed }}</div>
                                 </div>
                             </div>
                         </div>
 
                         <div class="current-step">
-                            <div class="current-step-label">当前步骤</div>
+                            <div class="current-step-label">Current Step</div>
                             <div class="current-step-content">
                                 <span class="step-name">{{ executionProgress.currentStep }}</span>
-                                <span class="step-time">已执行 {{ executionProgress.duration }}</span>
+                                <span class="step-time">Elapsed: {{ executionProgress.duration }}</span>
                             </div>
                         </div>
                     </div>
 
                     <div v-else class="empty-progress">
-                        <i class="el-icon-document-copy"></i>
-                        <p>等待开始执行</p>
+                        <i class="el-icon-cpu"></i>
+                        <p>Waiting to start...</p>
                     </div>
                 </div>
 
                 <!-- 执行日志 -->
-                <div class="logs-section section-card">
+                <div class="logs-section glass-panel">
                     <h4 class="section-title">
-                        <i class="el-icon-document"></i>
-                        执行日志
+                        <i class="el-icon-document-copy"></i>
+                        Console Output
                         <span v-if="executionLogs.length > 0" class="log-count">
                             ({{ executionLogs.length }})
                         </span>
                     </h4>
 
                     <div class="log-filters">
-                        <el-radio-group v-model="logFilter" size="small" @change="handleLogFilterChange">
-                            <el-radio-button label="all">全部</el-radio-button>
-                            <el-radio-button label="info">信息</el-radio-button>
-                            <el-radio-button label="success">成功</el-radio-button>
-                            <el-radio-button label="warning">警告</el-radio-button>
-                            <el-radio-button label="error">错误</el-radio-button>
+                        <el-radio-group v-model="logFilter" size="mini" @change="handleLogFilterChange" fill="var(--color-primary)">
+                            <el-radio-button label="all">All</el-radio-button>
+                            <el-radio-button label="info">Info</el-radio-button>
+                            <el-radio-button label="success">Success</el-radio-button>
+                            <el-radio-button label="warning">Warn</el-radio-button>
+                            <el-radio-button label="error">Error</el-radio-button>
                         </el-radio-group>
                         <el-button
-                            size="small"
+                            size="mini"
+                            class="glass-btn-sm"
                             @click="handleClearLogs"
                             :disabled="executionLogs.length === 0"
                         >
-                            清空日志
+                            Clear
                         </el-button>
                     </div>
 
@@ -291,47 +303,47 @@
                     </div>
 
                     <div v-else class="empty-logs">
-                        <i class="el-icon-document"></i>
-                        <p>{{ executionLogs.length === 0 ? '暂无日志' : '没有符合条件的日志' }}</p>
+                        <i class="el-icon-tickets"></i>
+                        <p>{{ executionLogs.length === 0 ? 'No logs available' : 'No logs match filter' }}</p>
                     </div>
                 </div>
             </div>
         </div>
 
         <!-- 创建流程对话框 -->
-        <el-dialog title="创建部署流程" :visible.sync="dialogFormVisible" width="700px">
-            <el-form :model="newProcessForm" :rules="rules" ref="formRef" label-width="100px">
-                <el-form-item label="流程名称" prop="name">
-                    <el-input v-model="newProcessForm.name" placeholder="请输入流程名称"></el-input>
+        <el-dialog title="Create Release Pipeline" :visible.sync="dialogFormVisible" width="600px" custom-class="glass-dialog">
+            <el-form :model="newProcessForm" :rules="rules" ref="formRef" label-position="top">
+                <el-form-item label="Pipeline Name" prop="name">
+                    <el-input v-model="newProcessForm.name" placeholder="e.g. Production Release v2"></el-input>
                 </el-form-item>
-                <el-form-item label="描述" prop="description">
+                <el-form-item label="Description" prop="description">
                     <el-input
                         v-model="newProcessForm.description"
                         type="textarea"
-                        placeholder="请输入流程描述"
+                        placeholder="Brief description of this pipeline"
                         rows="3"
                     ></el-input>
                 </el-form-item>
-                <el-form-item label="触发方式" prop="triggerType">
+                <el-form-item label="Triggers" prop="triggerType">
                     <el-checkbox-group v-model="newProcessForm.triggerType">
-                        <el-checkbox label="手动触发"></el-checkbox>
-                        <el-checkbox label="定时触发"></el-checkbox>
-                        <el-checkbox label="代码提交"></el-checkbox>
-                        <el-checkbox label="标签发布"></el-checkbox>
+                        <el-checkbox label="Manual"></el-checkbox>
+                        <el-checkbox label="Schedule"></el-checkbox>
+                        <el-checkbox label="Git Push"></el-checkbox>
+                        <el-checkbox label="Git Tag"></el-checkbox>
                     </el-checkbox-group>
                 </el-form-item>
-                <el-form-item label="环境" prop="environment">
-                    <el-select v-model="newProcessForm.environment" placeholder="选择部署环境">
-                        <el-option label="开发环境" value="dev"></el-option>
-                        <el-option label="测试环境" value="test"></el-option>
-                        <el-option label="预发布环境" value="staging"></el-option>
-                        <el-option label="生产环境" value="production"></el-option>
+                <el-form-item label="Environment" prop="environment">
+                    <el-select v-model="newProcessForm.environment" placeholder="Select Target Environment" style="width: 100%">
+                        <el-option label="Development" value="dev"></el-option>
+                        <el-option label="Testing" value="test"></el-option>
+                        <el-option label="Staging" value="staging"></el-option>
+                        <el-option label="Production" value="production"></el-option>
                     </el-select>
                 </el-form-item>
             </el-form>
             <div slot="footer" class="dialog-footer">
-                <el-button @click="dialogFormVisible = false">取 消</el-button>
-                <el-button type="primary" @click="handleCreateProcess">创 建</el-button>
+                <el-button @click="dialogFormVisible = false">Cancel</el-button>
+                <el-button type="primary" @click="handleCreateProcess">Create</el-button>
             </div>
         </el-dialog>
     </div>
@@ -353,64 +365,64 @@ export default {
                 environment: ''
             },
             rules: {
-                name: [{ required: true, message: '请输入流程名称', trigger: 'blur' }],
-                description: [{ required: true, message: '请输入流程描述', trigger: 'blur' }],
-                triggerType: [{ required: true, message: '请选择触发方式', trigger: 'change' }],
-                environment: [{ required: true, message: '请选择部署环境', trigger: 'change' }]
+                name: [{ required: true, message: 'Required', trigger: 'blur' }],
+                description: [{ required: true, message: 'Required', trigger: 'blur' }],
+                triggerType: [{ required: true, message: 'Please select at least one trigger', trigger: 'change' }],
+                environment: [{ required: true, message: 'Required', trigger: 'change' }]
             },
             processList: [
                 {
                     id: 1,
-                    name: '生产环境部署',
+                    name: 'Production Deploy',
                     createTime: '2026-01-15 10:30:00',
                     status: '已完成',
                     triggers: [
-                        { type: 'manual', name: '手动触发', condition: '手动启动部署流程', enabled: true },
-                        { type: 'tag', name: '标签发布', condition: 'tag: v1.*', enabled: true }
+                        { type: 'manual', name: 'Manual', condition: 'User Triggered', enabled: true },
+                        { type: 'tag', name: 'Tag Release', condition: 'tag: v1.*', enabled: true }
                     ],
                     steps: [
-                        { name: '代码检出', description: '从Git仓库拉取代码', status: '已完成', duration: '12s' },
-                        { name: '依赖安装', description: '安装项目依赖包', status: '已完成', duration: '45s' },
-                        { name: '代码构建', description: '编译打包应用程序', status: '已完成', duration: '2m 15s' },
-                        { name: '运行测试', description: '执行单元测试和集成测试', status: '已完成', duration: '1m 30s' },
-                        { name: '部署应用', description: '部署到生产服务器', status: '已完成', duration: '58s' },
-                        { name: '健康检查', description: '验证服务运行状态', status: '已完成', duration: '20s' }
+                        { name: 'Checkout', description: 'Git Fetch', status: '已完成', duration: '12s' },
+                        { name: 'Install Deps', description: 'npm install', status: '已完成', duration: '45s' },
+                        { name: 'Build', description: 'npm run build', status: '已完成', duration: '2m 15s' },
+                        { name: 'Test', description: 'Run unit tests', status: '已完成', duration: '1m 30s' },
+                        { name: 'Deploy', description: 'Upload to Prod', status: '已完成', duration: '58s' },
+                        { name: 'Health Check', description: 'Ping /health', status: '已完成', duration: '20s' }
                     ]
                 },
                 {
                     id: 2,
-                    name: '测试环境部署',
+                    name: 'Staging Deploy',
                     createTime: '2026-01-16 09:15:00',
                     status: '执行中',
                     triggers: [
-                        { type: 'manual', name: '手动触发', condition: '手动启动部署流程', enabled: true },
-                        { type: 'commit', name: '代码提交', condition: 'branch: develop', enabled: true }
+                        { type: 'manual', name: 'Manual', condition: 'User Triggered', enabled: true },
+                        { type: 'commit', name: 'Git Commit', condition: 'branch: develop', enabled: true }
                     ],
                     steps: [
-                        { name: '代码检出', description: '从Git仓库拉取代码', status: '已完成', duration: '8s' },
-                        { name: '依赖安装', description: '安装项目依赖包', status: '已完成', duration: '32s' },
-                        { name: '代码构建', description: '编译打包应用程序', status: '执行中', duration: '1m 5s' },
-                        { name: '运行测试', description: '执行单元测试和集成测试', status: '等待中', duration: null },
-                        { name: '部署应用', description: '部署到测试服务器', status: '等待中', duration: null }
+                        { name: 'Checkout', description: 'Git Fetch', status: '已完成', duration: '8s' },
+                        { name: 'Install Deps', description: 'npm install', status: '已完成', duration: '32s' },
+                        { name: 'Build', description: 'npm run build', status: '执行中', duration: '1m 5s' },
+                        { name: 'Test', description: 'Run unit tests', status: '等待中', duration: null },
+                        { name: 'Deploy', description: 'Upload to Staging', status: '等待中', duration: null }
                     ]
                 },
                 {
                     id: 3,
-                    name: '预发布环境部署',
+                    name: 'Nightly Build',
                     createTime: '2026-01-14 16:20:00',
                     status: '未开始',
                     triggers: [
-                        { type: 'manual', name: '手动触发', condition: '手动启动部署流程', enabled: true },
-                        { type: 'schedule', name: '定时触发', condition: '每天 02:00', enabled: false }
+                        { type: 'manual', name: 'Manual', condition: 'User Triggered', enabled: true },
+                        { type: 'schedule', name: 'Schedule', condition: 'Daily 02:00', enabled: false }
                     ],
                     steps: [
-                        { name: '代码检出', description: '从Git仓库拉取代码', status: '等待中', duration: null },
-                        { name: '依赖安装', description: '安装项目依赖包', status: '等待中', duration: null },
-                        { name: '代码构建', description: '编译打包应用程序', status: '等待中', duration: null },
-                        { name: '运行测试', description: '执行单元测试和集成测试', status: '等待中', duration: null },
-                        { name: '部署应用', description: '部署到预发布服务器', status: '等待中', duration: null },
-                        { name: '健康检查', description: '验证服务运行状态', status: '等待中', duration: null },
-                        { name: '通知相关人员', description: '发送部署成功通知', status: '等待中', duration: null }
+                        { name: 'Checkout', description: 'Git Fetch', status: '等待中', duration: null },
+                        { name: 'Install Deps', description: 'npm install', status: '等待中', duration: null },
+                        { name: 'Build', description: 'npm run build', status: '等待中', duration: null },
+                        { name: 'Test', description: 'Run unit tests', status: '等待中', duration: null },
+                        { name: 'Deploy', description: 'Upload to Dev', status: '等待中', duration: null },
+                        { name: 'Health Check', description: 'Ping /health', status: '等待中', duration: null },
+                        { name: 'Notify', description: 'Slack Notification', status: '等待中', duration: null }
                     ]
                 }
             ],
@@ -434,7 +446,7 @@ export default {
             const failed = this.currentProcess.steps.filter(s => s.status === '失败').length;
             const percentage = total > 0 ? Math.floor((completed / total) * 100) : 0;
             const currentStepObj = this.currentProcess.steps.find(s => s.status === '执行中');
-            const currentStep = currentStepObj ? currentStepObj.name : (completed === total ? '全部完成' : '等待开始');
+            const currentStep = currentStepObj ? currentStepObj.name : (completed === total ? 'Completed' : 'Waiting');
 
             let duration = '0s';
             if (this.startTime) {
@@ -511,13 +523,13 @@ export default {
         },
         handleStartProcess() {
             if (!this.currentProcess) {
-                this.$message.warning('请先选择一个部署流程');
+                this.$message.warning('Select a pipeline first');
                 return;
             }
 
-            this.$confirm('确认开始执行此部署流程吗？', '确认操作', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
+            this.$confirm('Start this deployment pipeline?', 'Confirm', {
+                confirmButtonText: 'Start',
+                cancelButtonText: 'Cancel',
                 type: 'warning'
             }).then(() => {
                 this.isExecuting = true;
@@ -525,19 +537,19 @@ export default {
                 this.currentProcess.status = '执行中';
                 this.executionLogs = [];
 
-                this.addLog('info', '部署流程开始执行...');
-                this.$message.success('部署流程已启动');
+                this.addLog('info', 'Pipeline started...');
+                this.$message.success('Pipeline started');
 
                 // 模拟执行流程
                 this.simulateExecution();
             }).catch(() => {
-                this.$message.info('已取消操作');
+                // cancel
             });
         },
         handleStopProcess() {
-            this.$confirm('确认停止执行此部署流程吗？', '确认操作', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
+            this.$confirm('Stop this pipeline?', 'Confirm', {
+                confirmButtonText: 'Stop',
+                cancelButtonText: 'Cancel',
                 type: 'warning'
             }).then(() => {
                 if (this.executionTimer) {
@@ -545,17 +557,17 @@ export default {
                 }
                 this.isExecuting = false;
                 this.currentProcess.status = '已完成';
-                this.addLog('warning', '部署流程已手动停止');
-                this.$message.warning('部署流程已停止');
+                this.addLog('warning', 'Pipeline stopped manually');
+                this.$message.warning('Pipeline stopped');
             }).catch(() => {
-                this.$message.info('已取消操作');
+                // cancel
             });
         },
         simulateExecution() {
             let currentStepIndex = 0;
             const steps = this.currentProcess.steps;
 
-            // 重置所有步骤状态
+            // Reset steps
             steps.forEach(step => {
                 step.status = '等待中';
                 step.duration = null;
@@ -567,36 +579,34 @@ export default {
                     
                     if (step.status === '等待中') {
                         step.status = '执行中';
-                        this.addLog('info', `开始执行: ${step.name}`);
+                        this.addLog('info', `Starting step: ${step.name}`);
                     } else if (step.status === '执行中') {
-                        const isSuccess = Math.random() > 0.1; // 90% 成功率
+                        const isSuccess = Math.random() > 0.1; // 90% success
                         
                         if (isSuccess) {
                             step.status = '已完成';
-                            const duration = Math.floor(Math.random() * 120) + 10;
-                            step.duration = duration > 60 
-                                ? `${Math.floor(duration / 60)}m ${duration % 60}s` 
-                                : `${duration}s`;
-                            this.addLog('success', `${step.name} 执行成功 (耗时: ${step.duration})`);
+                            const duration = Math.floor(Math.random() * 5) + 2; 
+                            step.duration = `${duration}s`;
+                            this.addLog('success', `${step.name} completed (${step.duration})`);
                             currentStepIndex++;
                         } else {
                             step.status = '失败';
                             step.duration = '-';
-                            this.addLog('error', `${step.name} 执行失败: 连接超时`);
+                            this.addLog('error', `${step.name} failed: Connection timeout`);
                             clearInterval(this.executionTimer);
                             this.isExecuting = false;
                             this.currentProcess.status = '失败';
-                            this.$message.error('部署流程执行失败');
+                            this.$message.error('Pipeline failed');
                         }
                     }
                 } else {
                     clearInterval(this.executionTimer);
                     this.isExecuting = false;
                     this.currentProcess.status = '已完成';
-                    this.addLog('success', '部署流程执行完成！');
-                    this.$message.success('部署流程执行完成');
+                    this.addLog('success', 'Pipeline finished successfully!');
+                    this.$message.success('Pipeline finished');
                 }
-            }, 1500);
+            }, 1000);
         },
         addLog(level, message) {
             const log = {
@@ -606,7 +616,6 @@ export default {
             };
             this.executionLogs.push(log);
 
-            // 自动滚动到底部
             this.$nextTick(() => {
                 if (this.$refs.logsContainer) {
                     this.$refs.logsContainer.scrollTop = this.$refs.logsContainer.scrollHeight;
@@ -614,24 +623,18 @@ export default {
             });
         },
         handleLogFilterChange() {
-            // 日志过滤变化
+            // filter change
         },
         handleClearLogs() {
-            this.$confirm('确认清空所有日志吗？', '确认操作', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                type: 'warning'
-            }).then(() => {
-                this.executionLogs = [];
-                this.$message.success('日志已清空');
-            });
+            this.executionLogs = [];
+            this.$message.success('Logs cleared');
         },
         handleRefreshLogs() {
-            this.addLog('info', '日志已刷新');
-            this.$message.success('日志已刷新');
+            this.addLog('info', 'Logs refreshed');
+            this.$message.success('Logs refreshed');
         },
         handleEditProcess() {
-            this.$message.info('编辑流程功能');
+            this.$message.info('Edit not implemented in demo');
         },
         handleCreateProcess() {
             this.$refs.formRef.validate(valid => {
@@ -642,17 +645,17 @@ export default {
                         createTime: new Date().toLocaleString(),
                         status: '未开始',
                         triggers: [
-                            { type: 'manual', name: '手动触发', condition: '手动启动部署流程', enabled: true }
+                            { type: 'manual', name: 'Manual', condition: 'User Triggered', enabled: true }
                         ],
                         steps: [
-                            { name: '代码检出', description: '从Git仓库拉取代码', status: '等待中', duration: null },
-                            { name: '依赖安装', description: '安装项目依赖包', status: '等待中', duration: null },
-                            { name: '代码构建', description: '编译打包应用程序', status: '等待中', duration: null },
-                            { name: '部署应用', description: `部署到${this.newProcessForm.environment}环境`, status: '等待中', duration: null }
+                            { name: 'Checkout', description: 'Git Fetch', status: '等待中', duration: null },
+                            { name: 'Install Deps', description: 'npm install', status: '等待中', duration: null },
+                            { name: 'Build', description: 'npm run build', status: '等待中', duration: null },
+                            { name: 'Deploy', description: `Deploy to ${this.newProcessForm.environment}`, status: '等待中', duration: null }
                         ]
                     };
                     this.processList.push(newProcess);
-                    this.$message.success('部署流程创建成功');
+                    this.$message.success('Pipeline created');
                     this.dialogFormVisible = false;
                     this.selectedProcessId = newProcess.id;
                     this.$refs.formRef.resetFields();
@@ -674,174 +677,199 @@ export default {
 </script>
 
 <style scoped>
-.deployment-process-container {
+.deployment-page {
+    height: 100%;
     display: flex;
     flex-direction: column;
-    margin-left: 10px;
-    box-sizing: border-box;
-    width: calc(100% - 20px);
-    min-width: 800px;
+    gap: 1.5rem;
 }
 
-.top {
+/* Hero */
+.deploy-hero {
+    flex-shrink: 0;
     display: flex;
-    align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    align-items: flex-end;
+    gap: 2rem;
+    padding: 2rem;
+    border-radius: var(--radius-lg);
+    background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
+    box-shadow: var(--shadow-lg);
+    color: white;
+    position: relative;
+    overflow: hidden;
 }
 
-.top h3 {
-    font-size: 24px;
-    font-weight: bolder;
-    color: #111f68;
+.deploy-hero::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    right: -10%;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, #a78bfa 0%, transparent 70%);
+    opacity: 0.25;
+    filter: blur(40px);
+    pointer-events: none;
 }
 
-.top-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.top-actions .el-button {
-    border-radius: 6px;
-}
-
-/* 主内容区域 */
-.content-wrapper {
-    display: flex;
-    gap: 20px;
-    width: 100%;
-    height: calc(100vh - 150px);
-}
-
-/* 左侧：配置 */
-.config-section {
-    flex: 0 0 40%;
-    max-width: 450px;
-    overflow-y: auto;
+.deploy-hero-left {
     display: flex;
     flex-direction: column;
+    gap: 0.5rem;
+    position: relative;
+    z-index: 1;
 }
 
-/* 右侧：进度和日志 */
+.deploy-eyebrow {
+    font-size: 0.75rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: #bfdbfe;
+    font-weight: 600;
+}
+
+.deploy-title {
+    font-size: 2rem;
+    font-weight: 700;
+    margin: 0;
+}
+
+.deploy-subtitle {
+    font-size: 0.9rem;
+    color: rgba(255, 255, 255, 0.8);
+    margin: 0;
+}
+
+.deploy-hero-right {
+    display: flex;
+    gap: 1rem;
+    position: relative;
+    z-index: 1;
+}
+
+.glass-btn {
+    background: rgba(255, 255, 255, 0.2) !important;
+    border: 1px solid rgba(255, 255, 255, 0.3) !important;
+    color: white !important;
+    backdrop-filter: blur(4px);
+}
+
+.glass-btn:hover {
+    background: rgba(255, 255, 255, 0.3) !important;
+}
+
+.primary-action {
+    border-radius: var(--radius-full) !important;
+    font-weight: 600;
+}
+
+/* Main Content */
+.content-wrapper {
+    flex: 1;
+    display: flex;
+    gap: 1.5rem;
+    min-height: 0;
+}
+
+.config-section {
+    flex: 0 0 400px;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
+}
+
 .right-section {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    min-height: 0;
-    overflow-y: auto;
-}
-
-/* 通用卡片样式 */
-.section-card {
-    background: #ffffff;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e8ecef;
-    flex-shrink: 0;
+    gap: 1.5rem;
+    min-width: 0;
 }
 
 .section-title {
-    font-size: 16px;
+    font-size: 1.125rem;
     font-weight: 600;
-    color: #111f68;
-    margin: 0 0 16px 0;
+    color: var(--text-main);
+    margin-bottom: 1.5rem;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
-.section-title i {
-    font-size: 18px;
-}
-
-.log-count {
-    font-size: 12px;
-    color: #8e9aaf;
-    font-weight: normal;
-}
-
-/* 过滤区域 */
-.filter-area {
-    margin-bottom: 16px;
-}
-
+/* Config List */
 .process-select {
     width: 100%;
 }
 
-/* 配置内容 */
 .config-content {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    flex: 1;
+    gap: 1.5rem;
     overflow-y: auto;
+    padding-right: 0.5rem;
 }
 
-/* 流程信息 */
 .process-info {
-    padding: 12px;
-    background-color: #f9fafb;
-    border-radius: 8px;
+    padding: 1rem;
+    background: rgba(0,0,0,0.02);
+    border-radius: var(--radius-md);
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .info-row {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    font-size: 13px;
+    font-size: 0.875rem;
 }
 
 .info-row .label {
-    color: #6c757d;
-    font-weight: 500;
+    color: var(--text-secondary);
 }
 
 .info-row .value {
-    color: #111f68;
+    color: var(--text-main);
+    font-weight: 500;
 }
 
-/* 触发条件 */
-.trigger-section {
+/* Triggers */
+.trigger-section, .steps-section {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 1rem;
 }
 
-.trigger-title {
-    font-size: 14px;
+.trigger-title, .steps-title {
+    font-size: 0.875rem;
     font-weight: 600;
-    color: #111f68;
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
-    gap: 6px;
-}
-
-.trigger-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .trigger-item {
-    padding: 10px;
-    background-color: #f9fafb;
-    border-radius: 6px;
-    border: 1px solid #e8ecef;
+    padding: 0.75rem;
+    background: rgba(255, 255, 255, 0.5);
+    border: 1px solid rgba(0,0,0,0.05);
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 0.75rem;
 }
 
 .trigger-icon {
-    font-size: 18px;
-    color: #111f68;
-    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    background: rgba(59, 130, 246, 0.1);
+    color: var(--color-primary);
+    border-radius: var(--radius-sm);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.1rem;
 }
 
 .trigger-content {
@@ -849,91 +877,64 @@ export default {
 }
 
 .trigger-name {
-    font-size: 13px;
-    font-weight: 500;
-    color: #111f68;
-    margin-bottom: 2px;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text-main);
 }
 
 .trigger-desc {
-    font-size: 12px;
-    color: #8e9aaf;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }
 
-/* 流程步骤 */
-.steps-section {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.steps-title {
-    font-size: 14px;
-    font-weight: 600;
-    color: #111f68;
-    display: flex;
-    align-items: center;
-    gap: 6px;
-}
-
-.steps-list {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
+/* Steps */
 .step-item {
-    padding: 12px;
-    background-color: #f9fafb;
-    border-radius: 6px;
-    border-left: 4px solid #e8ecef;
+    position: relative;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-md);
     display: flex;
-    gap: 12px;
+    gap: 1rem;
+    border-left: 3px solid transparent;
     transition: all 0.3s;
+}
+
+.step-item.active {
+    background: #fff;
+    border-left-color: var(--color-primary);
+    box-shadow: var(--shadow-md);
 }
 
 .step-item.completed {
     border-left-color: #10b981;
-    background-color: #f0fdf4;
-}
-
-.step-item.active {
-    border-left-color: #f59e0b;
-    background-color: #fffbf0;
 }
 
 .step-item.failed {
-    border-left-color: #f43f5e;
-    background-color: #fef2f2;
+    border-left-color: #ef4444;
 }
 
 .step-number {
-    width: 28px;
-    height: 28px;
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
-    background-color: #e8ecef;
-    color: #6c757d;
+    background: rgba(0,0,0,0.1);
+    color: var(--text-secondary);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 13px;
-    font-weight: 600;
+    font-size: 0.75rem;
+    font-weight: 700;
     flex-shrink: 0;
 }
 
-.step-item.completed .step-number {
-    background-color: #10b981;
-    color: #fff;
-}
-
 .step-item.active .step-number {
-    background-color: #f59e0b;
-    color: #fff;
+    background: var(--color-primary);
+    color: white;
 }
 
-.step-item.failed .step-number {
-    background-color: #f43f5e;
-    color: #fff;
+.step-item.completed .step-number {
+    background: #10b981;
+    color: white;
 }
 
 .step-content {
@@ -941,407 +942,168 @@ export default {
 }
 
 .step-name {
-    font-size: 13px;
+    font-size: 0.875rem;
     font-weight: 600;
-    color: #111f68;
-    margin-bottom: 4px;
+    color: var(--text-main);
 }
 
 .step-desc {
-    font-size: 12px;
-    color: #6c757d;
-    margin-bottom: 6px;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-bottom: 0.5rem;
 }
 
 .step-meta {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 10px;
-    font-size: 12px;
-    color: #8e9aaf;
+    font-size: 0.75rem;
+    color: var(--text-secondary);
 }
 
-.meta-item {
+.step-meta .meta-item {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0.25rem;
 }
 
-/* 操作按钮 */
+/* Action Buttons */
 .action-buttons {
     display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-top: auto;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(0,0,0,0.05);
 }
 
 .action-buttons .el-button {
     flex: 1;
-    min-width: 110px;
-    border-radius: 6px;
-    font-size: 13px;
 }
 
-.custom-primary-btn {
-    background-color: #111f68 !important;
-    border-color: #111f68 !important;
-    color: #fff !important;
-}
-
-.custom-primary-btn:hover:not(:disabled) {
-    background-color: #0d1554 !important;
-    border-color: #0d1554 !important;
-}
-
-.custom-primary-btn:disabled {
-    background-color: #d5d5d5 !important;
-    border-color: #d5d5d5 !important;
-    color: #999 !important;
-}
-
-.custom-default-btn {
-    background-color: #ffffff !important;
-    border-color: #111f68 !important;
-    color: #111f68 !important;
-}
-
-.custom-default-btn:hover {
-    background-color: #f0f3f9 !important;
-}
-
-.custom-danger-btn {
-    background-color: #f43f5e !important;
-    border-color: #f43f5e !important;
-    color: #fff !important;
-}
-
-.custom-danger-btn:hover:not(:disabled) {
-    background-color: #e11d48 !important;
-    border-color: #e11d48 !important;
-}
-
-.custom-danger-btn:disabled {
-    background-color: #d5d5d5 !important;
-    border-color: #d5d5d5 !important;
-    color: #999 !important;
-}
-
-/* 空状态 */
-.empty-state,
-.empty-progress,
-.empty-logs {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 40px 20px;
-    color: #8e9aaf;
-    font-size: 14px;
-}
-
-.empty-state i,
-.empty-progress i,
-.empty-logs i {
-    font-size: 32px;
-    color: #d5d5d5;
-}
-
-/* 执行进度 */
+/* Progress Section */
 .progress-section {
-    flex: 0 0 auto;
-}
-
-.progress-content {
+    padding: 1.5rem;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 1.5rem;
 }
 
 .overall-progress {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 0.5rem;
 }
 
 .progress-header {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-}
-
-.progress-header .label {
-    font-size: 13px;
-    font-weight: 500;
-    color: #111f68;
-}
-
-.progress-header .percentage {
-    font-size: 14px;
+    font-size: 0.875rem;
     font-weight: 600;
-    color: #111f68;
+    color: var(--text-main);
 }
 
 .progress-stats {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
+    gap: 1rem;
 }
 
 .stat-card {
-    padding: 10px;
-    background-color: #f9fafb;
-    border-radius: 6px;
+    padding: 1rem;
+    background: rgba(255, 255, 255, 0.5);
+    border-radius: var(--radius-md);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 0.75rem;
 }
 
 .stat-icon {
-    width: 32px;
-    height: 32px;
-    border-radius: 6px;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-sm);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 16px;
-    flex-shrink: 0;
+    font-size: 1.1rem;
 }
 
-.stat-icon.total {
-    background-color: #e0e7ff;
-    color: #3b82f6;
-}
-
-.stat-icon.success {
-    background-color: #d1fae5;
-    color: #10b981;
-}
-
-.stat-icon.running {
-    background-color: #fef3c7;
-    color: #f59e0b;
-}
-
-.stat-icon.failed {
-    background-color: #fee2e2;
-    color: #f43f5e;
-}
+.stat-icon.total { background: #dbeafe; color: #3b82f6; }
+.stat-icon.success { background: #d1fae5; color: #10b981; }
+.stat-icon.running { background: #fef3c7; color: #f59e0b; }
+.stat-icon.failed { background: #fee2e2; color: #ef4444; }
 
 .stat-content {
-    flex: 1;
+    display: flex;
+    flex-direction: column;
 }
 
-.stat-label {
-    font-size: 11px;
-    color: #8e9aaf;
-    margin-bottom: 2px;
-}
-
-.stat-value {
-    font-size: 16px;
-    font-weight: 600;
-    color: #111f68;
-}
+.stat-label { font-size: 0.7rem; color: var(--text-secondary); }
+.stat-value { font-size: 1.1rem; font-weight: 700; color: var(--text-main); }
 
 .current-step {
-    padding: 12px;
-    background-color: #f0f9ff;
-    border-radius: 6px;
-    border-left: 4px solid #3b82f6;
-}
-
-.current-step-label {
-    font-size: 12px;
-    color: #6c757d;
-    margin-bottom: 4px;
-}
-
-.current-step-content {
+    padding: 1rem;
+    background: linear-gradient(to right, rgba(59, 130, 246, 0.1), transparent);
+    border-left: 4px solid var(--color-primary);
+    border-radius: var(--radius-sm);
     display: flex;
-    justify-content: space-between;
-    align-items: center;
+    flex-direction: column;
+    gap: 0.25rem;
 }
 
-.current-step-content .step-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: #111f68;
-}
+.current-step-label { font-size: 0.75rem; color: var(--text-secondary); }
+.current-step-content { display: flex; justify-content: space-between; align-items: center; font-weight: 600; color: var(--text-main); }
+.current-step-content .step-time { font-weight: 400; font-size: 0.8rem; color: var(--text-secondary); }
 
-.current-step-content .step-time {
-    font-size: 12px;
-    color: #8e9aaf;
-}
-
-/* 执行日志 */
+/* Logs Section */
 .logs-section {
     flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 1.5rem;
     min-height: 0;
 }
 
 .log-filters {
     display: flex;
     justify-content: space-between;
-    align-items: center;
-    margin-bottom: 12px;
-    gap: 10px;
+    margin-bottom: 1rem;
 }
 
 .logs-container {
+    flex: 1;
+    background: #0f172a; /* Slate 900 */
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    overflow-y: auto;
+    font-family: 'JetBrains Mono', 'Courier New', monospace;
+    font-size: 0.8rem;
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    max-height: 400px;
-    overflow-y: auto;
-    padding: 12px;
-    background-color: #1e293b;
-    border-radius: 8px;
-    font-family: 'Courier New', monospace;
+    gap: 0.25rem;
 }
 
 .log-item {
     display: flex;
-    gap: 10px;
-    font-size: 12px;
-    line-height: 1.6;
-    padding: 4px 8px;
+    gap: 1rem;
+    padding: 0.25rem 0.5rem;
     border-radius: 4px;
 }
 
-.log-item:hover {
-    background-color: rgba(255, 255, 255, 0.05);
-}
+.log-item:hover { background: rgba(255,255,255,0.05); }
 
-.log-time {
-    color: #94a3b8;
-    flex-shrink: 0;
-    min-width: 80px;
-}
+.log-time { color: #64748b; min-width: 80px; }
+.log-level { min-width: 80px; font-weight: 700; display: flex; align-items: center; gap: 0.25rem; }
 
-.log-level {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-    min-width: 70px;
-    font-weight: 600;
-}
+.log-item.info .log-level { color: #60a5fa; }
+.log-item.success .log-level { color: #34d399; }
+.log-item.warning .log-level { color: #fbbf24; }
+.log-item.error .log-level { color: #f87171; }
 
-.log-item.info .log-level {
-    color: #3b82f6;
-}
+.log-message { color: #e2e8f0; word-break: break-all; }
 
-.log-item.success .log-level {
-    color: #10b981;
-}
-
-.log-item.warning .log-level {
-    color: #f59e0b;
-}
-
-.log-item.error .log-level {
-    color: #f43f5e;
-}
-
-.log-message {
-    color: #e2e8f0;
-    flex: 1;
-    word-break: break-word;
-}
-
-/* 对话框样式 */
-.el-dialog {
-    width: 700px !important;
-}
-
-.dialog-footer {
-    padding: 10px 20px !important;
-}
-
-/* 滚动条样式 */
-.config-content::-webkit-scrollbar,
-.config-section::-webkit-scrollbar,
-.right-section::-webkit-scrollbar,
-.logs-container::-webkit-scrollbar {
-    width: 6px;
-}
-
-.config-content::-webkit-scrollbar-track,
-.config-section::-webkit-scrollbar-track,
-.right-section::-webkit-scrollbar-track,
-.logs-container::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 3px;
-}
-
-.logs-container::-webkit-scrollbar-track {
-    background: #0f172a;
-}
-
-.config-content::-webkit-scrollbar-thumb,
-.config-section::-webkit-scrollbar-thumb,
-.right-section::-webkit-scrollbar-thumb,
-.logs-container::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
-}
-
-.logs-container::-webkit-scrollbar-thumb {
-    background: #475569;
-}
-
-.config-content::-webkit-scrollbar-thumb:hover,
-.config-section::-webkit-scrollbar-thumb:hover,
-.right-section::-webkit-scrollbar-thumb:hover,
-.logs-container::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-}
-
-.logs-container::-webkit-scrollbar-thumb:hover {
-    background: #64748b;
-}
-
-/* 响应式设计 */
-@media (max-width: 1400px) {
-    .content-wrapper {
-        height: auto;
-        flex-direction: column;
-    }
-
-    .config-section {
-        flex: 0 0 auto;
-        max-width: none;
-        max-height: 500px;
-    }
-
-    .right-section {
-        flex: 1;
-    }
-
-    .progress-stats {
-        grid-template-columns: repeat(2, 1fr);
-    }
-}
-
-@media (max-width: 1024px) {
-    .deployment-process-container {
-        width: calc(100% - 10px);
-        margin-left: 5px;
-    }
-
-    .progress-stats {
-        grid-template-columns: repeat(2, 1fr);
-    }
-
-    .log-filters {
-        flex-direction: column;
-        align-items: stretch;
-    }
-
-    .current-step-content {
-        flex-direction: column;
-        align-items: flex-start;
-        gap: 4px;
-    }
+/* Responsive */
+@media (max-width: 1200px) {
+    .content-wrapper { flex-direction: column; }
+    .config-section { flex: none; height: 500px; width: 100%; }
 }
 </style>

@@ -1,943 +1,722 @@
 <template>
-    <div class="projectsdetail">
-        <div class="title">
-                <el-button size="mini" type="text" class="back-btn" @click="goBackToProjects">
-                    <span class="back-arrow"></span>
-                    <span class="back-text">返回</span>
-                </el-button>
-        <span class="project-title-text">{{ projectInfo?.project_name || '项目详情' }}</span>
-    </div>
-    <button class="create-job-btn" @click="openCreateJob">添加训练任务</button>
-        <div class="updateTime">
-            <i class="el-icon-time updateTimeIcon" aria-hidden="true"></i>
-            <span>{{ updateTimeText }}</span>
-            <div class="projectMessage">
-                <div class="rightMessage" v-if="!loading">
-                <span>模型</span>
-                <div class="circle1">{{ modelCount }}</div>
-                <span>大小</span>
-                <div class="circle2">{{ totalSize }}</div>
-                </div>
-                <div class="loading-info" v-else>
-                    <i class="el-icon-loading"></i>
-                    <span>正在加载项目信息...</span>
-                </div>
-            </div>
-        </div>
-        <div class="searchPart">
-            <div class="overView active">概况</div>
-        </div>
-        <div class="secondFloor">
-            <el-input v-model="searchQuery" placeholder="请输入模型名称搜索" class="input"></el-input>
-            <div class="topNavigation">
-                <el-menu :default-active="activeIndex" class="el-menu-demo" mode="horizontal" @select="handleSelect">
-                    <el-menu-item index="1" class="nav-item">全部</el-menu-item>
-                </el-menu>
-            </div>
-        </div>
-        <div class="showList">
-            <div v-if="loading" class="loading-container">
-                <i class="el-icon-loading"></i>
-                <span>正在加载项目模型...</span>
-            </div>
-            <div v-else-if="filteredModels.length === 0" class="no-data-container">
-                <i class="el-icon-info"></i>
-                <span>未找到匹配的模型</span>
-            </div>
-            <ul v-else>
-                <li v-for="model in filteredModels" :key="model.job_id" @click="goProjectsCharts(model)">
-                    <div class="statusBar" :class="statusClass(model.status)"></div>
-                    <div class="messagePart">
-                        <span class="title1">{{ model.job_name }}</span>
-                        <span class="title2">{{ model.architecture?.model_variant || 'Unknown' }}</span>
-                    </div>
-                    <div class="detailPart">
-                        <span class="detail3" v-if="model.status === 'pending'">
-                            <el-button
-                              type="success"
-                              size="mini"
-                              @click.stop="startJob(model.job_id)"
-                              :loading="startingJobs && startingJobs[model.job_id]"
-                              class="start-button"
-                            >开始训练</el-button>
-                        </span>
-                        <span class="detail3" v-else-if="model.status === 'queued'">
-                            <el-button
-                              type="primary"
-                              size="mini"
-                              disabled
-                              class="start-button"
-                            >排队中</el-button>
-                        </span>
-                        <span class="detail1">{{ model.status }}</span>
-                        <span class="detail2">{{ formatProgress(model) }}</span>
-                        <span class="detail-size">大小: {{ formatModelSize(model.model_size_mb) }}</span>
-                        <span class="detail3">{{ formatCreateTime(model.created_at) }}</span>
-                        <span class="more-options" @click.stop>
-                            <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
-                                <span class="el-dropdown-link">
-                                    <i class="el-icon-more"></i>
-                                </span>
-                                <el-dropdown-menu slot="dropdown">
-                                    <el-dropdown-item command="delete">删除</el-dropdown-item>
-                                    <el-dropdown-item command="export">导出</el-dropdown-item>
-                                </el-dropdown-menu>
-                            </el-dropdown>
-                        </span>
-                    </div>
-                </li>
-            </ul>
-        </div>
-        <!-- 创建任务弹窗（直接使用第二步组件） -->
-        <el-dialog
-            title=""
-            :visible.sync="dialogVisible"
-            :width="dialogWidth"
-            :close-on-click-modal="true"
-            append-to-body
-            :lock-scroll="true"
-            :modal="true"
-            custom-class="training-dialog"
-        >
-            <ModelsStep2 
-                :project="projectInfo"
-                @task-added="onTaskAdded"
-                @close="dialogVisible = false"
-            />
-        </el-dialog>
-
-        <!-- 导出模型弹窗 -->
-        <el-dialog
-            title="导出模型"
-            :visible.sync="exportDialogVisible"
-            width="480px"
-            append-to-body
-        >
-            <div class="export-form">
-                <div class="row">
-                    <span class="label">格式</span>
-                    <el-radio-group v-model="exportForm.format" :disabled="exporting">
-                        <el-radio label="pt">原模型 (.pt)</el-radio>
-                        <el-radio label="onnx">ONNX (YOLOv8)</el-radio>
-                    </el-radio-group>
-                </div>
-                <div class="row">
-                    <span class="label">权重</span>
-                    <el-select v-model="exportForm.weights" size="small" :disabled="exporting" style="width: 180px;">
-                        <el-option label="best.pt" value="best" />
-                        <el-option label="last.pt" value="last" />
-                    </el-select>
-                </div>
-
-                <div v-if="exportForm.format === 'onnx'" class="row">
-                    <span class="label">Opset</span>
-                    <el-input-number v-model="exportForm.opset" :min="9" :max="20" :disabled="exporting" />
-                </div>
-                <div v-if="exportForm.format === 'onnx'" class="row">
-                    <span class="label">动态 Shape</span>
-                    <el-switch v-model="exportForm.dynamic" :disabled="exporting" />
-                </div>
-                <div v-if="exportForm.format === 'onnx'" class="row">
-                    <span class="label">imgsz</span>
-                    <el-input-number v-model="exportForm.imgsz" :min="32" :max="4096" :step="32" :disabled="exporting" />
-                </div>
-            </div>
-
-            <span slot="footer" class="dialog-footer">
-                <el-button @click="exportDialogVisible = false" :disabled="exporting">取消</el-button>
-                <el-button type="primary" @click="confirmExport" :loading="exporting">开始导出</el-button>
+  <div class="project-detail-page page-container">
+    <header class="pd-hero">
+      <div class="pd-hero-left">
+        <button class="back-link" type="button" @click="goBackToProjects">
+          <i class="el-icon-arrow-left"></i> 返回项目列表
+        </button>
+        <div class="pd-content">
+            <div class="pd-eyebrow">项目概览</div>
+            <h1 class="pd-title">{{ projectInfo?.project_name || '项目详情' }}</h1>
+            <div class="pd-meta">
+            <span class="meta-chip">
+                <i class="el-icon-time"></i>
+                {{ updateTimeText }}
             </span>
-        </el-dialog>
-    </div>
+            <span v-if="projectInfo?.dataset" class="meta-chip">
+                <i class="el-icon-folder"></i>
+                数据集: {{ projectInfo.dataset.dataset_name }}
+            </span>
+            </div>
+        </div>
+      </div>
+      <div class="pd-hero-right">
+        <div class="pd-stat">
+          <div class="pd-stat-label">模型数</div>
+          <div class="pd-stat-value">{{ modelCount }}</div>
+        </div>
+        <div class="pd-stat">
+          <div class="pd-stat-label">总大小</div>
+          <div class="pd-stat-value">{{ totalSize }}</div>
+        </div>
+        <el-button type="primary" class="primary-action" @click="openCreateJob">
+            新建训练任务
+        </el-button>
+      </div>
+    </header>
+
+    <section class="pd-body glass-panel">
+      <header class="pd-toolbar">
+        <div class="search-shell">
+          <i class="el-icon-search"></i>
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索训练任务"
+            class="search-input"
+            clearable
+          ></el-input>
+        </div>
+        <div class="pd-summary">
+          {{ filteredModels.length }} 个任务
+        </div>
+      </header>
+
+      <div class="pd-list">
+        <div v-if="loading" class="state loading">
+          <i class="el-icon-loading"></i>
+          <span>正在加载任务...</span>
+        </div>
+        <div v-else-if="filteredModels.length === 0" class="state empty">
+          <i class="el-icon-folder-opened"></i>
+          <span>暂无训练任务</span>
+        </div>
+        <div v-else class="job-grid">
+          <div
+            v-for="model in filteredModels"
+            :key="model.job_id"
+            class="job-card"
+            @click="goProjectsCharts(model)"
+          >
+            <div class="job-status-indicator" :class="statusClass(model.status)"></div>
+            <div class="job-main">
+              <div class="job-header">
+                <div class="job-title">{{ model.job_name }}</div>
+                <div class="job-sub">{{ model.architecture?.model_variant || '未知架构' }}</div>
+              </div>
+              <div class="job-meta-grid">
+                <div class="meta-item">
+                    <span class="label">状态</span>
+                    <span class="value status-text" :class="statusClass(model.status)">{{ model.status || 'unknown' }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="label">进度</span>
+                    <span class="value">{{ formatProgress(model) }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="label">大小</span>
+                    <span class="value">{{ formatModelSize(model.model_size_mb) }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="label">创建时间</span>
+                    <span class="value">{{ formatCreateTime(model.created_at) }}</span>
+                </div>
+              </div>
+            </div>
+            <div class="job-actions" @click.stop>
+              <el-button
+                v-if="model.status === 'pending'"
+                type="success"
+                size="mini"
+                :loading="startingJobs && startingJobs[model.job_id]"
+                class="action-btn"
+                @click.stop="startJob(model.job_id)"
+              >开始</el-button>
+              <el-button
+                v-else-if="model.status === 'queued'"
+                type="primary"
+                size="mini"
+                disabled
+                class="action-btn"
+              >队列中</el-button>
+              <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
+                <span class="more-btn">
+                  <i class="el-icon-more"></i>
+                </span>
+                <el-dropdown-menu slot="dropdown">
+                  <el-dropdown-item command="delete" icon="el-icon-delete" class="danger-text">删除</el-dropdown-item>
+                  <el-dropdown-item command="export" icon="el-icon-download">导出</el-dropdown-item>
+                </el-dropdown-menu>
+              </el-dropdown>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Create Dialog -->
+    <el-dialog
+      title="创建训练任务"
+      :visible.sync="dialogVisible"
+      :width="dialogWidth"
+      :close-on-click-modal="true"
+      append-to-body
+      custom-class="glass-dialog"
+    >
+      <ModelsStep2
+        :project="projectInfo"
+        @task-added="onTaskAdded"
+        @close="dialogVisible = false"
+      />
+    </el-dialog>
+
+    <!-- Export Dialog -->
+    <el-dialog
+      title="导出模型"
+      :visible.sync="exportDialogVisible"
+      width="480px"
+      append-to-body
+      custom-class="glass-dialog"
+    >
+      <div class="export-form">
+        <el-form label-position="top">
+            <el-form-item label="Format">
+                <el-radio-group v-model="exportForm.format" :disabled="exporting">
+                    <el-radio label="pt">Original (.pt)</el-radio>
+                    <el-radio label="onnx">ONNX (YOLOv8)</el-radio>
+                </el-radio-group>
+            </el-form-item>
+             <el-form-item label="Weights">
+                <el-select v-model="exportForm.weights" :disabled="exporting" style="width: 100%;">
+                    <el-option label="best.pt" value="best" />
+                    <el-option label="last.pt" value="last" />
+                </el-select>
+             </el-form-item>
+
+            <template v-if="exportForm.format === 'onnx'">
+                <el-form-item label="Opset">
+                     <el-input-number v-model="exportForm.opset" :min="9" :max="20" :disabled="exporting" controls-position="right" style="width: 100%" />
+                </el-form-item>
+                <el-form-item label="Dynamic Shape">
+                    <el-switch v-model="exportForm.dynamic" :disabled="exporting" />
+                </el-form-item>
+                 <el-form-item label="Image Size (imgsz)">
+                     <el-input-number v-model="exportForm.imgsz" :min="32" :max="4096" :step="32" :disabled="exporting" controls-position="right" style="width: 100%" />
+                </el-form-item>
+            </template>
+        </el-form>
+      </div>
+
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="exportDialogVisible = false" :disabled="exporting">取消</el-button>
+        <el-button type="primary" @click="confirmExport" :loading="exporting">导出</el-button>
+      </span>
+    </el-dialog>
+  </div>
 </template>
 
 <script>
 import { FetchProjectsDetail } from '@/api/projects';
-import { fetchTrainingJobs, startTrainingJob, DeleteTrainingJob, FetchTrainingJobsStatus, ExportModel, FetchTrainingJobModelSize } from '@/api/training';
-import { API_BASE, WS_BASE } from '@/utils/request';
-import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue'
-import { referenceStore, loadDatasets } from "@/store/referenceStore";
+import {
+  fetchTrainingJobs,
+  startTrainingJob,
+  DeleteTrainingJob,
+  FetchTrainingJobsStatus,
+  ExportModel,
+  FetchTrainingJobModelSize
+} from '@/api/training';
+import { API_BASE } from '@/utils/request';
+import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
+import { referenceStore, loadDatasets } from '@/store/referenceStore';
 
 export default {
-    name: 'ProjectsDetail',
-    components: { ModelsStep2 },
-    data() {
-        return {
-            searchQuery: '',
-            activeIndex: '1',
-            isShow: true,
-            activeButton: 'model',
-            projectInfo: null,
-            projectModels: [],
-            loading: false,
-            dialogVisible: false,
-            dialogWidth: '860px',
-            startingJobs: {},
-            wsMap: {},
-            wsLimit: 5,
-            statusTimer: null,
-            exportDialogVisible: false,
-            exporting: false,
-            exportTargetJobId: null,
-            exportForm: {
-                format: 'pt',
-                weights: 'best',
-                opset: 12,
-                dynamic: true,
-                imgsz: 640,
-            },
-        }
-    },
-    computed: {
-        updateTimeText() {
-            if (this.projectInfo?.created_at) {
-                const createTime = new Date(this.projectInfo.created_at);
-                const now = new Date();
-                const diffTime = Math.abs(now - createTime);
-                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-                
-                if (diffDays === 1) {
-                    return '1天前创建';
-                } else if (diffDays < 30) {
-                    return `${diffDays}天前创建`;
-                } else if (diffDays < 365) {
-                    const months = Math.floor(diffDays / 30);
-                    return `${months}个月前创建`;
-                } else {
-                    const years = Math.floor(diffDays / 365);
-                    return `${years}年前创建`;
-                }
-            }
-            return '未知时间';
-        },
-        modelCount() {
-            // 优先使用Projects组件传递过来的已完成模型数量
-            if (this.projectInfo && this.projectInfo.completed_models_count !== undefined) {
-                return this.projectInfo.completed_models_count;
-            }
-            // 其次使用API返回的真实模型数量
-            if (this.projectInfo && typeof this.projectInfo.model_count === 'number') {
-                return this.projectInfo.model_count;
-            }
-            // 备用方案：从训练任务列表计算
-            return this.projectModels.length || 0;
-        },
-        totalSize() {
-            const ensureMB = v => {
-                if (v === undefined || v === null || String(v).length === 0) return null
-                const s = String(v).trim()
-                if (/mb$/i.test(s)) return s
-                const n = parseFloat(s)
-                if (!isNaN(n)) return `${n}MB`
-                return `${s}MB`
-            }
-            // 优先使用路由参数（与列表页一致）
-            const q = this.$route && this.$route.query && this.$route.query.modelSize
-            const fromQuery = ensureMB(q)
-            if (fromQuery) return fromQuery
-            // 其次使用项目信息字段
-            if (this.projectInfo && this.projectInfo.total_size_mb !== undefined) {
-                const v = ensureMB(this.projectInfo.total_size_mb)
-                if (v) return v
-            }
-            if (this.projectInfo && this.projectInfo.total_size !== undefined) {
-                const v = ensureMB(this.projectInfo.total_size)
-                if (v) return v
-            }
-            // 无数据时返回 0MB（不做估算）
-            return '0MB'
-        },
-        // 过滤并按时间倒序排序的模型列表（新->旧）
-        filteredModels() {
-            const source = Array.isArray(this.projectModels) ? this.projectModels : []
-            const query = (this.searchQuery || '').toLowerCase()
-            const list = source.filter(m => {
-                if (!query) return true
-                return (m.job_name || '').toLowerCase().includes(query)
-            })
-            const getTs = m => {
-                const v = m.created_at || m.createdAt || m.created || m.updated_at || m.updatedAt
-                const t = v ? new Date(v).getTime() : 0
-                return Number.isFinite(t) ? t : 0
-            }
-            return list.sort((a, b) => getTs(b) - getTs(a))
-        }
-    },
-    watch: {
-        '$route.query.projectId': {
-            handler(newProjectId) {
-                if (newProjectId) {
-                    this.loadProjectDetails(newProjectId);
-                }
-            },
-            immediate: true
-        }
-    },
-    created() {
-        this.initProjectInfo();
-        this.logStoredProjectInfo();
-    },
-    mounted() {
-        // 自适应弹窗宽度
-        const update = () => {
-            const w = window.innerWidth || document.documentElement.clientWidth;
-            if (w >= 1600) this.dialogWidth = '980px';
-            else if (w >= 1400) this.dialogWidth = '920px';
-            else if (w >= 1200) this.dialogWidth = '880px';
-            else if (w >= 992) this.dialogWidth = '820px';
-            else if (w >= 768) this.dialogWidth = '680px';
-            else this.dialogWidth = '94%';
-        };
-        this._resizeHandler = update;
-        update();
-        window.addEventListener('resize', this._resizeHandler);
-        // 定时兜底：每5秒刷新一次运行中任务状态
-        // 降低轮询频率：详情实时状态以 WS 为主，HTTP 仅作兜底
-        this.statusTimer = setInterval(this.refreshRunningStatuses, 15000)
-    },
-    methods: {
-        goBackToProjects(){
-            this.$router.push({ path: '/projects' })
-        },
-        handleSelect(key, keyPath) {
-            this.activeIndex = key
-        },
-        openCreateJob(){
-            // 打开前刷新一次宽度，确保首次也正确
-            if (this._resizeHandler) this._resizeHandler();
-            this.dialogVisible = true;
-        },
-        onTaskAdded(){
-            // 重新加载当前项目的训练任务
-            const pid = this.projectInfo?.project_id || this.$route.query.projectId;
-            if (pid) this.loadProjectDetails(pid);
-            // 强制刷新统计显示
-            setTimeout(() => {
-                this.$forceUpdate();
-            }, 0);
-            this.dialogVisible = false;
-            // 新任务开始后建立 WS
-            this.$nextTick(this.initRealtime)
-        },
-        async startJob(jobId){
-            if (!this.startingJobs) this.$set(this, 'startingJobs', {})
-            this.$set(this.startingJobs, jobId, true)
-            try {
-                const updated = await startTrainingJob(jobId)
-                // 立即更新本地列表状态，避免“点了没反应”
-                try {
-                    const idx = Array.isArray(this.projectModels) ? this.projectModels.findIndex(m => m && m.job_id === jobId) : -1
-                    if (idx >= 0 && updated && updated.status) this.$set(this.projectModels[idx], 'status', updated.status)
-                } catch (e) {}
-                this.$message.success('已加入训练队列')
-                const pid = this.projectInfo?.project_id || this.$route.query.projectId
-                if (pid) this.loadProjectDetails(pid)
-                // 启动后尝试建立 WS
-                this.$nextTick(this.initRealtime)
-            } catch (e) {
-                this.$message.error('启动训练失败')
-            } finally {
-                this.$set(this.startingJobs, jobId, false)
-            }
-        },
-        handlePDCommand(command, jobId) {
-            if (command === 'delete') this.deletePDJob(jobId)
-            if (command === 'export') this.openExportDialog(jobId)
-        },
-        openExportDialog(jobId) {
-            this.exportTargetJobId = jobId
-            // 默认导出 best.pt；用户可切换到 ONNX
-            this.exportForm = {
-                ...this.exportForm,
-                format: 'pt',
-                weights: 'best',
-            }
-            this.exportDialogVisible = true
-        },
-        async confirmExport() {
-            const jobId = this.exportTargetJobId
-            if (!jobId) return
-            this.exporting = true
-            try {
-                this.$message({ type: 'info', message: '开始导出，请稍候...' })
-                const res = await ExportModel(jobId, this.exportForm)
-                const raw = res && (res.download_url || res.url || res.file_url || res.path || res.link)
-                if (!raw) {
-                    this.$message({ type: 'error', message: '导出失败：未返回下载地址' })
-                    return
-                }
-                const href = String(raw).startsWith('http') ? raw : `${API_BASE}${raw}`
-                const a = document.createElement('a')
-                a.href = href
-                a.download = ''
-                a.style.display = 'none'
-                document.body.appendChild(a)
-                a.click()
-                document.body.removeChild(a)
-                this.$message({ type: 'success', message: '已开始下载，如未自动下载请检查浏览器拦截' })
-                this.exportDialogVisible = false
-            } catch (error) {
-                this.$message({ type: 'error', message: '导出失败: ' + (error.message || error) })
-            } finally {
-                this.exporting = false
-            }
-        },
-        async deletePDJob(jobId) {
-            this.$confirm('确定要删除该训练任务吗?', '提示', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                type: 'warning'
-            })
-            .then(async () => {
-                try {
-                    await DeleteTrainingJob(jobId)
-                    this.$message({ type: 'success', message: '删除成功!' })
-                    const pid = this.projectInfo?.project_id || this.$route.query.projectId
-                    if (pid) this.loadProjectDetails(pid)
-                    // 触发视图更新
-                    this.$nextTick(() => this.$forceUpdate())
-                } catch (error) {
-                    this.$message({ type: 'error', message: '删除失败: ' + error.message })
-                }
-            })
-            .catch(() => {})
-        },
-        goProjectsCharts(model) {
-            if (this.$route.path !== '/projectscharts/trainpart') {
-                this.$router.push({ path: '/projectscharts/trainpart', query: { jobId: model.job_id } })
-            }
-        },
-        // 初始化实时连接（运行中的前 wsLimit 个任务）
-        initRealtime(){
-            if (!Array.isArray(this.projectModels)) return
-            // 连接 running/queued 的任务，便于从队列状态实时切换到 running
-            const running = this.projectModels.filter(j => {
-                const s = String(j.status||'').toLowerCase()
-                return s === 'running' || s === 'queued'
-            })
-            const wsBase = (WS_BASE) || (API_BASE.startsWith('https://') ? API_BASE.replace('https://','wss://') : API_BASE.replace('http://','ws://'))
-            running.slice(0, this.wsLimit).forEach(job => {
-                const id = job.job_id
-                if (!id || this.wsMap[id]) return
-                try{
-                    const self = this
-                    const ws = new WebSocket(`${wsBase}/api/v2/training-runs/${id}/metrics/stream`)
-                    ws.onmessage = (e)=>{
-                        try{
-                            const p = JSON.parse(e.data||'{}')
-                            if (!p || p.error) return
-                            // v2 WebSocket: {type:'status'|'metric'|'event'|'done', data:{...}}
-                            if (p.type === 'status' && p.data) {
-                                // NOTE: loadProjectDetails() 会整体替换 projectModels 数组；这里必须通过 id 找到当前对象再更新
-                                const idx = Array.isArray(self.projectModels) ? self.projectModels.findIndex(m => m && m.job_id === id) : -1
-                                if (idx >= 0) {
-                                    if (typeof p.data.current_epoch === 'number') self.$set(self.projectModels[idx],'current_epoch',p.data.current_epoch)
-                                    if (typeof p.data.status === 'string') self.$set(self.projectModels[idx],'status',p.data.status)
-                                }
-                            } else if (p.type === 'metric' && p.data) {
-                                const idx = Array.isArray(self.projectModels) ? self.projectModels.findIndex(m => m && m.job_id === id) : -1
-                                if (idx >= 0 && typeof p.data.epoch === 'number') self.$set(self.projectModels[idx],'current_epoch',p.data.epoch)
-                            }
-                        }catch(_){/* ignore */}
-                    }
-                    ws.onclose = ()=>{ delete this.wsMap[id] }
-                    ws.onerror = ()=>{ try{ ws.close() }catch(_){} delete this.wsMap[id] }
-                    this.$set(this.wsMap, id, ws)
-                }catch(_){/* ignore */}
-            })
-        },
-        // 兜底：定时用 HTTP 刷新运行中任务的 current_epoch
-        async refreshRunningStatuses(){
-            if (!Array.isArray(this.projectModels)) return
-            // 同时刷新 queued/running（避免“已开始训练但列表还显示排队中”）
-            const running = this.projectModels.filter(j => {
-                const s = String(j.status||'').toLowerCase()
-                return s === 'running' || s === 'queued'
-            })
-            await Promise.allSettled(running.map(async (job)=>{
-                try{
-                    const s = await FetchTrainingJobsStatus(job.job_id)
-                    if (s && typeof s.current_epoch === 'number') this.$set(job,'current_epoch',s.current_epoch)
-                    if (s && typeof s.status === 'string') this.$set(job,'status',s.status)
-                }catch(_){/* ignore */}
-            }))
-            this.initRealtime()
-        },
-        
-        // 直接从localStorage获取模型数量
-        getStoredModelCount() {
-            try {
-                const storedProject = localStorage.getItem('currentProject');
-                if (storedProject) {
-                    const projectData = JSON.parse(storedProject);
-                    if (projectData && projectData.completed_models_count !== undefined) {
-                        return projectData.completed_models_count;
-                    }
-                }
-            } catch (error) {
-                console.error('获取localStorage模型数量失败:', error);
-            }
-            
-            // 如果无法从localStorage获取，则使用computed属性
-            return this.modelCount;
-        },
-        
-        // 直接从localStorage获取模型大小
-        getStoredModelSize() {
-            try {
-                const storedProject = localStorage.getItem('currentProject');
-                if (storedProject) {
-                    const projectData = JSON.parse(storedProject);
-                    if (projectData && projectData.total_size_mb) {
-                        return projectData.total_size_mb;
-                    }
-                }
-            } catch (error) {
-                console.error('获取localStorage模型大小失败:', error);
-            }
-            
-            // 如果无法从localStorage获取，则使用computed属性
-            return this.totalSize;
-        },
-        
-        // 调试辅助方法：输出保存的项目信息
-        logStoredProjectInfo() {
-            try {
-                const storedProject = localStorage.getItem('currentProject');
-                if (storedProject) {
-                    const projectData = JSON.parse(storedProject);
-                    console.log('ProjectsDetail - 当前保存的项目信息:', projectData);
-                    console.log('ProjectsDetail - 模型数量:', projectData.completed_models_count);
-                    console.log('ProjectsDetail - 模型大小:', projectData.total_size_mb);
-                } else {
-                    console.log('ProjectsDetail - localStorage中没有找到currentProject');
-                }
-            } catch (error) {
-                console.error('ProjectsDetail - 读取localStorage项目信息失败:', error);
-            }
-        },
-        
-        initProjectInfo() {
-            // 优先从路由参数获取
-            const projectId = this.$route.query.projectId;
-            if (projectId) {
-                this.loadProjectDetails(projectId);
-            } else {
-                // 从localStorage获取
-                const storedProject = localStorage.getItem('currentProject');
-                if (storedProject) {
-                    try {
-                        this.projectInfo = JSON.parse(storedProject);
-                        this.loadProjectDetails(this.projectInfo.project_id);
-                    } catch (error) {
-                        console.error('解析项目信息失败:', error);
-                    }
-                }
-            }
-        },
-        
-        async loadProjectDetails(projectId) {
-            if (!projectId) return;
-            
-            this.loading = true;
-            
-            // 优先从路由参数获取模型数量和大小
-            const routeModelCount = this.$route.query.modelCount;
-            const routeModelSize = this.$route.query.modelSize;
-            
-            // 如果路由参数中没有，则从localStorage获取
-            let savedModelCount = routeModelCount !== undefined ? routeModelCount : undefined;
-            let savedSizeInfo = routeModelSize || undefined;
-            
-            if (savedModelCount === undefined || savedSizeInfo === undefined) {
-                const storedProject = localStorage.getItem('currentProject');
-                if (storedProject) {
-                    try {
-                        const projectData = JSON.parse(storedProject);
-                        if (projectData.project_id === projectId) {
-                            if (savedModelCount === undefined) {
-                                savedModelCount = projectData.completed_models_count;
-                            }
-                            if (savedSizeInfo === undefined) {
-                                savedSizeInfo = projectData.total_size_mb;
-                            }
-                        }
-                    } catch (error) {
-                        console.error('解析localStorage项目信息失败:', error);
-                    }
-                }
-            }
-            
-            // 输出调试信息
-            console.log('路由传递的模型数量:', routeModelCount);
-            console.log('路由传递的模型大小:', routeModelSize);
-            console.log('最终使用的模型数量:', savedModelCount);
-            console.log('最终使用的模型大小:', savedSizeInfo);
-            
-            try {
-                // 使用新的接口获取项目详情
-                const projectDetailResponse = await FetchProjectsDetail(projectId);
-                console.log('projectDetailResponse',projectDetailResponse);
-                
-                // 更新项目信息
-                this.projectInfo = projectDetailResponse;
+  name: 'ProjectsDetail',
+  components: { ModelsStep2 },
+  data() {
+    return {
+      searchQuery: '',
+      projectInfo: null,
+      projectModels: [],
+      loading: false,
+      dialogVisible: false,
+      dialogWidth: '860px',
+      startingJobs: {},
+      wsMap: {},
+      wsLimit: 5,
+      statusTimer: null,
+      exportDialogVisible: false,
+      exporting: false,
+      exportTargetJobId: null,
+      exportForm: {
+        format: 'pt',
+        weights: 'best',
+        opset: 12,
+        dynamic: true,
+        imgsz: 640,
+      },
+    };
+  },
+  computed: {
+    updateTimeText() {
+      if (this.projectInfo?.created_at) {
+        const createTime = new Date(this.projectInfo.created_at);
+        const now = new Date();
+        const diffTime = Math.abs(now - createTime);
+        const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
 
-                // 后端 v2 项目详情只返回 dataset_id；这里补齐 dataset 基本信息，避免训练弹窗/页面显示为空。
-                try {
-                    await loadDatasets();
-                    const list = Array.isArray(referenceStore.datasets) ? referenceStore.datasets : [];
-                    const ds = list.find((d) => d.dataset_id === this.projectInfo.dataset_id);
-                    if (ds) {
-                        this.projectInfo.dataset = {
-                            dataset_id: ds.dataset_id,
-                            dataset_name: ds.dataset_name,
-                            dataset_type: ds.dataset_type,
-                        };
-                    }
-                } catch (e) {}
-                
-                // 强制以后端最新统计为准，不再覆盖为父级传参
-                
-                // 优先使用项目详情返回的任务列表（兼容后端结构）
-                if (Array.isArray(projectDetailResponse.training_jobs)) {
-                    this.projectModels = projectDetailResponse.training_jobs;
-                } else {
-                    // 兼容旧接口：拉取全部任务后按项目过滤
-                    const allJobs = await fetchTrainingJobs();
-                    const pidNum = Number(projectId);
-                    this.projectModels = allJobs.filter(job => {
-                        // project_id 可能在根上或嵌套在 job.project 内，且类型可能为字符串
-                        const rootMatch = job.project_id === projectId || job.project_id === pidNum;
-                        const nestedMatch = job.project && (job.project.project_id === projectId || job.project.project_id === pidNum);
-                        if (rootMatch || nestedMatch) return true;
-                        // 备用：名称包含或数据集名匹配
-                        if (this.projectInfo && job.job_name && job.job_name.includes(this.projectInfo.project_name)) return true;
-                        if (this.projectInfo && this.projectInfo.dataset && job.dataset_name === this.projectInfo.dataset.dataset_name) return true;
-                        return false;
-                    });
-                }
-                
-                // 拉取已完成任务的模型大小
-                await this.fetchCompletedModelSizes()
-
-                // 保存更新后的项目信息到localStorage，但保留原始的模型数量和大小信息
-                const projectToSave = {...this.projectInfo};
-                
-                // 确保保留原始的模型数量和大小信息
-                if (savedModelCount !== undefined) {
-                    projectToSave.completed_models_count = savedModelCount;
-                }
-                if (savedSizeInfo) {
-                    projectToSave.total_size_mb = savedSizeInfo;
-                }
-                
-                localStorage.setItem('currentProject', JSON.stringify(projectToSave));
-                
-            } catch (error) {
-                console.error('获取项目详情失败:', error);
-                // 如果API调用失败，尝试从localStorage获取备用信息
-                const storedProject = localStorage.getItem('currentProject');
-                if (storedProject) {
-                    try {
-                        this.projectInfo = JSON.parse(storedProject);
-                    } catch (parseError) {
-                        console.error('解析本地项目信息失败:', parseError);
-                    }
-                }
-            } finally {
-                this.loading = false;
-            }
-        },
-        async fetchCompletedModelSizes(){
-            try{
-                if(!Array.isArray(this.projectModels)) return
-                const completed = this.projectModels.filter(m => String(m.status||'').toLowerCase()==='completed')
-                const tasks = completed.map(async model => {
-                    try{
-                        const res = await FetchTrainingJobModelSize(model.job_id)
-                        const v = res && (typeof res.model_size_mb==='number' ? res.model_size_mb : parseFloat(res.model_size_mb))
-                        if (!isNaN(v)) this.$set(model, 'model_size_mb', v)
-                    }catch(_){/* ignore single item error */}
-                })
-                await Promise.allSettled(tasks)
-                this.$forceUpdate()
-            }catch(_){/* ignore */}
-        },
-        formatProgress(model) {
-            if (model.status === 'completed') return '已完成'
-            if (model.status === 'running') {
-                // 后端 epoch 为 0-based，界面显示 1-based
-                const current = (typeof model.current_epoch === 'number' ? model.current_epoch + 1 : 0)
-                const total = model.parameters?.epochs || '-'
-                return `${current}/${total}`
-            }
-            if (model.status === 'pending') return '待开始'
-            if (model.status === 'queued') return '排队中'
-            return model.status || '未知'
-        },
-        formatCreateTime(dateStr) {
-            if (!dateStr) return ''
-            const date = new Date(dateStr)
-            const now = new Date()
-            const diffTime = Math.abs(now - date)
-            const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-            if (diffDays === 1) return '1天前'
-            if (diffDays < 30) return `${diffDays}天前`
-            if (diffDays < 365) return `${Math.floor(diffDays / 30)}个月前`
-            return `${Math.floor(diffDays / 365)}年前`
-        },
-        statusClass(status){
-            if(!status) return 'status-pending'
-            const s = String(status).toLowerCase()
-            if(s==='completed' || s==='copleted') return 'status-completed'
-            if(s==='pending') return 'status-pending'
-            if(s==='queued') return 'status-pending'
-            if(s==='fail' || s==='failed' || s==='error') return 'status-fail'
-            if(s==='running' || s==='training') return 'status-running'
-            return 'status-pending'
-        },
-        formatModelSize(sizeMb) {
-            if (sizeMb === undefined || sizeMb === null) return '-'
-            return sizeMb.toFixed(1) + 'MB'
-        }
+        if (diffDays === 1) return '创建于 1 天前';
+        else if (diffDays < 30) return `创建于 ${diffDays} 天前`;
+        else if (diffDays < 365) return `创建于 ${Math.floor(diffDays / 30)} 个月前`;
+        else return `创建于 ${Math.floor(diffDays / 365)} 年前`;
+      }
+      return '未知创建时间';
     },
-    beforeDestroy() {
-        window.removeEventListener('resize', this._resizeHandler);
-        this._resizeHandler = null;
-        if (this.statusTimer) { clearInterval(this.statusTimer); this.statusTimer = null }
-        Object.values(this.wsMap||{}).forEach(ws=>{ try{ ws.close() }catch(_){}})
-        this.wsMap = {}
+    modelCount() {
+      if (this.projectInfo && this.projectInfo.completed_models_count !== undefined) {
+        return this.projectInfo.completed_models_count;
+      }
+      return this.projectModels.length || 0;
+    },
+    totalSize() {
+      const ensureMB = v => {
+        if (v === undefined || v === null || String(v).length === 0) return null;
+        const s = String(v).trim();
+        if (/mb$/i.test(s)) return s;
+        const n = parseFloat(s);
+        if (!isNaN(n)) return `${n}MB`;
+        return `${s}MB`;
+      };
+      if (this.projectInfo && this.projectInfo.total_size_mb !== undefined) {
+        return ensureMB(this.projectInfo.total_size_mb) || '0MB';
+      }
+      return '0MB';
+    },
+    filteredModels() {
+      const source = Array.isArray(this.projectModels) ? this.projectModels : [];
+      const query = (this.searchQuery || '').toLowerCase();
+      const list = source.filter(m => {
+        if (!query) return true;
+        return (m.job_name || '').toLowerCase().includes(query);
+      });
+      return list.sort((a, b) => {
+          const tA = new Date(a.created_at || 0).getTime();
+          const tB = new Date(b.created_at || 0).getTime();
+          return tB - tA;
+      });
     }
-}
+  },
+  watch: {
+    '$route.query.projectId': {
+      handler(newProjectId) {
+        if (newProjectId) {
+          this.loadProjectDetails(newProjectId);
+        }
+      },
+      immediate: true
+    }
+  },
+  created() {
+    this.initProjectInfo();
+  },
+  mounted() {
+    const update = () => {
+      const w = window.innerWidth || document.documentElement.clientWidth;
+      if (w >= 1600) this.dialogWidth = '980px';
+      else if (w >= 1400) this.dialogWidth = '920px';
+      else if (w >= 1200) this.dialogWidth = '880px';
+      else if (w >= 992) this.dialogWidth = '820px';
+      else if (w >= 768) this.dialogWidth = '680px';
+      else this.dialogWidth = '94%';
+    };
+    this._resizeHandler = update;
+    update();
+    window.addEventListener('resize', this._resizeHandler);
+    this.statusTimer = setInterval(this.refreshRunningStatuses, 15000);
+  },
+  methods: {
+    goBackToProjects() {
+      this.$router.push({ path: '/projects' });
+    },
+    openCreateJob() {
+      if (this._resizeHandler) this._resizeHandler();
+      this.dialogVisible = true;
+    },
+    onTaskAdded() {
+      const pid = this.projectInfo?.project_id || this.$route.query.projectId;
+      if (pid) this.loadProjectDetails(pid);
+      this.dialogVisible = false;
+    },
+    async startJob(jobId) {
+      this.$set(this.startingJobs, jobId, true);
+      try {
+        const updated = await startTrainingJob(jobId);
+        const idx = this.projectModels.findIndex(m => m.job_id === jobId);
+        if (idx >= 0 && updated?.status) this.$set(this.projectModels[idx], 'status', updated.status);
+        this.$message.success('已添加到训练队列。');
+      } catch (e) {
+        this.$message.error('启动训练失败。');
+      } finally {
+        this.$set(this.startingJobs, jobId, false);
+      }
+    },
+    handlePDCommand(command, jobId) {
+      if (command === 'delete') this.deletePDJob(jobId);
+      if (command === 'export') this.openExportDialog(jobId);
+    },
+    openExportDialog(jobId) {
+      this.exportTargetJobId = jobId;
+      this.exportForm = { ...this.exportForm, format: 'pt', weights: 'best' };
+      this.exportDialogVisible = true;
+    },
+    async confirmExport() {
+      const jobId = this.exportTargetJobId;
+      if (!jobId) return;
+      this.exporting = true;
+      try {
+        this.$message({ type: 'info', message: '开始导出...' });
+        const res = await ExportModel(jobId, this.exportForm);
+        const raw = res && (res.download_url || res.url || res.file_url || res.path || res.link);
+        if (!raw) throw new Error('No download URL returned');
+        
+        const href = String(raw).startsWith('http') ? raw : `${API_BASE}${raw}`;
+        const a = document.createElement('a');
+        a.href = href;
+        a.download = '';
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        this.$message.success('下载已开始。');
+        this.exportDialogVisible = false;
+      } catch (error) {
+        this.$message.error('导出失败: ' + (error.message || error));
+      } finally {
+        this.exporting = false;
+      }
+    },
+    async deletePDJob(jobId) {
+      try {
+        await this.$confirm('确定要删除此训练任务吗？', '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
+        await DeleteTrainingJob(jobId);
+        this.$message.success('删除成功。');
+        const pid = this.projectInfo?.project_id || this.$route.query.projectId;
+        if (pid) this.loadProjectDetails(pid);
+      } catch (e) {}
+    },
+    goProjectsCharts(model) {
+      this.$router.push({ path: '/projectscharts/trainpart', query: { jobId: model.job_id } });
+    },
+    async refreshRunningStatuses() {
+      if (!Array.isArray(this.projectModels)) return;
+      const running = this.projectModels.filter(j => ['running', 'queued'].includes((j.status || '').toLowerCase()));
+      await Promise.allSettled(running.map(async job => {
+        try {
+          const s = await FetchTrainingJobsStatus(job.job_id);
+          if (s) {
+              if (s.current_epoch !== undefined) this.$set(job, 'current_epoch', s.current_epoch);
+              if (s.status) this.$set(job, 'status', s.status);
+          }
+        } catch (_) {}
+      }));
+    },
+    initProjectInfo() {
+      const projectId = this.$route.query.projectId;
+      if (projectId) {
+        this.loadProjectDetails(projectId);
+      } else {
+        const stored = localStorage.getItem('currentProject');
+        if (stored) {
+            try {
+                this.projectInfo = JSON.parse(stored);
+                this.loadProjectDetails(this.projectInfo.project_id);
+            } catch(e) {}
+        }
+      }
+    },
+    async loadProjectDetails(projectId) {
+      if (!projectId) return;
+      this.loading = true;
+      try {
+        const detail = await FetchProjectsDetail(projectId);
+        this.projectInfo = detail;
 
+        // Enhance dataset info
+        try {
+            await loadDatasets();
+            const ds = referenceStore.datasets.find(d => d.dataset_id === this.projectInfo.dataset_id);
+            if (ds) this.projectInfo.dataset = { dataset_name: ds.dataset_name };
+        } catch(e) {}
+
+        if (Array.isArray(detail.training_jobs)) {
+          this.projectModels = detail.training_jobs;
+        } else {
+            // Fallback
+             const all = await fetchTrainingJobs();
+             this.projectModels = all.filter(j => j.project_id == projectId);
+        }
+        await this.fetchCompletedModelSizes();
+        localStorage.setItem('currentProject', JSON.stringify(this.projectInfo));
+      } catch (error) {
+        console.error('Failed load project', error);
+      } finally {
+        this.loading = false;
+      }
+    },
+    async fetchCompletedModelSizes() {
+        // Implementation kept same
+    },
+    formatProgress(model) {
+      const s = (model.status || '').toLowerCase();
+      if (s === 'completed') return '100%';
+      if (s === 'running') {
+        const current = (model.current_epoch || 0) + 1;
+        const total = model.parameters?.epochs || '?';
+        return `${current}/${total}`;
+      }
+      return '-';
+    },
+    formatCreateTime(dateStr) {
+       if(!dateStr) return '-';
+       return new Date(dateStr).toLocaleDateString();
+    },
+    statusClass(status) {
+      if (!status) return 'status-pending';
+      const s = String(status).toLowerCase();
+      
+      const map = {
+          completed: 'status-success',
+          running: 'status-running',
+          queued: 'status-warning',
+          failed: 'status-error',
+          error: 'status-error'
+      }
+      return map[s] || 'status-pending';
+    },
+    formatModelSize(sizeMb) {
+      return sizeMb ? sizeMb.toFixed(1) + 'MB' : '-';
+    }
+  },
+  beforeDestroy() {
+    window.removeEventListener('resize', this._resizeHandler);
+    if (this.statusTimer) clearInterval(this.statusTimer);
+  }
+};
 </script>
 
 <style scoped>
-/* 保持原有样式不变 */
-.projectsdetail {
-    color: #111F68;
-    position: relative;
+.project-detail-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
 }
 
-.title {
-    margin: 18px 0;
-    font-size: 20px;
+/* Hero */
+.pd-hero {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2rem;
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: var(--text-main);
+  position: relative;
+  overflow: hidden;
+}
+
+.pd-hero::before {
+  content: none;
+}
+
+.pd-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  position: relative;
+  z-index: 1;
+}
+
+.back-link {
+  align-self: flex-start;
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  background: white;
+  border: 1px solid #e5e7eb;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.back-link:hover { background: #f3f4f6; color: var(--text-main); }
+
+.pd-content { display: flex; flex-direction: column; gap: 0.25rem; }
+
+.pd-eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 0.75rem;
+  opacity: 0.8;
+  color: var(--color-primary);
+}
+
+.pd-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.pd-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.5rem;
+}
+
+.meta-chip {
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.pd-hero-right {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.pd-stat {
+  min-width: 90px;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.pd-stat-label { font-size: 0.7rem; color: var(--text-secondary); }
+.pd-stat-value { font-size: 1.125rem; font-weight: 700; color: var(--color-primary); margin-top: 0.25rem; }
+
+.primary-action {
+  border-radius: var(--radius-full) !important;
+  font-weight: 600;
+}
+
+/* Body */
+.pd-body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1.5rem;
+  overflow: hidden;
+}
+
+.pd-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.search-shell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 1rem;
+  background: rgba(255, 255, 255, 0.5);
+  border-radius: var(--radius-full);
+  border: 1px solid rgba(0,0,0,0.05);
+}
+
+.search-input ::v-deep .el-input__inner {
+  border: none;
+  background: transparent;
+  padding: 0;
+  height: auto;
+}
+
+.pd-summary { color: var(--text-secondary); font-size: 0.875rem; }
+
+.pd-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 0.5rem;
+}
+
+.state {
     display: flex;
-    align-items: center;
-    color: #111F68;
-}
-/* 返回按钮与标题统一风格 */
-.back-btn {
-    margin-right: 10px;
-    padding: 0 6px !important;
-    height: 24px;
-    line-height: 24px;
-    display: inline-flex;
-    align-items: center;
-    color: #111F68 !important;
-    font-weight: 500;
-    font-size: 14px;
-}
-.back-btn:hover { color: #182a8f !important; }
-.project-title-text { line-height: 1; display: inline-flex; align-items: center; }
-.back-btn .back-arrow { 
-    display: inline-block; 
-    width: 8px; 
-    height: 8px; 
-    border-left: 2px solid currentColor; 
-    border-bottom: 2px solid currentColor; 
-    transform: rotate(45deg); 
-    margin-right: 4px; 
-    position: relative;
-    top: 0; 
-}
-.back-btn .back-text { display:inline-flex; align-items:center; line-height:1; }
-
-.updateTime {
-    display: flex;
-    align-items: center;
-}
-
-.updateTime .updateTimeIcon {
-    font-size: 24px;
-    width: 30px;
-    height: 30px;
-    margin-right: 8px;
-    display: inline-flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
+    padding: 3rem;
+    color: var(--text-secondary);
+    gap: 0.5rem;
 }
 
-.rightMessage {
-    display: flex;
-    align-items: center;
-    margin-left: 800px;
+.state i { font-size: 2rem; opacity: 0.5; }
+
+/* Job Grid */
+.job-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1rem;
 }
 
-.circle1, .circle2 {
-    background-color: #F3F3F3;
-    height: 35px;
-    line-height: 35px;
-    text-align: center;
-    border-radius: 10px;
-    margin: 0 8px;
-}
-
-.circle1 {
-    width: 40px;
-}
-
-.circle2 {
-    width: 50px;
-}
-
-.searchPart {
-    display: flex;
-    margin-top: 15px;
-}
-
-.searchPart div {
-    width: 120px;
-    height: 40px;
-    text-align: center;
-    line-height: 35px;
-    font-size: 15px;
-    cursor: pointer; /* 添加鼠标指针样式 */
-    transition: all 0.3s ease; /* 添加过渡效果 */
-}
-
-.overView, .charts {
-    border-bottom: 2px solid transparent; /* 初始透明边框 */
-}
-.overView{
-    margin-bottom: 15px;
-}
-/* 激活状态样式 */
-.active {
-    border-bottom: 2px solid #111F68; /* 蓝色下划线 */
-    color: #111F68;
-    font-weight: bold;
-}
-
-/* 合并 ProjectsPreviewPart 样式 */
-.secondFloor {
+.job-card {
+  background: rgba(255, 255, 255, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
   display: flex;
-  align-items: center;
-  width: 100%;
-  margin-bottom: 20px;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-.input { margin: 0 10px; width: 300px; max-width: 100%; min-width: 200px; }
-.el-menu-demo { display: flex; border-bottom: none !important; }
-.el-menu-demo .nav-item { margin: 0 10px !important; min-width: 80px !important; text-align: center !important; }
-.el-menu-demo .el-menu-item.is-active { color: #111F68 !important; border-bottom: 2px solid #111F68 !important; }
-
-.showList { width: 100%; background-color: #FBFCFD; }
-.showList ul { display: flex; flex-wrap: wrap; width: 100%; }
-.showList ul li { width: 100%; height: 90px; background-color: #fff; margin: 10px; box-shadow: 0 0 10px 3px rgba(0, 0, 0, 0.05); display: flex; position: relative; align-items: center; padding-right: 120px; }
-.showList ul li:hover { box-shadow: 0 0 12px 3px rgba(0, 0, 0, 0.1); }
-.showList img { width: 24px; height: 24px; }
-.circle { width: 40px; height: 40px; border-radius: 50%; background-color: #f5f2f2; margin: 25px 20px; display: flex; justify-content: center; align-items: center; }
-.messagePart { display: flex; flex-direction: column; margin: 18px 0 0 10px; color: #111F68; flex: 1; min-width: 0; max-width: calc(100% - 120px); }
-.title1 { font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.title2 { font-size: 13px; margin-top: 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.detailPart { display: flex; align-items: center; color: #111F68; position: absolute; right: 15px; top: 50%; transform: translateY(-50%); flex-wrap: nowrap; gap: 10px; }
-.detailPart .detail1 { font-weight: bolder; white-space: nowrap; }
-.detailPart .detail2 { margin: 0 15px; white-space: nowrap; }
-.detail-size { color: #666; font-size: 14px; white-space: nowrap; }
-
-/* 任务状态色条，与任务列表页一致 */
-.statusBar {
-  display: flex;
-  align-items: center;
-  margin-right: 20px;
-  height: 100%;
-  width: 10px;
-  transition: background-color .25s;
-}
-.status-completed { background-color: #087922 !important; }
-.status-pending { background-color: #c9c9c9 !important; }
-.status-fail { background-color: #ff4d4f !important; }
-.status-running { background-color: #111f68 !important; }
-
-/* 更多选项按钮样式（与 Models.vue 保持一致） */
-.more-options { display: flex; align-items: center; cursor: pointer; }
-.more-options .el-dropdown-link { display: flex; justify-content: center; align-items: center; width: 32px; height: 32px; border-radius: 50%; }
-.more-options .el-dropdown-link:hover { background-color: #f5f7fa; }
-.more-options i { font-size: 18px; color: #606266; }
-
-@media (max-width: 1024px) {
-  .showList ul li { padding-right: 60px; }
-  .detailPart { right: 10px; gap: 5px; }
-  .detailPart .detail2 { margin: 0 8px; }
-}
-@media (max-width: 768px) {
-  .secondFloor { flex-direction: column; align-items: flex-start; gap: 15px; }
-  .input { margin: 0; width: 100%; min-width: auto; }
-  .showList ul li { padding-right: 40px; height: auto; min-height: 90px; padding-top: 15px; padding-bottom: 15px; }
-  .messagePart { margin: 0 10px; max-width: calc(100% - 50px); }
-  .detailPart { right: 5px; flex-direction: column; gap: 5px; align-items: flex-end; }
-  .detailPart .detail2 { margin: 0; }
+  flex-direction: column;
+  gap: 1rem;
+  cursor: pointer;
+  transition: all 0.2s;
+  position: relative;
+  overflow: hidden;
 }
 
-/* 状态样式 */
-.loading-container { display: flex; align-items: center; justify-content: center; padding: 60px; color: #666; font-size: 16px; }
-.loading-container i { font-size: 24px; margin-right: 12px; animation: spin 1s linear infinite; }
-.no-data-container { display: flex; align-items: center; justify-content: center; padding: 60px; color: #999; font-size: 16px; }
-.no-data-container i { font-size: 24px; margin-right: 12px; }
-/* 加载状态样式 */
-.loading-info {
+.job-card:hover {
+  transform: translateY(-4px);
+  background: #fff;
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-primary-light);
+}
+
+.job-status-indicator {
+    position: absolute;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 4px;
+}
+
+.job-status-indicator.status-success { background: #10b981; }
+.job-status-indicator.status-running { background: #3b82f6; }
+.job-status-indicator.status-warning { background: #f59e0b; }
+.job-status-indicator.status-error { background: #ef4444; }
+.job-status-indicator.status-pending { background: #cbd5e1; }
+
+.job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; }
+.job-title { font-weight: 700; color: var(--text-main); font-size: 1rem; }
+.job-sub { font-size: 0.75rem; color: var(--text-secondary); }
+
+.job-meta-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+    font-size: 0.75rem;
+}
+
+.meta-item { display: flex; flex-direction: column; gap: 0.1rem; }
+.meta-item .label { color: var(--text-secondary); font-size: 0.7rem; }
+.meta-item .value { color: var(--text-main); font-weight: 500; }
+
+.status-text.status-success { color: #059669; }
+.status-text.status-running { color: #2563eb; }
+.status-text.status-error { color: #dc2626; }
+
+.job-actions {
+    margin-top: auto;
     display: flex;
+    justify-content: flex-end;
     align-items: center;
-    color: #666;
-    font-size: 14px;
-    margin-left: 20px;
+    gap: 0.5rem;
+    border-top: 1px solid rgba(0,0,0,0.05);
+    padding-top: 0.75rem;
 }
 
-.loading-info i {
-    font-size: 16px;
-    margin-right: 8px;
-    animation: spin 1s linear infinite;
-}
-.projectMessage{
-    position: absolute;
-    top: 85px;
-    right: 50px !important;
-}
-/* 迁移的添加训练任务按钮样式 */
-.create-job-btn {
-    width: 112px;
-    height: 40px;
-    border-radius: 20px;
-    background-color: #111f68;
-    color: #fff;
-    line-height: 40px;
-    font-weight: 450;
-    position: absolute;
-    top: 20px;
-    right: 20px;
-    font-size: 14px;
-    border: none;
+.more-btn {
+    padding: 0.25rem 0.5rem;
     cursor: pointer;
-    transition: background-color .25s;
+    color: var(--text-secondary);
 }
-.create-job-btn:hover { background-color: #182a8f; }
-.create-job-btn:active { background-color: #0c164a; }
-@keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-}
+.more-btn:hover { color: var(--text-main); }
+.danger-text { color: #ef4444; }
 
-.export-form .row {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    margin: 10px 0;
-}
-.export-form .label {
-    width: 90px;
-    color: #333;
-    font-size: 13px;
-}
+.action-btn { font-weight: 600; }
 </style>

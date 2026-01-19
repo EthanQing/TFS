@@ -1,0 +1,134 @@
+/* Element UI Theme Overrides */
+
+/* Buttons */
+.el-button {
+    font-weight: 500;
+    border-radius: var(--radius-md);
+    border: none;
+    transition: all var(--transition-fast);
+}
+
+.el-button--primary {
+    background: var(--gradient-primary);
+    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+}
+
+.el-button--primary:hover,
+.el-button--primary:focus {
+    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 8px -1px rgba(59, 130, 246, 0.4);
+}
+
+.el-button--default {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    color: var(--text-main);
+}
+
+.el-button--default:hover {
+    border-color: var(--color-primary);
+    color: var(--color-primary);
+    background-color: #f8fafc;
+}
+
+/* Cards */
+.el-card {
+    border: none;
+    border-radius: var(--radius-lg);
+    background: var(--bg-card);
+    box-shadow: var(--shadow-md);
+    transition: box-shadow var(--transition-normal);
+}
+
+.el-card:hover {
+    box-shadow: var(--shadow-lg);
+}
+
+.el-card__header {
+    border-bottom: 1px solid rgba(226, 232, 240, 0.6);
+    padding: 1.25rem 1.5rem;
+    font-weight: 600;
+    color: var(--text-main);
+}
+
+/* Tables */
+.el-table {
+    background-color: transparent !important;
+    color: var(--text-main);
+}
+
+.el-table th,
+.el-table tr,
+.el-table td {
+    background-color: transparent !important;
+}
+
+.el-table th.is-leaf {
+    border-bottom: 2px solid #e2e8f0;
+    color: var(--text-secondary);
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    letter-spacing: 0.05em;
+}
+
+.el-table td {
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover>td {
+    background-color: rgba(59, 130, 246, 0.05) !important;
+}
+
+/* Inputs */
+.el-input__inner {
+    border-radius: var(--radius-md);
+    border: 1px solid #cbd5e1;
+    background-color: rgba(255, 255, 255, 0.8);
+    padding-left: 1rem;
+    transition: all var(--transition-fast);
+}
+
+.el-input__inner:focus {
+    border-color: var(--color-primary);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+/* Dialogs */
+.el-dialog {
+    border-radius: var(--radius-lg);
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+    backdrop-filter: blur(4px);
+}
+
+.el-dialog__header {
+    padding: 1.5rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+
+.el-dialog__title {
+    font-weight: 700;
+    color: var(--text-main);
+}
+
+.el-dialog__footer {
+    padding: 1.5rem;
+    background-color: #f8fafc;
+    border-top: 1px solid #f1f5f9;
+    border-bottom-left-radius: var(--radius-lg);
+    border-bottom-right-radius: var(--radius-lg);
+}
+
+/* Pagination */
+.el-pagination.is-background .el-pager li:not(.disabled).active {
+    background-color: var(--color-primary);
+    color: #fff;
+}
+
+.el-pagination.is-background .el-pager li {
+    border-radius: var(--radius-sm);
+    background-color: #fff;
+    border: 1px solid #e2e8f0;
+}

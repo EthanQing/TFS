@@ -387,8 +387,14 @@ export default {
 
 .diff-table table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
     font-size: 13px;
+    background: #fff;
+    border: 1px solid #e6eaf2;
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: 0 6px 18px rgba(17, 31, 104, 0.06);
 }
 
 .diff-table th {

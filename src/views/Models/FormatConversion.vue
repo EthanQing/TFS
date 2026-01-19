@@ -1,207 +1,159 @@
 <template>
     <div class="conversion-container">
-        <!-- 顶部标题与操作 -->
-        <div class="top-bar">
-            <div>
-                <h3>模型格式转换</h3>
-                <p class="subtitle">YOLOv8：支持 PyTorch (.pt/.pth) 导出 ONNX，查看转换进度与日志</p>
+        <div class="header-strip">
+            <div class="header-left">
+                <i class="el-icon-refresh tool-icon"></i>
+                <div>
+                   <h3>模型格式转换</h3>
+                   <p class="subtitle">将 PyTorch (.pt) 模型转换为 ONNX 以进行部署。</p>
+                </div>
             </div>
-            <div class="top-actions">
-                <el-button class="custom-default-btn" @click="handleReset" :disabled="converting">
-                    <i class="el-icon-refresh"></i> 重置
+            <div class="header-actions">
+                <el-button size="small" @click="handleReset" :disabled="converting">
+                    <i class="el-icon-refresh-right"></i> 重置
                 </el-button>
-                <el-button type="primary" class="custom-primary-btn" @click="startConversion" :loading="converting">
+                <el-button type="primary" size="small" class="primary-btn" @click="startConversion" :loading="converting">
                     <i class="el-icon-cpu"></i> {{ converting ? '转换中...' : '开始转换' }}
                 </el-button>
             </div>
         </div>
 
         <div class="content-wrapper">
-            <!-- 左侧：配置与上传 -->
-            <div class="left-panel section-card">
-                <div class="section-title">
-                    <i class="el-icon-setting"></i>
-                    转换配置
+            <!-- Configuration Panel -->
+            <div class="config-panel glass-panel-sm">
+                <div class="panel-header">
+                    <i class="el-icon-setting"></i> 转换配置
                 </div>
 
-                <div class="config-group">
-                    <label class="group-label">源格式</label>
-                    <el-radio-group v-model="form.sourceFormat" :disabled="converting">
-                        <el-radio-button label="pt">PyTorch (.pt/.pth)</el-radio-button>
-                        <el-radio-button label="pdmodel" disabled>Paddle (.pdmodel) (暂未支持)</el-radio-button>
-                    </el-radio-group>
-                </div>
-
-                <div class="config-group">
-                    <label class="group-label">目标格式</label>
-                    <el-radio-group v-model="form.targetFormat" :disabled="converting">
-                        <el-radio-button label="onnx">ONNX</el-radio-button>
-                        <el-radio-button label="tensorrt" disabled>TensorRT (暂未支持)</el-radio-button>
-                    </el-radio-group>
-                </div>
-
-                <div class="config-group">
-                    <label class="group-label">模型文件</label>
-                    <el-upload
-                        class="upload-area"
-                        drag
-                        action="#"
-                        :auto-upload="false"
-                        :on-change="handleFileChange"
-                        :disabled="converting"
-                        accept=".pt,.pth"
-                    >
-                        <i class="el-icon-upload"></i>
-                        <div class="upload-text">点击或拖拽模型文件到此处</div>
-                        <div class="upload-tip">支持单个模型文件，大小&lt; 1GB</div>
-                    </el-upload>
-                    <div v-if="uploadFile" class="file-chip">
-                        <i class="el-icon-document"></i>
-                        <span class="name">{{ uploadFile.name }}</span>
-                        <el-button type="text" size="mini" @click="removeFile" :disabled="converting">移除</el-button>
+                <div class="config-form">
+                    <div class="form-row">
+                        <label>源格式</label>
+                        <el-radio-group v-model="form.sourceFormat" :disabled="converting" size="small">
+                            <el-radio-button label="pt">PyTorch (.pt)</el-radio-button>
+                            <!-- <el-radio-button label="pdmodel" disabled>Paddle (即将推出)</el-radio-button> -->
+                        </el-radio-group>
                     </div>
-                </div>
 
-                <div class="config-grid">
-                    <div class="config-item">
-                        <div class="label">Opset</div>
-                        <el-input-number v-model="form.opset" :min="9" :max="17" :disabled="converting" />
+                    <div class="form-row">
+                        <label>目标格式</label>
+                        <el-radio-group v-model="form.targetFormat" :disabled="converting" size="small">
+                            <el-radio-button label="onnx">ONNX</el-radio-button>
+                            <!-- <el-radio-button label="tensorrt" disabled>TensorRT (即将推出)</el-radio-button> -->
+                        </el-radio-group>
                     </div>
-                    <div class="config-item">
-                        <div class="label">精度</div>
-                        <el-select v-model="form.precision" placeholder="选择精度" :disabled="converting">
-                            <el-option label="FP32" value="FP32" />
+
+                    <div class="form-row upload-row">
+                        <label>模型文件</label>
+                        <el-upload
+                            class="upload-area"
+                            drag
+                            action="#"
+                            :auto-upload="false"
+                            :on-change="handleFileChange"
+                            :show-file-list="false"
+                            :disabled="converting"
+                            accept=".pt,.pth"
+                        >
+                            <div v-if="!uploadFile" class="upload-placeholder">
+                                <i class="el-icon-upload"></i>
+                                <div class="upload-text">拖拽 .pt 文件到此处</div>
+                            </div>
+                            <div v-else class="upload-file">
+                                <i class="el-icon-document"></i>
+                                <span class="filename" :title="uploadFile.name">{{ uploadFile.name }}</span>
+                                <i class="el-icon-close remove-btn" @click.stop="removeFile"></i>
+                            </div>
+                        </el-upload>
+                    </div>
+
+                    <div class="advanced-grid">
+                        <div class="param-item">
+                            <span class="label">Opset 版本</span>
+                            <el-input-number v-model="form.opset" :min="9" :max="17" :disabled="converting" size="mini" controls-position="right" />
+                        </div>
+                        <div class="param-item">
+                            <span class="label">精度</span>
+                            <el-select v-model="form.precision" size="mini" :disabled="converting">
+                                <el-option label="FP32" value="FP32" />
                             <el-option label="FP16" value="FP16" />
                             <el-option label="INT8" value="INT8" />
-                        </el-select>
+                            </el-select>
+                        </div>
+                        <div class="param-item switch">
+                            <span class="label">动态形状</span>
+                            <el-switch v-model="form.dynamicShape" :disabled="converting" />
+                        </div>
+                        <div class="param-item switch">
+                            <span class="label">量化</span>
+                            <el-switch v-model="form.enableQuant" :disabled="converting" />
+                        </div>
+                         <div class="param-item wide">
+                            <span class="label">最小形状</span>
+                            <el-input v-model="form.minShape" size="mini" :disabled="converting" />
+                        </div>
+                        <div class="param-item wide">
+                            <span class="label">最大形状</span>
+                            <el-input v-model="form.maxShape" size="mini" :disabled="converting" />
+                        </div>
                     </div>
-                    <div class="config-item">
-                        <div class="label">Batch Size</div>
-                        <el-slider v-model="form.batchSize" :min="1" :max="32" :step="1" show-input :disabled="converting" />
-                    </div>
-                    <div class="config-item">
-                        <div class="label">线程数</div>
-                        <el-slider v-model="form.threads" :min="1" :max="16" :step="1" show-input :disabled="converting" />
-                    </div>
-                    <div class="config-item switch-item">
-                        <div class="label">动态 Shape</div>
-                        <el-switch v-model="form.dynamicShape" :active-color="'#10b981'" :disabled="converting" />
-                    </div>
-                    <div class="config-item switch-item">
-                        <div class="label">量化</div>
-                        <el-switch v-model="form.enableQuant" :active-color="'#10b981'" :disabled="converting" />
-                    </div>
-                    <div class="config-item">
-                        <div class="label">最小 Shape</div>
-                        <el-input v-model="form.minShape" placeholder="1x3x640x640" :disabled="converting" />
-                    </div>
-                    <div class="config-item">
-                        <div class="label">最大 Shape</div>
-                        <el-input v-model="form.maxShape" placeholder="8x3x1280x1280" :disabled="converting" />
-                    </div>
-                </div>
-
-                <div class="note">
-                    <i class="el-icon-warning-outline"></i>
-                    TensorRT 需本地环境支持；INT8 需提供校准集；动态 Shape 仅在支持的后端生效。
                 </div>
             </div>
 
-            <!-- 右侧：进度与对比 -->
-            <div class="right-panel">
-                <div class="section-card">
-                    <div class="section-title">
-                        <i class="el-icon-time"></i>
-                        转换进度与日志
+            <!-- Status Panel -->
+            <div class="status-panel">
+                <div class="output-card glass-panel-sm">
+                    <div class="panel-header">
+                        <i class="el-icon-data-line"></i> 状态与日志
                     </div>
-                    <div class="progress-row">
-                        <el-progress :percentage="progress" :stroke-width="12" status="success" />
-                        <span class="progress-text">{{ converting ? '正在转换...' : progress === 100 ? '完成' : '待开始' }}</span>
+                    <div class="progress-section">
+                        <div class="progress-info">
+                            <span>进度</span>
+                            <span>{{ progress }}%</span>
+                        </div>
+                        <el-progress :percentage="progress" :stroke-width="8" :show-text="false" status="success" />
                     </div>
-                    <div class="log-box">
+                    <div class="log-terminal">
                         <div v-for="(log, idx) in logs" :key="idx" class="log-line">{{ log }}</div>
-                        <div v-if="logs.length === 0" class="log-empty">尚无日志</div>
+                        <div v-if="logs.length === 0" class="log-empty">等待任务...</div>
                     </div>
                 </div>
 
-                <div class="section-card">
-                    <div class="section-title">
-                        <i class="el-icon-data-analysis"></i>
-                        性能对比
+                <div class="output-card glass-panel-sm result-card" v-if="result">
+                    <div class="panel-header">
+                        <i class="el-icon-check"></i> 转换结果
                     </div>
-                    <div class="stat-grid">
-                        <div class="stat-card">
-                            <div class="stat-label">延迟 (ms)</div>
-                            <div class="stat-value">
-                                {{ isNumber(compare.latency.new) ? compare.latency.new : '-' }}
-                                <span v-if="isNumber(compare.latency.delta)" class="diff" :class="{ good: compare.latency.delta < 0 }">
-                                    {{ formatDelta(compare.latency.delta) }}
-                                </span>
-                            </div>
-                            <div class="stat-sub">原始: {{ isNumber(compare.latency.base) ? compare.latency.base : '-' }} ms</div>
+                    <div class="result-details">
+                        <div class="detail-row">
+                            <span class="label">文件</span>
+                            <span class="val">{{ result.filename }}</span>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-label">吞吐 (img/s)</div>
-                            <div class="stat-value">
-                                {{ isNumber(compare.throughput.new) ? compare.throughput.new : '-' }}
-                                <span v-if="isNumber(compare.throughput.delta)" class="diff" :class="{ good: compare.throughput.delta > 0 }">
-                                    {{ formatDelta(compare.throughput.delta) }}
-                                </span>
-                            </div>
-                            <div class="stat-sub">原始: {{ isNumber(compare.throughput.base) ? compare.throughput.base : '-' }} img/s</div>
+                        <div class="detail-row">
+                             <span class="label">大小</span>
+                             <span class="val">
+                                {{ isNumber(compare.size.new) ? compare.size.new + ' MB' : '-' }}
+                                <span v-if="compare.size.base" class="sub-val">({{ compare.size.base }} MB)</span>
+                             </span>
                         </div>
-                        <div class="stat-card">
-                            <div class="stat-label">模型大小</div>
-                            <div class="stat-value">
-                                {{ isNumber(compare.size.new) ? compare.size.new : '-' }} MB
-                                <span v-if="isNumber(compare.size.delta)" class="diff" :class="{ good: compare.size.delta < 0 }">
-                                    {{ formatDelta(compare.size.delta) }} MB
-                                </span>
-                            </div>
-                            <div class="stat-sub">原始: {{ isNumber(compare.size.base) ? compare.size.base : '-' }} MB</div>
+                         <div class="detail-row">
+                             <span class="label">延迟</span>
+                             <span class="val">
+                                {{ isNumber(compare.latency.new) ? compare.latency.new + ' ms' : '-' }}
+                                <span v-if="compare.latency.base" class="sub-val">({{ compare.latency.base }} ms)</span>
+                             </span>
+                        </div>
+                         <div class="detail-row">
+                             <span class="label">吞吐量</span>
+                             <span class="val">
+                                {{ isNumber(compare.throughput.new) ? compare.throughput.new + ' img/s' : '-' }}
+                                <span v-if="compare.throughput.base" class="sub-val">({{ compare.throughput.base }} img/s)</span>
+                             </span>
                         </div>
                     </div>
-                    <div class="badge-row">
-                        <span class="flag primary">{{ form.targetFormat === 'onnx' ? 'ONNX IR' : 'TensorRT Engine' }}</span>
-                        <span class="flag" :class="form.precision === 'INT8' ? 'success' : 'info'">{{ form.precision }}</span>
-                        <span class="flag" :class="form.dynamicShape ? 'warning' : 'muted'">动态 Shape {{ form.dynamicShape ? '开' : '关' }}</span>
-                        <span class="flag" :class="form.enableQuant ? 'success' : 'muted'">量化 {{ form.enableQuant ? '启用' : '默认' }}</span>
+                     <div class="result-actions">
+                        <el-button type="primary" size="small" class="primary-btn" @click="downloadResult">
+                            <i class="el-icon-download"></i> 下载 ONNX
+                        </el-button>
                     </div>
-                </div>
-
-                <div class="section-card">
-                    <div class="section-title">
-                        <i class="el-icon-document"></i>
-                        转换结果
-                    </div>
-                    <div v-if="result" class="result-grid">
-                        <div class="result-item">
-                            <span class="label">输出文件</span>
-                            <span class="value" :title="result.filename || ''">{{ result.filename }}</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="label">路径</span>
-                            <span class="value" :title="result.download_url || ''">{{ result.download_url || '-' }}</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="label">大小</span>
-                            <span class="value">{{ isNumber(compare.size.new) ? (compare.size.new + ' MB') : '-' }}</span>
-                        </div>
-                        <div class="result-item">
-                            <span class="label">配置摘要</span>
-                            <span
-                                class="value"
-                                :title="`Opset ${form.opset} · BS ${form.batchSize} · ${form.precision}`"
-                            >Opset {{ form.opset }} · BS {{ form.batchSize }} · {{ form.precision }}</span>
-                        </div>
-                        <div class="result-actions">
-                            <el-button type="primary" size="small" class="custom-primary-btn" @click="downloadResult">
-                                <i class="el-icon-download"></i> 下载
-                            </el-button>
-                            <el-button size="small" @click="copyLog">复制日志</el-button>
-                        </div>
-                    </div>
-                    <div v-else class="empty-box">转换完成后展示结果</div>
                 </div>
             </div>
         </div>
@@ -217,41 +169,20 @@ export default {
     data() {
         return {
             form: {
-                sourceFormat: 'pt',
-                targetFormat: 'onnx',
-                opset: 12,
-                precision: 'FP32',
-                batchSize: 8,
-                threads: 8,
-                dynamicShape: true,
-                enableQuant: false,
-                minShape: '1x3x640x640',
-                maxShape: '8x3x1280x1280'
+                sourceFormat: 'pt', targetFormat: 'onnx', opset: 12, precision: 'FP32',
+                batchSize: 8, threads: 8, dynamicShape: true, enableQuant: false,
+                minShape: '1x3x640x640', maxShape: '8x3x1280x1280'
             },
-            uploadFile: null,
-            converting: false,
-            progress: 0,
-            logs: [],
-            result: null,
-            jobId: null,
-            pollTimer: null,
-            polling: false,
-            compare: {
-                latency: { base: null, new: null, delta: null },
-                throughput: { base: null, new: null, delta: null },
-                size: { base: null, new: null, delta: null }
-            }
+            uploadFile: null, converting: false, progress: 0, logs: [], result: null, jobId: null, pollTimer: null,
+            compare: { latency: { base: null, new: null }, throughput: { base: null, new: null }, size: { base: null, new: null } }
         };
     },
     methods: {
-        isNumber(v) {
-            return typeof v === 'number' && !isNaN(v);
-        },
+        isNumber(v) { return typeof v === 'number' && !isNaN(v); },
         round(v, digits = 2) {
             const n = Number(v);
             if (!Number.isFinite(n)) return null;
-            const d = Number(digits) || 0;
-            const p = Math.pow(10, d);
+            const p = Math.pow(10, digits);
             return Math.round(n * p) / p;
         },
         updatePerformanceFromStatus(st) {
@@ -259,561 +190,237 @@ export default {
             if (!perf) return;
 
             const pt = (perf && perf.pt) || {};
-            const onnx = (perf && perf.onnx) || {};
+            const targetKey = this.form.targetFormat || 'onnx';
+            const target = (perf && perf[targetKey]) || {};
 
             const ptLat = this.isNumber(pt.latency_ms) ? this.round(pt.latency_ms, 2) : null;
-            const onnxLat = this.isNumber(onnx.latency_ms) ? this.round(onnx.latency_ms, 2) : null;
+            const targetLat = this.isNumber(target.latency_ms) ? this.round(target.latency_ms, 2) : null;
             const ptThr = this.isNumber(pt.throughput_img_s) ? this.round(pt.throughput_img_s, 2) : null;
-            const onnxThr = this.isNumber(onnx.throughput_img_s) ? this.round(onnx.throughput_img_s, 2) : null;
+            const targetThr = this.isNumber(target.throughput_img_s) ? this.round(target.throughput_img_s, 2) : null;
             const ptSize = this.isNumber(pt.size_mb) ? this.round(pt.size_mb, 2) : null;
-            const onnxSize = this.isNumber(onnx.size_mb) ? this.round(onnx.size_mb, 2) : null;
+            const targetSize = this.isNumber(target.size_mb) ? this.round(target.size_mb, 2) : null;
 
             this.compare = {
-                latency: {
-                    base: ptLat,
-                    new: onnxLat,
-                    delta: (this.isNumber(ptLat) && this.isNumber(onnxLat)) ? this.round(onnxLat - ptLat, 2) : null
-                },
-                throughput: {
-                    base: ptThr,
-                    new: onnxThr,
-                    delta: (this.isNumber(ptThr) && this.isNumber(onnxThr)) ? this.round(onnxThr - ptThr, 2) : null
-                },
-                size: {
-                    base: ptSize,
-                    new: onnxSize,
-                    delta: (this.isNumber(ptSize) && this.isNumber(onnxSize)) ? this.round(onnxSize - ptSize, 2) : null
-                },
+                latency: { base: ptLat, new: targetLat },
+                throughput: { base: ptThr, new: targetThr },
+                size: { base: ptSize, new: targetSize }
             };
         },
-        stopPolling() {
-            if (this.pollTimer) {
-                clearInterval(this.pollTimer);
-                this.pollTimer = null;
-            }
-            this.polling = false;
-        },
-        handleFileChange(file) {
-            this.uploadFile = file.raw || file;
-        },
-        removeFile() {
-            if (this.converting) return;
-            this.uploadFile = null;
+        handleFileChange(file) { this.uploadFile = file.raw || file; },
+        removeFile() { if(!this.converting) this.uploadFile = null; },
+        handleReset() {
+             this.stopPolling();
+             this.form = { ...this.form, sourceFormat: 'pt', targetFormat: 'onnx' };
+             this.uploadFile = null; this.result = null; this.logs = []; this.progress = 0;
         },
         async startConversion() {
-            if (!this.uploadFile) {
-                this.$message.warning('请先选择模型文件');
-                return;
-            }
-
-            // 目前仅实现 YOLOv8: PT -> ONNX
-            if (this.form.sourceFormat !== 'pt') {
-                this.$message.warning('目前仅支持 YOLOv8 PyTorch (.pt/.pth) 转换');
-                return;
-            }
-            if (this.form.targetFormat !== 'onnx') {
-                this.$message.warning('目前仅支持导出 ONNX（YOLOv8）');
-                return;
-            }
-
-            this.stopPolling();
-            this.converting = true;
-            this.progress = 0;
-            this.logs = [];
-            this.result = null;
-            this.jobId = null;
-            this.compare = {
-                latency: { base: null, new: null, delta: null },
-                throughput: { base: null, new: null, delta: null },
-                size: { base: null, new: null, delta: null }
-            };
-
-            try {
+             console.log('Starting conversion...');
+             if (!this.uploadFile) {
+                 this.$message.warning('请先选择模型文件。');
+                 return;
+             }
+             
+             this.converting = true; 
+             this.logs = ['正在初始化任务...', '正在上传模型: ' + this.uploadFile.name]; 
+             this.progress = 0; 
+             this.result = null;
+             
+             try {
+                console.log('Sending request to API...');
                 const job = await createModelConversion({
-                    file: this.uploadFile,
-                    source_format: this.form.sourceFormat,
+                    file: this.uploadFile, 
+                    source_format: this.form.sourceFormat, 
                     target_format: this.form.targetFormat,
-                    opset: this.form.opset,
-                    dynamic: this.form.dynamicShape,
+                    opset: this.form.opset, 
+                    dynamic: this.form.dynamicShape
                 });
-
-                this.jobId = job && job.job_id;
-                this.logs = Array.isArray(job?.logs) ? job.logs : ['已提交转换任务'];
-                this.progress = Number(job?.progress ?? 0) || 0;
-
-                // 轮询状态
-                this.pollTimer = setInterval(() => {
-                    if (this.polling) return;
-                    this.polling = true;
-                    this.pollStatus().finally(() => { this.polling = false; });
-                }, 1000);
-
-                // 立即拉一次
-                await this.pollStatus();
-            } catch (e) {
-                this.converting = false;
-                this.stopPolling();
-                this.$message.error('转换启动失败: ' + (e?.message || e));
-            }
+                console.log('Job created:', job);
+                
+                this.jobId = job?.job_id;
+                this.logs.push(`任务 ID: ${this.jobId}`, '等待服务器...');
+                this.pollTimer = setInterval(this.pollStatus, 1000);
+             } catch (e) {
+                 console.error('Conversion Error:', e);
+                 this.converting = false; 
+                 this.logs.push('错误详情: ' + (e.message || e));
+                 this.$message.error('启动转换失败: ' + e.message);
+             }
         },
         async pollStatus() {
             if (!this.jobId) return;
             try {
                 const st = await fetchModelConversion(this.jobId);
-                if (Number.isFinite(Number(st?.progress))) this.progress = Number(st.progress);
-                if (Array.isArray(st?.logs)) this.logs = st.logs;
+                this.progress = Number(st.progress) || 0;
+                this.logs = st.logs || [];
                 this.updatePerformanceFromStatus(st);
-
-                const status = String(st?.status || '').toLowerCase();
-                if (status === 'completed') {
-                    this.converting = false;
-                    this.stopPolling();
-                    this.result = {
-                        filename: st.output_filename || 'output.onnx',
-                        download_url: st.output_url || null,
-                    };
-                    this.$message.success('转换完成');
-                } else if (status === 'failed') {
-                    this.converting = false;
-                    this.stopPolling();
-                    const err = st?.error_message || '转换失败';
-                    this.logs = Array.isArray(this.logs) ? [...this.logs, String(err)] : [String(err)];
-                    this.$message.error('转换失败: ' + err);
+                if (st.status === 'completed') {
+                    this.finish(st);
+                } else if (st.status === 'failed') {
+                    this.stopPolling(); this.converting = false; this.$message.error('转换失败');
                 }
-            } catch (e) {
-                // 网络波动时不立刻判失败
-                try {
-                    this.logs = Array.isArray(this.logs) ? [...this.logs, '轮询失败: ' + (e?.message || e)] : ['轮询失败'];
-                } catch (_) {}
-            }
+            } catch(e) {}
         },
-        handleReset() {
-            this.stopPolling();
-            this.form = {
-                sourceFormat: 'pt',
-                targetFormat: 'onnx',
-                opset: 12,
-                precision: 'FP32',
-                batchSize: 8,
-                threads: 8,
-                dynamicShape: true,
-                enableQuant: false,
-                minShape: '1x3x640x640',
-                maxShape: '8x3x1280x1280'
-            };
-            this.uploadFile = null;
-            this.progress = 0;
-            this.logs = [];
-            this.result = null;
-            this.jobId = null;
-            this.converting = false;
-            this.compare = {
-                latency: { base: null, new: null, delta: null },
-                throughput: { base: null, new: null, delta: null },
-                size: { base: null, new: null, delta: null }
-            };
+        finish(st) {
+             this.stopPolling(); this.converting = false;
+             this.result = { filename: st.output_filename || 'opt.onnx', download_url: st.output_url };
+             this.updatePerformanceFromStatus(st);
         },
-        formatDelta(val) {
-            const sign = val > 0 ? '+' : '';
-            return `${sign}${val}`;
-        },
+        stopPolling() { if(this.pollTimer) clearInterval(this.pollTimer); },
         downloadResult() {
-            const raw = this.result && (this.result.download_url || this.result.url);
-            if (!raw) {
-                this.$message.warning('暂无可下载的文件');
-                return;
-            }
-            const href = String(raw).startsWith('http') ? raw : `${API_BASE}${raw}`;
-            const a = document.createElement('a');
-            a.href = href;
-            a.download = '';
-            a.style.display = 'none';
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-        },
-        copyLog() {
-            const text = this.logs.join('\n');
-            navigator.clipboard && navigator.clipboard.writeText(text);
-            this.$message.success('日志已复制');
+            const url = this.result?.download_url;
+            if(!url) return;
+            const fullUrl = url.startsWith('http') ? url : API_BASE + url;
+            const a = document.createElement('a'); a.href = fullUrl; a.download=''; a.click();
         }
     },
-    beforeDestroy() {
-        this.stopPolling();
-    },
+    beforeDestroy() { this.stopPolling(); }
 };
 </script>
 
 <style scoped>
 .conversion-container {
+    height: 100%;
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    padding-right: 6px;
+    gap: 1.5rem;
+    overflow: hidden;
 }
 
-.top-bar {
+.header-strip {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(0,0,0,0.05);
+    padding-bottom: 1rem;
+    flex-shrink: 0;
+}
+
+.header-left {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    gap: 1rem;
 }
 
-.top-bar h3 {
-    margin: 0;
-    font-size: 22px;
-    font-weight: 700;
-    color: #111f68;
+.tool-icon {
+    font-size: 1.5rem;
+    color: var(--color-primary);
+    background: rgba(59, 130, 246, 0.1);
+    padding: 0.75rem;
+    border-radius: var(--radius-md);
 }
 
-.subtitle {
-    margin: 2px 0 0 0;
-    color: #6c757d;
-    font-size: 13px;
-}
-
-.top-actions {
-    display: flex;
-    gap: 10px;
-}
+.header-left h3 { margin: 0; font-size: 1.25rem; font-weight: 700; color: var(--text-main); }
+.subtitle { margin: 0; font-size: 0.85rem; color: var(--text-secondary); }
 
 .content-wrapper {
-    display: grid;
-    grid-template-columns: 40% 60%;
-    gap: 16px;
-}
-
-.section-card {
-    background: #ffffff;
-    border-radius: 12px;
-    padding: 16px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e8ecef;
-}
-
-.left-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
-}
-
-.right-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-}
-
-.section-title {
-    font-size: 15px;
-    font-weight: 600;
-    color: #111f68;
-    margin-bottom: 10px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.group-label {
-    font-size: 13px;
-    font-weight: 600;
-    color: #111f68;
-    margin-bottom: 6px;
-}
-
-.config-group {
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-}
-
-.upload-area {
-    background: transparent;
-    border: none;
-}
-
-.upload-area >>> .el-upload {
-    width: 100%;
-}
-
-.upload-area >>> .el-upload-dragger {
-    background: linear-gradient(135deg, #f0f3f9 0%, #ffffff 100%);
-    border: 2px dashed #111f68;
-    border-radius: 12px;
-    padding: 36px 20px;
-    min-height: 160px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    transition: all 0.3s;
-}
-
-.upload-area >>> .el-upload-dragger:hover {
-    border-color: #111f68;
-    box-shadow: 0 8px 20px rgba(17, 31, 104, 0.15);
-}
-
-.upload-area i {
-    font-size: 44px;
-    color: #111f68;
-}
-
-.upload-text {
-    font-size: 15px;
-    font-weight: 600;
-    color: #111f68;
-}
-
-.upload-tip {
-    font-size: 12px;
-    color: #6c757d;
-}
-
-.file-chip {
-    margin-top: 6px;
-    padding: 8px 10px;
-    background: #f9fafb;
-    border: 1px solid #e8ecef;
-    border-radius: 8px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-}
-
-.file-chip .name {
     flex: 1;
-    color: #111f68;
+    display: flex;
+    gap: 1.5rem;
+    min-height: 0; /* Important for scrolling */
 }
 
-.config-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
-}
-
-.config-item {
-    padding: 12px;
-    border: 1.5px solid #e8ecef;
-    border-radius: 10px;
-    background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
+/* Config Panel */
+.config-panel {
+    flex: 0 0 400px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    padding: 1.25rem;
+    background: rgba(255,255,255,0.5);
 }
 
-.config-item .label {
-    font-size: 13px;
+.panel-header {
     font-weight: 600;
-    color: #111f68;
-}
-
-.switch-item {
-    flex-direction: row;
-    align-items: center;
-    justify-content: space-between;
-}
-
-.note {
-    display: flex;
-    gap: 6px;
-    align-items: flex-start;
-    font-size: 12px;
-    color: #6c757d;
-    background: #f9fafb;
-    border: 1px solid #e8ecef;
-    padding: 10px;
-    border-radius: 10px;
-}
-
-.progress-row {
+    color: var(--text-main);
+    margin-bottom: 1rem;
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 0.5rem;
 }
 
-.progress-row .el-progress {
-    flex: 1;
-}
-
-.progress-text {
-    font-size: 12px;
-    color: #6c757d;
-}
-
-.log-box {
-    margin-top: 10px;
-    background: #0b102c;
-    color: #e5e7eb;
-    font-family: Menlo, Consolas, monospace;
-    font-size: 12px;
-    border-radius: 10px;
-    padding: 10px;
-    min-height: 120px;
-    max-height: 200px;
+.config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
     overflow-y: auto;
-    border: 1px solid #1f2a44;
+    padding-right: 0.5rem;
 }
 
-.log-line + .log-line {
-    margin-top: 6px;
+.form-row { display: flex; flex-direction: column; gap: 0.5rem; }
+.form-row label { font-size: 0.85rem; font-weight: 500; color: var(--text-secondary); }
+
+.upload-area { width: 100%; }
+.upload-area >>> .el-upload { width: 100%; }
+.upload-area >>> .el-upload-dragger { 
+    width: 100%; height: auto; min-height: 100px; 
+    border: 1px dashed var(--color-primary-light);
+    background: rgba(255,255,255,0.5);
+    display: flex; align-items: center; justify-content: center;
 }
 
-.log-empty {
-    color: #9ca3af;
-}
+.upload-placeholder { padding: 1.5rem; color: var(--text-secondary); display: flex; flex-direction: column; align-items: center; gap: 0.5rem; }
+.upload-file { padding: 1rem; display: flex; align-items: center; gap: 0.5rem; width: 100%; }
+.filename { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.9rem; color: var(--text-main); text-align: left; }
+.remove-btn { cursor: pointer; color: #ef4444; }
 
-.stat-grid {
+.advanced-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 10px;
+    grid-template-columns: 1fr 1fr;
+    gap: 1rem;
 }
+.param-item { display: flex; flex-direction: column; gap: 0.25rem; }
+.param-item.switch { flex-direction: row; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.05); padding: 0.5rem; border-radius: var(--radius-sm); background: rgba(255,255,255,0.3); }
+.param-item.wide { grid-column: 1 / -1; }
+.param-item .label { font-size: 0.75rem; color: var(--text-secondary); }
 
-.stat-card {
-    border: 1.5px solid #e8ecef;
-    border-radius: 10px;
-    padding: 12px;
-    background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
-}
-
-.stat-label {
-    font-size: 12px;
-    color: #8e9aaf;
-    margin-bottom: 4px;
-}
-
-.stat-value {
-    font-size: 20px;
-    font-weight: 700;
-    color: #111f68;
-}
-
-.stat-sub {
-    font-size: 12px;
-    color: #6c757d;
-    margin-top: 4px;
-}
-
-.diff {
-    margin-left: 6px;
-    font-size: 12px;
-    color: #d97706;
-}
-
-.diff.good {
-    color: #0f9f75;
-}
-
-.badge-row {
-    margin-top: 10px;
+/* Status Panel */
+.status-panel {
+    flex: 1;
     display: flex;
-    gap: 8px;
-    flex-wrap: wrap;
-}
-
-.flag {
-    padding: 4px 10px;
-    border-radius: 20px;
-    font-size: 12px;
-    border: 1px solid transparent;
-}
-
-.flag.primary { background: rgba(17, 31, 104, 0.12); color: #111f68; border-color: #111f68; }
-.flag.success { background: rgba(16, 185, 129, 0.12); color: #0f9f75; border-color: #0f9f75; }
-.flag.info { background: rgba(6, 182, 212, 0.12); color: #0891b2; border-color: #0891b2; }
-.flag.warning { background: rgba(245, 158, 11, 0.12); color: #d97706; border-color: #d97706; }
-.flag.muted { background: #f3f4f6; color: #6b7280; border-color: #e5e7eb; }
-
-.result-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-    gap: 10px;
-}
-
-.result-item {
-    padding: 10px;
-    border: 1px solid #e8ecef;
-    border-radius: 10px;
-    background: #f9fafb;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-}
-
-.result-item .label {
-    color: #6c757d;
-    flex: 0 0 72px;
-    white-space: nowrap;
-}
-
-.result-item .value {
-    color: #111f68;
-    font-weight: 600;
-    flex: 1 1 auto;
+    flex-direction: column;
+    gap: 1rem;
     min-width: 0;
-    margin-left: auto;
-    text-align: right;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
-.result-actions {
-    grid-column: 1 / -1;
+.output-card {
+    background: #1e293b; /* Dark theme for logs */
+    color: #e2e8f0;
     display: flex;
-    gap: 10px;
+    flex-direction: column;
+    flex: 1; /* take remaining height */
+    padding: 1.25rem;
+    border: none; 
 }
+.output-card .panel-header { color: #fff; }
 
-.empty-box {
-    text-align: center;
-    color: #8e9aaf;
-    font-size: 13px;
+.progress-section { margin-bottom: 1rem; }
+.progress-info { display: flex; justify-content: space-between; font-size: 0.8rem; margin-bottom: 0.25rem; opacity: 0.8; }
+
+.log-terminal {
+    flex: 1;
+    background: #0f172a;
+    border-radius: var(--radius-md);
+    padding: 1rem;
+    font-family: monospace;
+    font-size: 0.8rem;
+    overflow-y: auto;
+    color: #38bdf8;
+    border: 1px solid #334155;
 }
+.log-line { margin-bottom: 0.25rem; }
+.log-empty { color: #475569; font-style: italic; }
 
-.custom-primary-btn {
-    background: linear-gradient(135deg, #111f68 0%, #0d1554 100%) !important;
-    border-color: #111f68 !important;
-    color: #fff !important;
-    box-shadow: 0 2px 8px rgba(17, 31, 104, 0.2);
+.result-card {
+    flex: 0 0 auto;
+    background: rgba(255,255,255,0.8);
+    color: var(--text-main);
+    border: 1px solid rgba(255,255,255,0.5);
 }
+.result-card .panel-header { color: var(--text-main); }
+.result-details { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+.detail-row { display: flex; flex-direction: column; gap: 0.25rem; }
+.detail-row .label { font-size: 0.75rem; color: var(--text-secondary); }
+.detail-row .val { font-weight: 600; font-size: 0.9rem; }
+.sub-val { font-weight: 400; font-size: 0.8rem; color: var(--text-secondary); margin-left: 0.5rem; }
 
-.custom-primary-btn:hover:not(:disabled) {
-    background: linear-gradient(135deg, #0d1554 0%, #070e3a 100%) !important;
-    border-color: #0d1554 !important;
-    box-shadow: 0 4px 16px rgba(17, 31, 104, 0.3);
-    transform: translateY(-2px);
-}
-
-.custom-default-btn {
-    background-color: #ffffff !important;
-    border: 1.5px solid #111f68 !important;
-    color: #111f68 !important;
-    box-shadow: 0 2px 8px rgba(17, 31, 104, 0.1);
-}
-
-.custom-default-btn:hover {
-    background: linear-gradient(135deg, #f0f3f9 0%, #ffffff 100%) !important;
-    box-shadow: 0 4px 16px rgba(17, 31, 104, 0.15);
-    border-color: #111f68 !important;
-    transform: translateY(-2px);
-}
-
-@media (max-width: 1280px) {
-    .content-wrapper {
-        grid-template-columns: 1fr;
-    }
-}
-
-@media (max-width: 768px) {
-    .top-bar {
-        flex-direction: column;
-        align-items: flex-start;
-    }
-
-    .top-actions {
-        flex-wrap: wrap;
-    }
-}
+.primary-btn { font-weight: 600; }
 </style>

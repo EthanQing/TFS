@@ -1,163 +1,201 @@
 <template>
-  <div class="datasets">
-    <div class="top">
-      <h3>数据</h3>
-      <el-button
-        type="primary"
-        class="custom-primary-btn"
-        @click="dialogFormVisible = true"
-        >上传数据集</el-button
-      >
-    </div>
-
-    <div class="secondFloor">
-      <i class="el-icon-s-operation" @click="changeShow"></i>
-      <el-input
-        v-model="searchQuery"
-        placeholder="请输入数据集名称"
-        class="input"
-      ></el-input>
-      <div class="topNavigation">
-        <el-menu
-          :default-active="activeIndex"
-          class="el-menu-demo"
-          mode="horizontal"
-          @select="handleSelect"
-        >
-          <el-menu-item index="1" class="nav-item">全部</el-menu-item>
-        </el-menu>
+  <div class="datasets-page page-container">
+    <header class="ds-hero">
+      <div class="ds-hero-left">
+        <div class="ds-eyebrow">数据集中心</div>
+        <h1 class="ds-title">数据集</h1>
+        <p class="ds-subtitle">集中创建、上传和管理训练数据。</p>
       </div>
-    </div>
-    <div class="searchShow" v-show="isShow">
-      <el-select v-model="value" placeholder="请选择" class="selectPart" @change="handleFilterChange">
-        <el-option
-          v-for="item in options"
-          :key="item.value"
-          :label="item.label"
-          :value="item.value"
-        >
-        </el-option>
-      </el-select>
-      <el-button
-        class="filter-btn"
-        :class="{ 'active-btn': activeFilter === 'category' }"
-        @click="setActiveFilter('category')"
-        >分类</el-button
-      >
-      <el-button
-        class="filter-btn"
-        :class="{ 'active-btn': activeFilter === 'image' }"
-        @click="setActiveFilter('image')"
-        >图片</el-button
-      >
-      <el-button
-        class="filter-btn"
-        :class="{ 'active-btn': activeFilter === 'size' }"
-        @click="setActiveFilter('size')"
-        >大小</el-button
-      >
-    </div>
-    <div class="showList">
-      <div
-        class="pictureItem"
-        v-for="d in filteredDatasets"
-        :key="d.dataset_id"
-        @click="goDetail(d)"
-      >
-        <div class="wordsPart">
-          <span class="messageTitle">{{ d.dataset_name }}</span
-          ><br />
-          <span class="message">
-            类型：{{ getDatasetTypeLabel(d.dataset_type) }} | 一个对图片分类与AI模型训练至关重要的数据集
-          </span>
+      <div class="ds-hero-right">
+        <div class="search-shell">
+          <i class="el-icon-search"></i>
+          <el-input
+            v-model="searchQuery"
+            placeholder="搜索数据集"
+            class="search-input"
+            clearable
+          ></el-input>
         </div>
-        <div class="dataPart">
-          <div class="classes">{{ d.num_classes || 0 }} 分类</div>
-          <div class="images">{{ formatImageCount(d.num_images) }}图片</div>
-          <div class="MBsize">{{ formatDatasetSize(d.dataset_size_mb) }}</div>
-        </div>
-        <div class="image-part" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }"></div>
-        <div class="more" @click.stop="handleShowDeletePopup(d.dataset_id)">
-          . . .
-        </div>
+        <el-button
+          type="primary"
+          class="primary-action"
+          @click="dialogFormVisible = true"
+        >新建数据集</el-button>
       </div>
-    </div>
+    </header>
 
-    <!-- 弹窗和遮罩层 -->
-    <div v-if="showPopup" class="mask" @click="showPopup = false">
-      <div class="popup" @click.stop>
-        <p>是否删除此数据集</p>
-        <button @click="showPopup = false">取消</button>
-        <button @click="handleDelete(currentDatasetId)">确认</button>
-      </div>
-    </div>
-
-    <!-- 创建项目对话框 -->
-    <el-dialog
-      title="创建数据集"
-      :visible.sync="dialogFormVisible"
-      width="800px"
-    >
-      <el-form :model="form" :rules="rules" ref="formRef">
-        <el-form-item
-          label="数据集名称"
-          :label-width="formLabelWidth"
-          prop="name"
-        >
-          <el-input v-model="form.name" autocomplete="off"></el-input>
-        </el-form-item>
-        <el-form-item
-          label="数据集类型"
-          :label-width="formLabelWidth"
-          prop="type"
-        >
-          <el-select v-model="form.type" placeholder="请选择">
+    <section class="ds-toolbar glass-panel">
+      <div class="toolbar-left">
+        <div class="filter-group">
+          <span class="filter-label">Type</span>
+          <el-select v-model="value" placeholder="All types" class="filter-select" @change="handleFilterChange">
             <el-option
-              v-for="item in selectOptions"
+              v-for="item in options"
               :key="item.value"
               :label="item.label"
               :value="item.value"
-            >
-            </el-option>
+            ></el-option>
           </el-select>
-        </el-form-item>
-      </el-form>
+        </div>
+      </div>
+      <div class="toolbar-right">
+        <span class="filter-label">排序</span>
+        <button
+          class="chip"
+          :class="{ active: activeFilter === 'category' }"
+          @click="setActiveFilter('category')"
+        >类别</button>
+        <button
+          class="chip"
+          :class="{ active: activeFilter === 'image' }"
+          @click="setActiveFilter('image')"
+        >图片数</button>
+        <button
+          class="chip"
+          :class="{ active: activeFilter === 'size' }"
+          @click="setActiveFilter('size')"
+        >大小</button>
+      </div>
+    </section>
 
-      <UploadZip
-        :dataset-name="form.name"
-        :dataset-type="form.type"
-        @upload-success="handleUploadSuccess"
-        @upload-fail="handleUploadFail"
-      ></UploadZip>
+    <section class="ds-content">
+      <section v-if="filteredDatasets.length" class="dataset-grid">
+        <div
+          class="dataset-card"
+          v-for="d in filteredDatasets"
+          :key="d.dataset_id"
+          @click="goDetail(d)"
+        >
+          <div class="card-media" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
+            <span class="card-type">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
+            <div class="card-overlay"></div>
+          </div>
+          <div class="card-body">
+            <div class="card-header">
+                <div class="card-title">{{ d.dataset_name }}</div>
+                <div class="card-sub">ID: {{ d.dataset_id || '-' }}</div>
+            </div>
+            
+            <div class="card-stats">
+              <div class="stat-item">
+                <div class="stat-label">类别</div>
+                <div class="stat-value">{{ d.num_classes || 0 }}</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">图片</div>
+                <div class="stat-value">{{ formatImageCount(d.num_images) }}</div>
+              </div>
+              <div class="stat-item">
+                <div class="stat-label">大小</div>
+                <div class="stat-value">{{ formatDatasetSize(d.dataset_size_mb) }}</div>
+              </div>
+            </div>
+          </div>
+          <button class="card-more" type="button" @click.stop="handleShowDeletePopup(d.dataset_id)">
+            <i class="el-icon-more"></i>
+          </button>
+        </div>
+      </section>
+
+      <div v-else class="empty-state glass-panel">
+        <div class="empty-title">暂无数据集</div>
+        <div class="empty-desc">创建您的第一个数据集以开始。</div>
+        <el-button type="primary" class="primary-action" @click="dialogFormVisible = true">创建数据集</el-button>
+      </div>
+    </section>
+
+    <!-- Custom Popup -->
+    <div v-if="showPopup" class="mask" @click="showPopup = false">
+      <div class="popup glass-panel" @click.stop>
+        <p>确定删除此数据集吗？</p>
+        <div class="popup-actions">
+          <el-button size="small" @click="showPopup = false">取消</el-button>
+          <el-button size="small" type="danger" @click="handleDelete(currentDatasetId)">删除</el-button>
+        </div>
+      </div>
+    </div>
+
+    <el-dialog
+      title="创建数据集"
+      :visible.sync="dialogFormVisible"
+      width="720px"
+      custom-class="dataset-dialog"
+    >
+      <div class="dialog-content">
+        <div class="dialog-subtitle">先创建数据集，然后在详情页上传文件。</div>
+        <el-form :model="form" :rules="rules" ref="formRef" label-position="top">
+            <el-form-item
+            label="数据集名称"
+            prop="name"
+            >
+            <el-input v-model="form.name" autocomplete="off" :disabled="createdDatasetId" placeholder="例如：交通标志"></el-input>
+            </el-form-item>
+            <el-form-item
+            label="数据集类型"
+            prop="type"
+            >
+            <el-select v-model="form.type" placeholder="选择类型" :disabled="createdDatasetId" style="width: 100%">
+                <el-option
+                v-for="item in selectOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
+                ></el-option>
+            </el-select>
+            </el-form-item>
+        </el-form>
+
+        <div class="create-dataset-actions">
+            <el-button
+            type="primary"
+            :loading="creatingDataset"
+            :disabled="createdDatasetId"
+            @click="handleCreateDataset"
+            >创建</el-button>
+            <el-button
+            v-if="createdDatasetId"
+            type="primary"
+            plain
+            class="view-detail-btn"
+            @click="goToCreatedDetail"
+            >打开详情</el-button>
+            <el-button
+            v-if="createdDatasetId"
+            type="text"
+            class="reset-dataset-btn"
+            @click="resetCreatedDataset"
+            >继续创建</el-button>
+            <span v-if="createdDatasetId" class="created-tip">已创建。ID：{{ createdDatasetId }}</span>
+            <span v-else class="created-tip">创建后在详情页上传 ZIP 文件。</span>
+        </div>
+      </div>
     </el-dialog>
   </div>
 </template>
 
+
 <script>
-import { fetchDatasets, deleteDataset, FetchDatasetStatistics, FetchDatasetPreviewImage, FetchDatasetClassNames } from "@/api/datasets";
-import UploadZip from "@/components/Upload/index.vue";
+import { fetchDatasets, createDataset, deleteDataset, FetchDatasetStatistics, FetchDatasetPreviewImage, FetchDatasetClassNames } from "@/api/datasets";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
   name: "Datasets",
-  components: { UploadZip },
+  components: {},
   data() {
     return {
-      searchQuery: "", // 搜索关键词
-      activeIndex: "1",
+      searchQuery: "", // Search keywords
       options: [
         { value: "all", label: "全部" },
-        { value: "detection", label: "Detect(目标检测)" },
-        { value: "segmentation", label: "Segment(实例分割)" },
-        { value: "classification", label: "Classify(分类)" },
+        { value: "detection", label: "检测" },
+        { value: "segmentation", label: "分割" },
+        { value: "classification", label: "分类" },
       ],
       selectOptions: [
-        { value: "detection", label: "Detect(目标检测)" },
-        { value: "segmentation", label: "Segment(实例分割)" },
-        { value: "classification", label: "Classify(分类)" },
+        { value: "detection", label: "检测" },
+        { value: "segmentation", label: "分割" },
+        { value: "classification", label: "分类" },
       ],
       value: "all",
-      isShow: true,
       activeFilter: null,
       datasets: [],
       originalDatasets: [],
@@ -177,9 +215,25 @@ export default {
       },
       showPopup: false,
       currentDatasetId: null,
+      createdDatasetId: null,
+      creatingDataset: false,
       defaultPreview: defaultDatasetImg,
+      bodyOverflowBackup: '',
+      htmlOverflowBackup: '',
     };
   },
+  watch: {
+    dialogFormVisible(val) {
+      if (!val) {
+        this.createdDatasetId = null;
+        this.creatingDataset = false;
+        if (this.$refs.formRef) {
+          this.$refs.formRef.resetFields();
+        }
+      }
+    }
+  },
+
   computed: {
     // 综合过滤：先按名称搜索，再按类型过滤，最后排序
     filteredDatasets() {
@@ -226,12 +280,6 @@ export default {
     }
   },
   methods: {
-    handleSelect(key, keyPath) {
-      this.activeIndex = key;
-    },
-    changeShow() {
-      this.isShow = !this.isShow;
-    },
     setActiveFilter(filter) {
       this.activeFilter = this.activeFilter === filter ? null : filter;
     },
@@ -240,7 +288,6 @@ export default {
       // 筛选变化时会自动触发computed重新计算
     },
     goDetail(dataset) {
-      console.log('点击的数据集信息:', dataset);
       if (this.$route.path !== "/datadetail") {
         const queryData = {
           datasetId: dataset.dataset_id,
@@ -250,22 +297,52 @@ export default {
           numImages: dataset.num_images,
           datasetSize: dataset.dataset_size_mb
         };
-        console.log('准备传递的query数据:', queryData);
         this.$router.push({
           path: "/datadetail",
           query: queryData
         });
       }
     },
-    handleUploadSuccess(datasetId) {
-      this.$message.success(`数据集上传成功，ID: ${datasetId}`);
+    resetCreatedDataset() {
+      this.createdDatasetId = null;
+      this.$nextTick(() => {
+        if (this.$refs.formRef) {
+          this.$refs.formRef.clearValidate();
+        }
+      });
+    },
+    goToCreatedDetail() {
+      if (!this.createdDatasetId) return;
+      const queryData = {
+        datasetId: this.createdDatasetId,
+        datasetName: this.form.name,
+        datasetType: this.form.type,
+      };
       this.dialogFormVisible = false;
-      this.$refs.formRef.resetFields();
-      this.fetchDatasetsList();
+      this.$router.push({ path: "/datadetail", query: queryData });
     },
-    handleUploadFail(errorMsg) {
-      this.$message.error(`上传失败: ${errorMsg}`);
+
+    async handleCreateDataset() {
+      if (this.creatingDataset) return;
+      if (this.createdDatasetId) return;
+      try {
+        this.creatingDataset = true;
+        await this.$refs.formRef.validate();
+        const payload = {
+          name: this.form.name,
+          dataset_type: this.form.type,
+        };
+        const ds = await createDataset(payload);
+        this.createdDatasetId = ds && (ds.dataset_id || ds.id);
+        this.$message({ type: 'success', message: `数据集已创建: ${this.form.name}` });
+        this.fetchDatasetsList();
+      } catch (error) {
+        this.$message({ type: 'error', message: '创建失败: ' + (error.message || error) });
+      } finally {
+        this.creatingDataset = false;
+      }
     },
+
     async fetchDatasetsList() {
       try {
         const list = await fetchDatasets();
@@ -276,7 +353,7 @@ export default {
         this.loadStatsParallel();
         this.loadPreviewsParallel(4);
       } catch (e) {
-        console.error('获取数据集失败:', e);
+        console.error('Failed to fetch datasets:', e);
         this.datasets = [];
         this.originalDatasets = [];
       }
@@ -338,11 +415,11 @@ export default {
     },
     async handleDelete(id) {
       try {
-        await deleteDataset(id);
+        await deleteDataset(id, { force: true, deleteFiles: true });
         this.showPopup = false;
         this.fetchDatasetsList();
       } catch (error) {
-        alert(`删除失败：${error.message}`);
+        alert(`删除失败: ${error.message}`);
       }
     },
     handleShowDeletePopup(datasetId) {
@@ -369,8 +446,8 @@ export default {
     getDatasetTypeLabel(type) {
       const typeMap = {
         'detection': '目标检测',
-        'segmentation': '实例分割', 
-        'classification': '分类',
+        'segmentation': '图像分割', 
+        'classification': '图像分类',
       };
       return typeMap[type] || type || '未知';
     },
@@ -394,241 +471,327 @@ export default {
 
 
 <style scoped>
-.datasets {
-  margin-left: 10px;
-  box-sizing: border-box;
-  width: calc(100% - 10px); /* 占据父容器全部宽度（减去左侧margin） */
-  /* 去掉最大宽度限制，允许铺满到屏幕右侧 */
-  max-width: none;
-}
-.top {
+.datasets-page {
+  height: 100%;
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+/* Hero Section */
+.ds-hero {
+  flex-shrink: 0;
+  display: flex;
   justify-content: space-between;
-}
-.top h3 {
-  font-size: 24px;
-  font-weight: bolder;
-  color: #111f68;
-}
-.secondFloor {
-  display: flex;
-  align-items: center;
-  width: 100%;
-  margin-top: 16px;
-}
-.el-menu-demo {
-  display: flex;
-}
-.input {
-  margin: 0 20px;
-  width: 300px;
-  max-width: 500px;
-}
-
-.el-dropdown-link {
-  cursor: pointer;
-  color: #409eff;
-}
-.el-icon-arrow-down {
-  font-size: 12px;
-}
-.selectPart {
-  margin-right: 20px;
-  margin-left: 3px;
-  width: 350px;
-}
-
-.searchShow {
-  margin-top: 30px;
-  display: flex;
-  align-items: center;
-}
-
-.pictureItem {
+  align-items: flex-end;
+  gap: 2rem;
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: var(--text-main);
   position: relative;
-  height: 200px;
-  background-color: #fff;
-  border-radius: 20px;
-  margin: 16px 0; /* 横向间距交给父容器的 gap 控制 */
-  flex: 1 1 65%;
-  max-width: 48%;
-  min-width: 300px;
-  box-sizing: border-box;
-  box-shadow: 0 0 10px 3px rgba(0, 0, 0, 0.05);
-}
-.pictureItem:hover {
-  box-shadow: 0 0 12px 3px rgba(0, 0, 0, 0.1);
-}
-.showList {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 24px;
-  width: 100%;
-}
-.wordsPart {
-  margin: 25px;
-  width: 50%;
-}
-.messageTitle {
-  font-size: 20px;
-  font-weight: bolder;
-}
-.message {
-  font-size: 15px;
-}
-.dataPart {
-  margin: 20px;
-  margin-top: 35px;
-  display: flex;
-  gap: 10px;
-  font-size: 12px;
-}
-.classes {
-  width: 65px;
-  height: 30px;
-  border-radius: 3px;
-  background-color: #f3f3f3;
-  line-height: 30px;
-  text-align: center;
-}
-.images {
-  width: 65px;
-  height: 30px;
-  border-radius: 3px;
-  background-color: #f3f3f3;
-  line-height: 30px;
-  text-align: center;
-}
-.MBsize {
-  width: 65px;
-  height: 30px;
-  border-radius: 3px;
-  background-color: #f3f3f3;
-  line-height: 30px;
-  text-align: center;
+  overflow: hidden;
 }
 
-::v-deep .custom-primary-btn {
+.ds-hero::before {
+  content: none;
+}
+
+.ds-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  position: relative;
+  z-index: 1;
+}
+
+.ds-eyebrow {
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.ds-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.ds-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.ds-hero-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  position: relative;
+  z-index: 1;
+}
+
+.search-shell {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: #f3f4f6;
+  border-radius: var(--radius-full);
+  border: 1px solid #e5e7eb;
+  transition: all 0.3s ease;
+}
+
+.search-shell:focus-within {
+  background: #ffffff;
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 2px rgba(0,0,0,0.05);
+}
+
+.search-shell i {
+  color: var(--text-secondary);
+}
+
+.search-input ::v-deep .el-input__inner {
+  border: none;
+  background: transparent;
+  color: var(--text-main);
+  height: auto;
+  padding: 0;
+  line-height: normal;
+}
+
+.search-input ::v-deep .el-input__inner::placeholder {
+  color: var(--text-secondary);
+  opacity: 0.7;
+}
+
+.primary-action {
+  border-radius: var(--radius-full) !important;
+  font-weight: 600;
+}
+
+/* Toolbar */
+.ds-toolbar {
+  padding: 1rem;
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.toolbar-left, .toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+
+.filter-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.filter-label {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+/* Custom Chip Buttons */
+.chip {
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-full);
+  border: 1px solid transparent;
+  background: rgba(0,0,0,0.05); /* slightly dark on light theme */
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  transition: all 0.2s ease;
+}
+
+.chip:hover {
+  background: rgba(0,0,0,0.1);
+  color: var(--text-main);
+}
+
+.chip.active {
+  background: var(--color-primary);
+  color: white;
+  box-shadow: var(--shadow-sm);
+}
+
+/* Grid & Cards */
+.ds-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.5rem;
+}
+
+.dataset-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 1.5rem;
+}
+
+.dataset-card {
+  background: var(--bg-card-glass);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  cursor: pointer;
+  transition: all var(--transition-normal);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+}
+
+.dataset-card:hover {
+  transform: translateY(-5px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-primary-light);
+}
+
+.card-media {
+  height: 160px;
+  background-size: cover;
+  background-position: center;
+  position: relative;
+}
+
+.card-overlay {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%);
+}
+
+.card-type {
+  position: absolute;
+  top: 1rem;
+  left: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 0.25rem 0.75rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--color-primary-dark);
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+
+.card-more {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  background: rgba(255, 255, 255, 0.9);
+  border: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #111f68 !important;
-  border-color: #111f68 !important;
-  border-radius: 20px;
-  position: absolute;
-  top:20px;
-  right:20px
-}
-
-::v-deep .custom-primary-btn:hover {
-  background-color: #25388e !important;
-  border-color: #25388e !important;
-}
-
-::v-deep .filter-btn {
-  background-color: #ffffff !important;
-  border-color: #111f68 !important;
-  color: #111f68 !important;
-  border-radius: 20px !important;
-  margin-right: 10px !important;
-}
-
-::v-deep .filter-btn.active-btn {
-  background-color: #111f68 !important;
-  border-color: #111f68 !important;
-  color: #ffffff !important;
-}
-
-::v-deep .el-menu-demo {
-  border-bottom: none !important;
-}
-
-::v-deep .el-menu-demo .nav-item {
-  margin: 0 10px !important;
-  min-width: 80px !important;
-  text-align: center !important;
-}
-
-::v-deep .el-menu-demo .el-menu-item.is-active {
-  color: #111f68 !important;
-  border-bottom: 2px solid #111f68 !important;
-}
-.image-part {
-  position: absolute;
-  top: 20px;
-  right: 10px;
-  width: 45%;
-  height: 80%;
-  /* background-color: #25388e; */
-  border-radius: 10px;
-  background-image: url(~@/assets/images/Datasets/image.png);
-  background-size: cover;
-  background-position: center;
-}
-.el-dialog {
-  width: 600px !important;
-}
-
-.el-form-item {
-  margin-bottom: 20px !important;
-}
-
-.el-input {
-  width: 80%;
-}
-
-/* 只影响对话框内的按钮和弹窗按钮，不影响筛选按钮 */
-.el-dialog .el-button,
-.popup button {
-  background-color: #111f68 !important;
-  color: #fff !important;
-  border-color: #111f68;
-  border-radius: 20px;
-}
-.more {
-  position: absolute;
-  width: 30px;
-  height: 30px;
-  right: 5px;
-  top: 5px;
-  background-color: #f3f3f3;
-  border-radius: 50%;
-  line-height: 25px;
-  text-align: center;
-  color: rgb(161, 155, 155);
   cursor: pointer;
-
-  /* 修改点：使用visibility替代display */
-  visibility: hidden;
-  opacity: 0;
-  transition: opacity 0.3s ease-in-out, visibility 0.3s;
-
-  /* 可选：添加缩放效果增强视觉体验 */
-  transform: scale(0.8);
-  transition: opacity 0.2s ease-in-out, visibility 0.3s, transform 0.3s;
+  z-index: 2;
+  box-shadow: var(--shadow-sm);
+  color: var(--text-secondary);
 }
 
-.pictureItem:hover .more {
-  visibility: visible;
-  opacity: 1;
-
-  /* 可选：添加缩放效果增强视觉体验 */
-  transform: scale(1);
-}
-.more:hover {
-  background-color: #dddcdc;
-  color: rgb(131, 127, 127);
+.card-more:hover {
+    background: white;
+    color: var(--color-primary);
 }
 
-/* 新增：弹窗和遮罩样式 */
+.card-body {
+  padding: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  flex: 1;
+}
+
+.card-header {
+    margin-bottom: 0.5rem;
+}
+
+.card-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-main);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.card-stats {
+  margin-top: auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  border-top: 1px solid rgba(0,0,0,0.05);
+  padding-top: 1rem;
+}
+
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  text-align: center;
+  background: rgba(0,0,0,0.02);
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.25rem;
+}
+
+.stat-value {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+
+/* Empty State */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 4rem;
+  border: 1px dashed rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.empty-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+}
+
+.empty-desc {
+  color: var(--text-secondary);
+  margin-bottom: 1.5rem;
+}
+
+/* Popup */
 .mask {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.4);
+  backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -636,57 +799,52 @@ export default {
 }
 
 .popup {
-  width: 400px;
-  height: 120px;
-  background: white;
-  border-radius: 8px;
-  padding: 20px;
-  box-sizing: border-box;
-}
-.popup p {
-  font-size: 20px;
-  margin-left: 100px;
-  color: #111f68;
-}
-.popup button {
-  width: 50px;
-  height: 30px;
-  background-color: #111f68;
-  color: #fff;
-  border-radius: 10px;
-  /* margin: 20px 5px; */
-  margin-top: 20px;
-}
-.popup button:nth-child(2) {
-  margin-left: 240px;
-  margin-right: 10px;
-}
-.el-icon-s-operation{
-  cursor: pointer;
-  width: 25px;
-  height: 25px;
-  font-size: 20px;
+  width: 320px;
+  padding: 2rem;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: font-size 0.1s ease-in-out;
-}
-.el-icon-s-operation:hover{
-  font-size: 22px;
+  flex-direction: column;
+  gap: 1.5rem;
+  text-align: center;
 }
 
-/* 响应式：中屏时两列更紧凑，小屏单列铺满，避免拥挤与空白 */
-@media (max-width: 1200px) {
-  .pictureItem {
-    flex-basis: 45%;
-    max-width: 45%;
-  }
+.popup p {
+    font-weight: 600;
+    font-size: 1.125rem;
 }
-@media (max-width: 768px) {
-  .pictureItem {
-    flex-basis: 100%;
-    max-width: 100%;
-    min-width: 0;
+
+.popup-actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+}
+
+/* Custom Dialog Content */
+
+.dialog-content {
+    padding: 1rem 2rem;
+}
+
+.dialog-subtitle {
+    margin-bottom: 1.5rem;
+    color: var(--text-secondary);
+}
+
+.create-dataset-actions {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-top: 2rem;
+}
+
+.created-tip {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+}
+
+@media (max-width: 960px) {
+  .ds-hero {
+    flex-direction: column;
+    align-items: flex-start;
   }
 }
 </style>

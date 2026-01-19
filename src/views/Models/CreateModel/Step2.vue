@@ -1,38 +1,60 @@
 <template>
-<div class="ModelsStep2">
-    <div class="ModelTitle">训练配置</div>
-    <div class="InputPart">
-        <div class="trainConfig">
-            <div class="trainTitle">训练项目: {{ selectedProject ? selectedProject.project_name : '未选择项目' }}</div>
+  <div class="models-step2">
+    <header class="step-hero">
+      <div class="hero-text">
+        <div class="hero-eyebrow">Training Configuration</div>
+        <h2 class="hero-title">Configure your run</h2>
+        <p class="hero-sub">
+          Select a model architecture and tune training parameters for this project.
+        </p>
+      </div>
+      <div class="hero-cards">
+        <div class="hero-card">
+          <div class="hero-label">Project</div>
+          <div class="hero-value">{{ projectName }}</div>
         </div>
-    </div>
-    
-    <div class="choosePart">
-        <div class="OfficialPart" :class="{ active: activeTab === 'official' }" @click="switchTab('official')">
-            官方
+        <div class="hero-card">
+          <div class="hero-label">Dataset</div>
+          <div class="hero-value">{{ datasetName }}</div>
         </div>
-    </div>
-    
-    <!-- 开始训练按钮 -->
-    <div class="train-action">
-        <el-button 
-            type="primary" 
-            size="large" 
-            @click="addTrainingTask"
-            :loading="isAdding"
-            :disabled="!selectedProject || !selectedModel"
-            class="add-task-btn"
-        >
-            {{ isAdding ? '添加中...' : '添加训练任务' }}
-        </el-button>
-    </div>
-    
-    <Official 
-        @model-selected="handleModelSelected"
-        @config-changed="handleConfigChanged"
-        :selected-project="selectedProject"
-    />
-</div>
+        <div class="hero-card">
+          <div class="hero-label">Model</div>
+          <div class="hero-value">{{ modelName }}</div>
+        </div>
+      </div>
+    </header>
+
+    <section class="step-body">
+      <div class="step-toolbar">
+        <div class="tab-pill active">Official Models</div>
+        <div class="tab-note">Ultralytics curated architectures</div>
+      </div>
+
+      <div class="step-panel">
+        <Official
+          @model-selected="handleModelSelected"
+          @config-changed="handleConfigChanged"
+          :selected-project="selectedProject"
+        />
+      </div>
+    </section>
+
+    <footer class="step-footer">
+      <div class="footer-note" :class="{ ready: canSubmit }">
+        {{ footerMessage }}
+      </div>
+      <el-button
+        type="primary"
+        size="large"
+        @click="addTrainingTask"
+        :loading="isAdding"
+        :disabled="!canSubmit"
+        class="primary-btn"
+      >
+        {{ isAdding ? 'Adding...' : 'Add Training Job' }}
+      </el-button>
+    </footer>
+  </div>
 </template>
 
 <script>
@@ -40,274 +62,343 @@ import { createTrainingJob } from "@/api/training";
 import Official from "@/views/Models/Official.vue";
 
 export default {
-    name: "ModelsStep2",
-    components: { Official },
-    props: {
-        project: {
-            type: Object,
-            default: null
-        }
+  name: "ModelsStep2",
+  components: { Official },
+  props: {
+    project: {
+      type: Object,
+      default: null
+    }
+  },
+  data() {
+    return {
+      selectedProject: null,
+      selectedModel: null,
+      isAdding: false,
+      trainParams: {
+        project_id: null,
+        project_name: "",
+        dataset_name: "",
+        model_architecture: "",
+        architecture_id: null,
+        epochs: 100,
+        batch_size: 16,
+        learning_rate: 0.01,
+        img_size: 640,
+        optimizer: "auto",
+        device: "cpu",
+        workers: 8,
+        patience: 50,
+        use_pretrained: true,
+        pretrained_model_path: "",
+        resume_training: false,
+        resume_job_id: "",
+        resume_from_epoch: 0,
+        momentum: 0.937,
+        weight_decay: 0.0005,
+        warmup_epochs: 3,
+        warmup_momentum: 0.8,
+        warmup_bias_lr: 0.1
+      }
+    };
+  },
+  computed: {
+    projectName() {
+      return this.selectedProject?.project_name || "No project selected";
     },
-    data() {
-        return {
-            value: "",
-            activeTab: "official", // 新增：默认选中官方标签
-            selectedProject: null, // 添加选中的项目数据
-            selectedModel: null, // 当前选择的模型
-            isTraining: false, // 训练状态
-            isCreating: false, // 创建状态
-            isAdding: false,
-            trainParams: {
-                project_id: null,
-                project_name: this.selectedProject ? this.selectedProject.project_name : '',
-                dataset_name: this.selectedProject ? this.selectedProject.dataset.dataset_name : '',
-                model_architecture: "",
-                architecture_id: null,
-                epochs: 100,
-                batch_size: 16,
-                learning_rate: 0.01,
-                img_size: 640,
-                optimizer: "auto",
-                device: "cpu",
-                workers: 8,
-                patience: 50,
-                use_pretrained: true,
-                pretrained_model_path: "",
-                resume_training: false,
-                resume_job_id: "",
-                resume_from_epoch: 0,
-                momentum: 0.937,
-                weight_decay: 0.0005,
-                warmup_epochs: 3,
-                warmup_momentum: 0.8,
-                warmup_bias_lr: 0.1
-            }
+    datasetName() {
+      const fromProject = this.selectedProject?.dataset?.dataset_name;
+      const fromParams = this.trainParams.dataset_name;
+      return fromProject || fromParams || "No dataset linked";
+    },
+    modelName() {
+      return this.selectedModel ? this.formatModelLabel(this.selectedModel) : "Select a model";
+    },
+    canSubmit() {
+      return !!(this.selectedProject && this.selectedModel && this.trainParams.dataset_name);
+    },
+    footerMessage() {
+      if (!this.selectedProject) return "Select a project to continue.";
+      if (!this.selectedModel) return "Pick a model architecture to enable training.";
+      if (!this.trainParams.dataset_name) return "This project has no dataset linked.";
+      return "Ready to add a training job.";
+    }
+  },
+  methods: {
+    formatModelLabel(value) {
+      const v = String(value || "").trim();
+      if (!v) return "";
+      return v.replace(/^yolo/i, "YOLO");
+    },
+    handleModelSelected(modelData) {
+      this.selectedModel = modelData.model;
+      this.trainParams.model_architecture = modelData.model;
+      this.trainParams.architecture_id = modelData.architecture_id || null;
+      console.log("Training modal - selected model:", modelData);
+    },
+    handleConfigChanged(configData) {
+      this.trainParams = { ...this.trainParams, ...configData };
+      if (this.selectedProject?.dataset?.dataset_name && !this.trainParams.dataset_name) {
+        this.trainParams.dataset_name = this.selectedProject.dataset.dataset_name;
+      }
+      console.log("Training modal - config updated:", configData);
+    },
+    async addTrainingTask() {
+      if (!this.selectedProject) {
+        this.$message.error("Please select a project first.");
+        return;
+      }
+      if (!this.selectedModel) {
+        this.$message.error("Please choose a model architecture.");
+        return;
+      }
+      if (!this.trainParams.dataset_name) {
+        this.$message.error("This project has no dataset linked. Please attach one first.");
+        return;
+      }
+      this.isAdding = true;
+      try {
+        const trainingData = {
+          ...this.trainParams,
+          project_id: this.selectedProject.project_id,
+          project_name: this.selectedProject.project_name,
+          model_architecture: this.selectedModel
         };
+        console.log("Submitting training job:", trainingData);
+        const result = await createTrainingJob(trainingData);
+        this.$message.success("Training job added successfully (status pending).");
+        this.EventBus && this.EventBus.$emit("taskAdded", result);
+        this.$emit("task-added", result);
+        this.$emit("close");
+      } catch (error) {
+        console.error("Failed to add training job:", error);
+        this.$message.error("Failed to add training job: " + (error.message || "Unknown error"));
+      } finally {
+        this.isAdding = false;
+      }
     },
-    methods: {
-        // 切换标签的方法
-        switchTab(tab) {
-            this.activeTab = tab;
-            // 清除之前的模型选择
-            this.selectedModel = null;
-            this.trainParams.model_architecture = "";
-        },
-        goCustom() {},
-        goOfficial() {},
-        // 处理子组件的模型选择事件
-        handleModelSelected(modelData) {
-            this.selectedModel = modelData.model;
-            this.trainParams.model_architecture = modelData.model;
-            this.trainParams.architecture_id = modelData.architecture_id || null;
-            console.log('接收到模型选择:', modelData);
-        },
-        // 处理子组件的配置变化事件
-        handleConfigChanged(configData) {
-            this.trainParams = { ...this.trainParams, ...configData };
-            console.log('接收到配置变化:', configData);
-        },
-        // 开始训练方法
-        async startTraining() {
-            if (!this.selectedProject) {
-                this.$message.error('请先选择一个项目');
-                return;
+    updateProjectInfo(project) {
+      if (!project) return;
+      this.selectedProject = project;
+      this.trainParams.project_id = project.project_id;
+      this.trainParams.project_name = project.project_name || "";
+      this.trainParams.dataset_name = project?.dataset?.dataset_name || "";
+
+      console.log("Training modal - project selected:", project);
+    }
+  },
+  mounted() {
+    this._projectSelectedHandler = (project) => {
+      this.updateProjectInfo(project);
+    };
+    this.EventBus && this.EventBus.$on("projectSelected", this._projectSelectedHandler);
+    if (this.project) {
+      this.updateProjectInfo(this.project);
+    } else {
+      const projectId = this.$route && this.$route.query && this.$route.query.projectId;
+      if (projectId) {
+        try {
+          const stored = localStorage.getItem("currentProject");
+          if (stored) {
+            const p = JSON.parse(stored);
+            if (p && (p.project_id === projectId || p.project_id === Number(projectId))) {
+              this.updateProjectInfo(p);
             }
-            
-            if (!this.selectedModel) {
-                this.$message.error('请先选择模型架构');
-                return;
-            }
-            console.log("当前选择的数据集名称:", this.trainParams);
-            // 验证数据集名称（从项目关联的数据集获取）
-            if (!this.trainParams.dataset_name) {
-                this.$message.error('项目未关联数据集，请检查项目配置');
-                return;
-            }
-            
-            this.isTraining = true;
-            
-            try {
-                // 准备训练参数
-                const trainingData = {
-                    ...this.trainParams,
-                    project_name: this.selectedProject.project_name,
-                    model_architecture: this.selectedModel
-                };
-                
-                console.log('提交训练参数:', trainingData);
-                
-                // 调用训练接口
-                const result = await startTraining(trainingData);
-                
-                this.$message.success('训练任务已成功提交！');
-                console.log('训练结果:', result);
-                
-                // 可以在这里添加跳转到训练状态页面的逻辑
-                // this.$router.push('/training-status');
-                
-            } catch (error) {
-                console.error('训练提交失败:', error);
-                this.$message.error('训练提交失败: ' + (error.message || '未知错误'));
-            } finally {
-                this.isTraining = false;
-            }
-        },
-        async addTrainingTask() {
-            if (!this.selectedProject) {
-                this.$message.error('请先选择一个项目');
-                return;
-            }
-            if (!this.selectedModel) {
-                this.$message.error('请先选择模型架构');
-                return;
-            }
-            if (!this.trainParams.dataset_name) {
-                this.$message.error('项目未关联数据集，请检查项目配置');
-                return;
-            }
-            this.isAdding = true;
-            try {
-                const trainingData = {
-                    ...this.trainParams,
-                    project_id: this.selectedProject.project_id,
-                    project_name: this.selectedProject.project_name,
-                    model_architecture: this.selectedModel
-                };
-                console.log('提交添加参数:', trainingData);
-                const result = await createTrainingJob(trainingData);
-                this.$message.success('训练任务已成功添加！(状态: pending)');
-                this.EventBus && this.EventBus.$emit('taskAdded', result);
-                this.$emit('task-added', result);
-                this.$emit('close');
-            } catch (error) {
-                console.error('添加失败:', error);
-                this.$message.error('添加失败: ' + (error.message || '未知错误'));
-            } finally {
-                this.isAdding = false;
-            }
-        },
-        // 更新项目信息时同步训练参数
-        updateProjectInfo(project) {
-            this.selectedProject = project;
-            this.value = project.project_name;
-            this.trainParams.project_id = project.project_id;
-            this.trainParams.project_name = project.project_name;
-            
-            // 如果项目关联了数据集，自动填充数据集名称
-            if (project && project.dataset && project.dataset.dataset_name) {
-                this.trainParams.dataset_name = project.dataset.dataset_name;
-            }
-            
-            console.log('Step2 接收到项目:', project);
-        }
-    },
-    mounted() {
-        this.EventBus && this.EventBus.$on('projectSelected', (project) => {
-            this.updateProjectInfo(project);
-        });
-        if (this.project) {
-            this.updateProjectInfo(this.project);
-        } else {
-            const projectId = this.$route && this.$route.query && this.$route.query.projectId;
-            if (projectId) {
-                try {
-                    const stored = localStorage.getItem('currentProject');
-                    if (stored) {
-                        const p = JSON.parse(stored);
-                        if (p && (p.project_id === projectId || p.project_id === Number(projectId))) {
-                            this.updateProjectInfo(p);
-                        }
-                    }
-                } catch (e) {}
-            }
-        }
-    },
-    watch: {
-        project: {
-            handler(p) {
-                if (p) this.updateProjectInfo(p);
-            },
-            immediate: true
-        }
-    },
-    beforeDestroy() {
-        this.EventBus && this.EventBus.$off('projectSelected');
-    },
+          }
+        } catch (e) {}
+      }
+    }
+  },
+  watch: {
+    project: {
+      handler(p) {
+        if (p) this.updateProjectInfo(p);
+      },
+      immediate: true
+    }
+  },
+  beforeDestroy() {
+    if (this.EventBus && this._projectSelectedHandler) {
+      this.EventBus.$off("projectSelected", this._projectSelectedHandler);
+    }
+  }
 };
 </script>
 
 <style scoped>
-.ModelsStep2 {
-    margin: 0 12px 12px 12px;
-    color: #111f68;
-    width: 100%;
-    /* max-width: 100%; */
+.models-step2 {
+  --ink-900: #111315;
+  --ink-700: #3e4a5b;
+  --ink-500: #6a7482;
+  --line-200: #e4e7ee;
+  --brand-700: #2b3a67;
+  --brand-500: #4f63c7;
+  --brand-300: #9bb0ff;
+  --card-shadow: 0 18px 35px rgba(16, 18, 24, 0.12);
+  font-family: "Space Grotesk", "Sora", "Manrope", "Segoe UI", sans-serif;
+  color: var(--ink-900);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
 }
 
-.InputPart {
-    display: flex;
-    margin-left: 3px;
-    margin-bottom: 20px;
+.step-hero {
+  background: linear-gradient(120deg, #1b1f3b 0%, #2f3f7a 45%, #4f63c7 100%);
+  color: #fff;
+  border-radius: 20px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr;
+  gap: 16px;
+  box-shadow: var(--card-shadow);
 }
 
-.ModelTitle {
-    font-size: 20px;
-    color: #111f68;
-    margin-bottom: 15px;
+.hero-text {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-.choosePart {
-    display: flex;
-    font-size: 16px;
-    margin-bottom: 24px;
+.hero-eyebrow {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+  opacity: 0.7;
 }
 
-.OfficialPart,
-.CustomPart {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 80px;
-    height: 40px;
-    cursor: pointer;
+.hero-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
 }
 
-/* 修改为只在 active 类存在时显示下划线 */
-.OfficialPart.active,
-.CustomPart.active {
-    border-bottom: 2px solid #111f68;
+.hero-sub {
+  margin: 0;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.78);
+  line-height: 1.5;
 }
 
-.OfficialPart {
-    margin-right: 15px;
+.hero-cards {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
 }
 
-/* 训练按钮样式 */
-.train-action {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 20px;
+.hero-card {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.16);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  backdrop-filter: blur(6px);
 }
 
-.add-task-btn {
-    background-color: #111f68 !important;
-    border-color: #111f68 !important;
-    color: #fff !important;
-    font-size: 16px;
-    padding: 12px 36px;
-    border-radius: 8px;
-    font-weight: 600;
+.hero-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  opacity: 0.7;
 }
 
-.add-task-btn:hover,
-.add-task-btn:focus {
-    background-color: #324293 !important;
-    border-color: #324293 !important;
+.hero-value {
+  font-size: 14px;
+  font-weight: 600;
+  word-break: break-word;
 }
 
-.add-task-btn:disabled {
-    background-color: #c0c4cc !important;
-    border-color: #c0c4cc !important;
-    cursor: not-allowed;
+.step-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.step-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.tab-pill {
+  padding: 6px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #f2f4fb;
+  color: var(--brand-700);
+}
+
+.tab-pill.active {
+  background: rgba(79, 99, 199, 0.15);
+  color: var(--brand-700);
+}
+
+.tab-note {
+  font-size: 12px;
+  color: var(--ink-500);
+}
+
+.step-panel {
+  background: #fff;
+  border-radius: 18px;
+  padding: 18px;
+  border: 1px solid var(--line-200);
+  box-shadow: var(--card-shadow);
+}
+
+.step-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.footer-note {
+  font-size: 12px;
+  color: var(--ink-500);
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #f4f6fb;
+}
+
+.footer-note.ready {
+  color: #2563eb;
+  background: rgba(37, 99, 235, 0.12);
+}
+
+.primary-btn {
+  border-radius: 999px !important;
+  background: #f9d86e !important;
+  border-color: #f9d86e !important;
+  color: #222 !important;
+  font-weight: 600;
+  padding: 10px 22px;
+  box-shadow: 0 8px 18px rgba(249, 216, 110, 0.35);
+}
+
+.primary-btn:hover {
+  background: #f6c949 !important;
+  border-color: #f6c949 !important;
+}
+
+@media (max-width: 900px) {
+  .step-hero {
+    grid-template-columns: 1fr;
+  }
+  .hero-cards {
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  }
+}
+
+@media (max-width: 600px) {
+  .models-step2 {
+    padding: 16px;
+  }
+  .step-hero {
+    padding: 16px;
+  }
 }
 </style>

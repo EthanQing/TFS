@@ -94,12 +94,12 @@ export async function FetchProjectsDetail(projectId) {
 }
 
 // deleteProject 删除项目接口（v2: DELETE /projects/{id}）
-export async function deleteProject(projectId) {
+export async function deleteProject(projectId, { force = false } = {}) {
     try {
         const id = Number(projectId);
         if (!Number.isFinite(id)) throw new Error('无效的 projectId');
 
-        const response = await fetch(`${API_BASE}/api/v2/projects/${id}`, {
+        const response = await fetch(`${API_BASE}/api/v2/projects/${id}?force=${force ? '1' : '0'}`, {
             method: 'DELETE',
         });
         const data = await safeJson(response);

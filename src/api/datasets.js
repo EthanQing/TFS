@@ -233,6 +233,57 @@ export async function fetchDatasets(page = 1, pageSize = 50) {
     }
 }
 
+
+// createDataset ???????????????????
+export async function createDataset({ name, dataset_type, description = null, storage_path = null } = {}) {
+    try {
+        const payload = {
+            name: name,
+            dataset_type: dataset_type,
+            storage_path: storage_path || name,
+            description: description || undefined,
+        };
+
+        const response = await fetch(`${API_BASE}/api/v2/datasets`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const result = await safeJson(response);
+        if (!response.ok) {
+            throw new Error(pickErrorMessage(result, response));
+        }
+        return result;
+    } catch (error) {
+        console.error('???????:', error);
+        throw error;
+    }
+}
+
+// uploadDatasetToExisting ??ZIP??????
+export async function uploadDatasetToExisting(datasetId, file, { message = null, created_by = null } = {}) {
+    try {
+        if (!datasetId) throw new Error('?? datasetId');
+        const formData = new FormData();
+        formData.append('file', file);
+        if (message) formData.append('message', message);
+        if (created_by) formData.append('created_by', created_by);
+
+        const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload`, {
+            method: 'POST',
+            body: formData
+        });
+        const result = await safeJson(response);
+        if (!response.ok) {
+            throw new Error(pickErrorMessage(result, response));
+        }
+        return result;
+    } catch (error) {
+        console.error('???????:', error);
+        throw error;
+    }
+}
+
 // uploadDataset 上传ZIP并创建数据集
 export async function uploadDataset(file, datasetName, datasetType, description = null) {
     try {
@@ -262,9 +313,9 @@ export async function uploadDataset(file, datasetName, datasetType, description 
 }
 
 // deleteDataset 删除数据集接口
-export async function deleteDataset(datasetId, { deleteFiles = false } = {}) {
+export async function deleteDataset(datasetId, { deleteFiles = false, force = false } = {}) {
     try {
-        const url = `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}?delete_files=${deleteFiles ? '1' : '0'}`;
+        const url = `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}?delete_files=${deleteFiles ? '1' : '0'}&force=${force ? '1' : '0'}`;
         const response = await fetch(url, { method: 'DELETE' });
         const result = await safeJson(response);
 

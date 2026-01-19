@@ -12,6 +12,18 @@ export default {
       type: Object,
       default: null
     },
+    customSeries: {
+      type: Array,
+      default: () => []
+    },
+    customTitle: {
+      type: String,
+      default: ""
+    },
+    customYAxisName: {
+      type: String,
+      default: ""
+    },
     chartType: {
       type: String,
       default: "metrics"
@@ -33,6 +45,12 @@ export default {
   },
   watch: {
     metrics: {
+      deep: true,
+      handler() {
+        this.updateChart();
+      }
+    },
+    customSeries: {
       deep: true,
       handler() {
         this.updateChart();
@@ -62,7 +80,8 @@ export default {
   },
   methods: {
     updateContainerStyle() {
-      if (this.chartType === "metrics") {
+      const hasCustom = Array.isArray(this.customSeries) && this.customSeries.length > 0;
+      if (this.chartType === "metrics" || (hasCustom && this.chartType === "overview")) {
         this.containerStyle = {
           width: "90%",
           height: "380px",
@@ -70,7 +89,6 @@ export default {
         };
         return;
       }
-      // Loss charts: smaller height
       this.containerStyle = {
         width: "95%",
         height: "260px",
@@ -102,132 +120,176 @@ export default {
         return 0;
       }
     },
+    _inferMaxLenFromSeries(series) {
+      try {
+        let maxLen = 0;
+        (series || []).forEach(item => {
+          const arr = item && item.data;
+          if (Array.isArray(arr)) maxLen = Math.max(maxLen, arr.length);
+        });
+        return maxLen || 0;
+      } catch (_) {
+        return 0;
+      }
+    },
     getChartOption() {
       const data = this.metrics?.metrics || {};
+      const useCustom = Array.isArray(this.customSeries) && this.customSeries.length > 0;
       let series = [];
       let title = "";
       let yAxisName = "";
+      const palette = [
+        "#4f63c7",
+        "#f6c949",
+        "#22c55e",
+        "#f97316",
+        "#06b6d4",
+        "#e11d48",
+        "#a855f7",
+        "#64748b"
+      ];
 
-      switch (this.chartType) {
-        case "metrics":
-          title = "模型性能指标";
-          yAxisName = "指标值";
-          series = [
-            {
-              name: "precision(B)-边界框精确率",
-              type: "line",
-              data: data["metrics/precision(B)"] || [],
-              symbol: "circle",
-              symbolSize: 6,
-              showSymbol: false,
-              itemStyle: { color: "#FF6B6B" }
-            },
-            {
-              name: "recall(B)-边界框召回率",
-              type: "line",
-              data: data["metrics/recall(B)"] || [],
-              symbol: "rect",
-              symbolSize: 6,
-              showSymbol: false,
-              itemStyle: { color: "#4ECDC4" }
-            },
-            {
-              name: "mAP50(B)-平均精确率50%",
-              type: "line",
-              data: data["metrics/mAP50(B)"] || [],
-              symbol: "triangle",
-              symbolSize: 6,
-              showSymbol: false,
-              itemStyle: { color: "#FFD166" }
-            },
-            {
-              name: "mAP50-95(B)-平均精确率50%-95%",
-              type: "line",
-              data: data["metrics/mAP50-95(B)"] || [],
-              symbol: "diamond",
-              symbolSize: 6,
-              showSymbol: false,
-              itemStyle: { color: "#1A535C" }
-            }
-          ];
-          break;
-        case "box_loss":
-          title = "Box Loss 边界框损失";
-          yAxisName = "Loss";
-          series = [
-            {
-              name: "训练",
-              type: "line",
-              data: data["train/box_loss"] || [],
-              symbol: "circle",
-              symbolSize: 4,
-              showSymbol: false,
-              itemStyle: { color: "#3498DB" }
-            },
-            {
-              name: "验证",
-              type: "line",
-              data: data["val/box_loss"] || [],
-              symbol: "circle",
-              symbolSize: 4,
-              showSymbol: false,
-              itemStyle: { color: "#E74C3C" }
-            }
-          ];
-          break;
-        case "cls_loss":
-          title = "Class Loss 类别损失";
-          yAxisName = "Loss";
-          series = [
-            {
-              name: "训练",
-              type: "line",
-              data: data["train/cls_loss"] || [],
-              symbol: "circle",
-              symbolSize: 4,
-              showSymbol: false,
-              itemStyle: { color: "#3498DB" }
-            },
-            {
-              name: "验证",
-              type: "line",
-              data: data["val/cls_loss"] || [],
-              symbol: "circle",
-              symbolSize: 4,
-              showSymbol: false,
-              itemStyle: { color: "#E74C3C" }
-            }
-          ];
-          break;
-        case "dfl_loss":
-          title = "DFL Loss 分布焦点损失";
-          yAxisName = "Loss";
-          series = [
-            {
-              name: "训练",
-              type: "line",
-              data: data["train/dfl_loss"] || [],
-              symbol: "circle",
-              symbolSize: 4,
-              showSymbol: false,
-              itemStyle: { color: "#3498DB" }
-            },
-            {
-              name: "验证",
-              type: "line",
-              data: data["val/dfl_loss"] || [],
-              symbol: "circle",
-              symbolSize: 4,
-              showSymbol: false,
-              itemStyle: { color: "#E74C3C" }
-            }
-          ];
-          break;
-        default:
-          series = [];
+      if (useCustom) {
+        title = this.customTitle || "指标";
+        yAxisName = this.customYAxisName || "";
+        series = this.customSeries.map((item, idx) => {
+          const color = item && item.color ? item.color : palette[idx % palette.length];
+          return {
+            name: item && item.name ? item.name : `系列 ${idx + 1}`,
+            type: "line",
+            data: (item && item.data) || [],
+            symbol: "circle",
+            symbolSize: 4,
+            showSymbol: false,
+            itemStyle: { color },
+            lineStyle: { color }
+          };
+        });
+      } else {
+        switch (this.chartType) {
+          case "metrics":
+            title = "模型指标";
+            yAxisName = "值";
+            series = [
+              {
+                name: "精确率",
+                type: "line",
+                data: data["metrics/precision(B)"] || [],
+                symbol: "circle",
+                symbolSize: 6,
+                showSymbol: false,
+                itemStyle: { color: "#FF6B6B" }
+              },
+              {
+                name: "召回率",
+                type: "line",
+                data: data["metrics/recall(B)"] || [],
+                symbol: "rect",
+                symbolSize: 6,
+                showSymbol: false,
+                itemStyle: { color: "#4ECDC4" }
+              },
+              {
+                name: "mAP50",
+                type: "line",
+                data: data["metrics/mAP50(B)"] || [],
+                symbol: "triangle",
+                symbolSize: 6,
+                showSymbol: false,
+                itemStyle: { color: "#FFD166" }
+              },
+              {
+                name: "mAP50-95",
+                type: "line",
+                data: data["metrics/mAP50-95(B)"] || [],
+                symbol: "diamond",
+                symbolSize: 6,
+                showSymbol: false,
+                itemStyle: { color: "#1A535C" }
+              }
+            ];
+            break;
+          case "box_loss":
+            title = "边界框损失";
+            yAxisName = "损失";
+            series = [
+              {
+                name: "训练集",
+                type: "line",
+                data: data["train/box_loss"] || [],
+                symbol: "circle",
+                symbolSize: 4,
+                showSymbol: false,
+                itemStyle: { color: "#3498DB" }
+              },
+              {
+                name: "验证集",
+                type: "line",
+                data: data["val/box_loss"] || [],
+                symbol: "circle",
+                symbolSize: 4,
+                showSymbol: false,
+                itemStyle: { color: "#E74C3C" }
+              }
+            ];
+            break;
+          case "cls_loss":
+            title = "分类损失";
+            yAxisName = "损失";
+            series = [
+              {
+                name: "训练集",
+                type: "line",
+                data: data["train/cls_loss"] || [],
+                symbol: "circle",
+                symbolSize: 4,
+                showSymbol: false,
+                itemStyle: { color: "#3498DB" }
+              },
+              {
+                name: "验证集",
+                type: "line",
+                data: data["val/cls_loss"] || [],
+                symbol: "circle",
+                symbolSize: 4,
+                showSymbol: false,
+                itemStyle: { color: "#E74C3C" }
+              }
+            ];
+            break;
+          case "dfl_loss":
+            title = "DFL损失";
+            yAxisName = "损失";
+            series = [
+              {
+                name: "训练集",
+                type: "line",
+                data: data["train/dfl_loss"] || [],
+                symbol: "circle",
+                symbolSize: 4,
+                showSymbol: false,
+                itemStyle: { color: "#3498DB" }
+              },
+              {
+                name: "验证集",
+                type: "line",
+                data: data["val/dfl_loss"] || [],
+                symbol: "circle",
+                symbolSize: 4,
+                showSymbol: false,
+                itemStyle: { color: "#E74C3C" }
+              }
+            ];
+            break;
+          default:
+            series = [];
+        }
       }
 
-      const maxLen = this.totalEpoch || this._inferMaxLen(data) || 100;
+      const maxLen =
+        this.totalEpoch ||
+        (useCustom ? this._inferMaxLenFromSeries(series) : this._inferMaxLen(data)) ||
+        100;
 
       return {
         title: {
@@ -257,9 +319,13 @@ export default {
         tooltip: {
           trigger: "axis",
           formatter: function (params) {
-            let result = `<div style="font-weight:bold;margin-bottom:5px">Epoch ${params[0]?.axisValue ?? "-"} </div>`;
+            let result = `<div style="font-weight:bold;margin-bottom:5px">轮次 ${
+              params[0]?.axisValue ?? "-"
+            } </div>`;
             params.forEach(param => {
-              const colorSpan = `<span style="display:inline-block;margin-right:5px;width:10px;height:10px;border-radius:50%;background-color:${param.color}"></span>`;
+              const colorSpan = `<span style="display:inline-block;margin-right:5px;width:10px;height:10px;border-radius:50%;background-color:${
+                param.color
+              }"></span>`;
               const v =
                 param && param.value != null && isFinite(param.value)
                   ? Number(param.value).toFixed(4)
@@ -276,7 +342,7 @@ export default {
         xAxis: {
           type: "category",
           data: Array.from({ length: maxLen }, (_, i) => i + 1),
-          name: "Epoch",
+          name: "轮次",
           nameLocation: "middle",
           nameGap: 25,
           axisLabel: {
@@ -338,4 +404,3 @@ export default {
   }
 }
 </style>
-

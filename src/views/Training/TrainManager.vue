@@ -1,540 +1,629 @@
 <template>
-<div>
-    <!-- 实时训练进度（WebSocket） -->
-    <div v-if="streamStatus" class="epoch-progress">
-        <div class="row">
-            <span>状态: {{ streamStatus }}</span>
-            <span>轮次: {{ currentEpoch }}/{{ totalEpochs || '-'}} </span>
+  <div class="train-manager">
+    <section class="tm-hero">
+      <div class="tm-hero-left">
+        <div class="tm-status" :class="statusClass">{{ statusLabel }}</div>
+        <h2 class="tm-title">训练指标</h2>
+        <p class="tm-subtitle">此运行的实时损失曲线和性能信号。</p>
+      </div>
+      <div class="tm-hero-right">
+        <div class="tm-stat">
+          <span>轮次</span>
+          <strong>{{ currentEpoch }}/{{ totalEpochs || '-' }}</strong>
         </div>
-        <div class="bar">
-            <div class="bar-inner" :style="{ width: epochPercent + '%' }"></div>
+        <div class="tm-stat">
+          <span>进度</span>
+          <strong>{{ progress ? progress + '%' : '-' }}</strong>
         </div>
-    </div>
-    <!-- 无数据状态显示 -->
-    <div v-if="!loading && !metrics && !error && !streamStatus" class="no-data-container">
+        <div class="tm-stat">
+          <span>图表</span>
+          <strong>{{ metricGroups.length }}</strong>
+        </div>
+        <div class="tm-stat">
+          <span>状态</span>
+          <strong>{{ refreshLabel }}</strong>
+        </div>
+      </div>
+    </section>
+
+    <section v-if="status" class="tm-progress-card">
+      <div class="tm-progress-row">
+        <span>轮次 {{ currentEpoch }}/{{ totalEpochs || '-' }}</span>
+        <span>状态: {{ statusLabel }}</span>
+        <span v-if="progress">进度 {{ progress }}%</span>
+      </div>
+      <div class="tm-progress-bar">
+        <div class="tm-progress-fill" :style="{ width: epochPercent + '%' }"></div>
+      </div>
+    </section>
+
+    <section class="tm-body">
+      <div v-if="!loading && !metrics && !error" class="state-card">
         <i class="el-icon-info"></i>
-        <span>暂无数据</span>
-    </div>
-    
-    <!-- 加载状态显示 -->
-    <div v-if="loading" class="loading-container">
+        <span>暂无可用指标。</span>
+      </div>
+
+      <div v-if="loading" class="state-card">
         <i class="el-icon-loading"></i>
-        <span>正在加载数据...</span>
-    </div>
-    
-    <!-- 错误状态显示 -->
-    <div v-if="error" class="error-message">
+        <span>加载指标中...</span>
+      </div>
+
+      <div v-if="error" class="state-card error">
         <i class="el-icon-error"></i>
         <span>{{ error }}</span>
-    </div>
-    
-    <!-- 数据展示区域 - 仅在有数据时显示 -->
-    <div v-if="metrics" class="metrics-container">
-        <div class="chart-group">
-            <chart :metrics="metrics" chart-type="metrics" :total-epoch="totalEpochs || metrics.total_epochs"></chart>
+      </div>
+
+      <div v-if="metrics" class="metrics-container">
+        <div v-if="metricGroups.length === 0" class="state-card">
+          <i class="el-icon-info"></i>
+          <span>暂无可用指标。</span>
         </div>
-        
-        <div class="loss-charts-container">
-            <div class="loss-chart">
-                <span class="chartTitle">Box Loss 边界框损失</span>
-                <chart :metrics="metrics" chart-type="box_loss" :total-epoch="totalEpochs || metrics.total_epochs"></chart>
-            </div>
-            
-            <div class="loss-chart">
-                <span class="chartTitle">Class Loss 类别损失</span>
-                <chart :metrics="metrics" chart-type="cls_loss" :total-epoch="totalEpochs || metrics.total_epochs"></chart>
-            </div>
-            
-            <div class="loss-chart">
-                <span class="chartTitle">DFL Loss 分布焦点损失</span>
-                <chart :metrics="metrics" chart-type="dfl_loss" :total-epoch="totalEpochs || metrics.total_epochs"></chart>
-            </div>
+        <div v-else class="metric-grid">
+          <div v-for="group in metricGroups" :key="group.key" class="metric-card" :class="{ 'is-wide': group.isWide }">
+            <chart
+              :metrics="metrics"
+              :custom-series="group.series"
+              :custom-title="group.title"
+              :custom-y-axis-name="group.yAxis"
+              :total-epoch="totalEpochs || metrics.total_epochs"
+              :chart-type="group.isWide ? 'overview' : 'generic'"
+            ></chart>
+          </div>
         </div>
-    </div>
-</div>
+      </div>
+
+      <div v-if="refreshHint" class="refresh-note">
+        <i class="el-icon-circle-check"></i>
+        <span>{{ refreshHint }}</span>
+      </div>
+    </section>
+  </div>
 </template>
 
 <script>
-import chart from '@/components/Chart/TrainingChart.vue';
+import chart from "@/components/Chart/TrainingChart.vue";
 import {
-    FetchTrainingJobsStatus,
-    FetchTrainingJobsMetrics_detailed
-} from '@/api/training';
+  FetchTrainingJobsStatus,
+  FetchTrainingJobsMetrics_detailed
+} from "@/api/training";
 
 export default {
-    name: 'TrainPart',
-    components: {
-        chart
+  name: "TrainPart",
+  components: {
+    chart
+  },
+  data() {
+    return {
+      jobId: null,
+      status: null,
+      metrics: null,
+      error: null,
+      loading: false,
+      statusPollingInterval: null,
+      metricsPollingInterval: null,
+      metricsPollingMs: 0,
+      currentEpoch: 0,
+      totalEpochs: 0,
+      progress: 0,
+      metricsStableCount: 0,
+      lastMetricsSignature: "",
+      terminalMode: false,
+      terminalPolls: 0,
+      maxTerminalPolls: 3
+    };
+  },
+  computed: {
+    statusLabel() {
+      const s = String(this.status || "").toLowerCase();
+      if (!s) return "等待中";
+      if (s === "created") return "等待中";
+      if (s === "queued") return "排队中";
+      if (s === "running") return "运行中";
+      if (s === "completed") return "已完成";
+      if (s === "failed") return "失败";
+      if (s === "cancelled") return "已取消";
+      if (s === "deleted") return "已删除";
+      return s;
     },
-    inject: ['$API_BASE', '$WS_BASE'],
-    data() {
-        return {
-            jobId: null,
-            status: null,
-            metrics: null,
-            error: null,
-            loading: false, // 加载状态标记
-            statusPollingInterval: null, // 状态轮询间隔
-            metricsPollingInterval: null, // 指标轮询间隔
-            hasCompletedMetricsFetch: false, // 标记是否已经获取过完成状态的指标
-            // WebSocket 流
-            ws: null,
-            streamStatus: null,
-            currentEpoch: 0,
-            totalEpochs: 0,
-            progress: 0,
-            seededFromHttp: false,
-        };
+    statusClass() {
+      const s = String(this.status || "pending").toLowerCase();
+      return `status-${s || "pending"}`;
     },
-    computed: {
-        epochPercent() {
-            const p = Number(this.progress);
-            if (Number.isFinite(p) && p > 0) return Math.max(0, Math.min(100, p));
-            const t = Number(this.totalEpochs) || 0;
-            const c = Number(this.currentEpoch) || 0;
-            if (!t || c <= 0) return 0;
-            return Math.max(0, Math.min(100, (c / t) * 100));
+    refreshLabel() {
+      if (this.metricsPollingInterval) {
+        return this.isTerminalStatus() ? "正在完成" : "实时";
+      }
+      if (this.isTerminalStatus()) return "已停止";
+      return "空闲";
+    },
+    refreshHint() {
+      if (this.isTerminalStatus() && !this.metricsPollingInterval && this.metrics) {
+        return "完成后自动刷新已停止。";
+      }
+      return "";
+    },
+    epochPercent() {
+      const p = Number(this.progress);
+      if (Number.isFinite(p) && p > 0) return Math.max(0, Math.min(100, p));
+      const t = Number(this.totalEpochs) || 0;
+      const c = Number(this.currentEpoch) || 0;
+      if (!t || c <= 0) return 0;
+      return Math.max(0, Math.min(100, (c / t) * 100));
+    },
+    metricGroups() {
+      const data = (this.metrics && this.metrics.metrics) || {};
+      const keys = Object.keys(data || {});
+      if (!keys.length) return [];
+
+      const groups = new Map();
+      keys.forEach((key) => {
+        const parts = String(key).split("/");
+        let prefix = "value";
+        let metricName = String(key);
+        if (parts.length > 1) {
+          prefix = parts.slice(0, -1).join("/") || "value";
+          metricName = parts[parts.length - 1] || key;
         }
-    },
-    watch: {
-        '$route.query.jobId': {
-            immediate: true,
-            handler(newJobId) {
-                if (newJobId) {
-                    this.jobId = newJobId;
-                    // 当 job ID 改变时，清理所有轮询并重新开始
-                    this.cleanupAllPolling();
-            this.hasCompletedMetricsFetch = false;
-            this.seededFromHttp = false;
-                    this.metrics = null; // 重置 metrics
-                    this.error = null; // 重置错误状态
-                    this.startStatusPolling();
-                    // 保存到localStorage，以便其他组件访问
-                    localStorage.setItem('currentJobId', newJobId);
-                }
-            }
+
+        const groupKey = metricName;
+        if (!groups.has(groupKey)) {
+          groups.set(groupKey, {
+            key: groupKey,
+            title: this.formatMetricTitle(metricName),
+            yAxis: "",
+            series: []
+          });
         }
-    },
-    activated() {
-        // 当使用keep-alive缓存的组件被激活时，检查jobId
-        const storedJobId = localStorage.getItem('currentJobId');
-        const routeJobId = this.$route.query.jobId;
-        
-        if (!this.jobId && storedJobId) {
-            this.jobId = storedJobId;
-            this.cleanupAllPolling();
-            this.hasCompletedMetricsFetch = false;
-            this.seededFromHttp = false;
-            this.metrics = null;
-            this.error = null;
-            this.startStatusPolling();
-        } else if (routeJobId && this.jobId !== routeJobId) {
-            this.jobId = routeJobId;
-            this.cleanupAllPolling();
-            this.hasCompletedMetricsFetch = false;
-            this.seededFromHttp = false;
-            this.metrics = null;
-            this.error = null;
-            this.startStatusPolling();
+
+        groups.get(groupKey).series.push({
+          name: this.formatSeriesName(prefix),
+          data: Array.isArray(data[key]) ? data[key] : []
+        });
+      });
+
+      const list = Array.from(groups.values());
+      
+      // Define priority for sorting: mAP first, then others
+      const getPriority = (key) => {
+        const k = String(key).toLowerCase();
+        if (k.includes("map")) return 3; // Highest priority
+        if (k.includes("precision") || k.includes("recall")) return 2;
+        if (k.includes("loss")) return 1;
+        return 0;
+      };
+
+      list.forEach((g) => {
+        g.series.sort((a, b) => String(a.name).localeCompare(String(b.name), "zh"));
+        // Mark mAP metrics as wide
+        if (String(g.key).toLowerCase().includes("map")) {
+          g.isWide = true;
+          // Use a slightly better title if needed, but keeping existing logic is fine
         }
+      });
+
+      list.sort((a, b) => {
+        const pA = getPriority(a.key);
+        const pB = getPriority(b.key);
+        if (pA !== pB) return pB - pA; // Descending priority
+        return String(a.title).localeCompare(String(b.title), "zh");
+      });
+
+      return list;
+    }
+  },
+  watch: {
+    "$route.query.jobId": {
+      immediate: true,
+      handler(newJobId) {
+        if (newJobId) {
+          this.jobId = newJobId;
+          this.resetMetricsState();
+          this.cleanupAllPolling();
+          this.startStatusPolling();
+          localStorage.setItem("currentJobId", newJobId);
+        }
+      }
+    }
+  },
+  activated() {
+    const storedJobId = localStorage.getItem("currentJobId");
+    const routeJobId = this.$route.query.jobId;
+
+    if (!this.jobId && storedJobId) {
+      this.jobId = storedJobId;
+      this.resetMetricsState();
+      this.cleanupAllPolling();
+      this.startStatusPolling();
+    } else if (routeJobId && this.jobId !== routeJobId) {
+      this.jobId = routeJobId;
+      this.resetMetricsState();
+      this.cleanupAllPolling();
+      this.startStatusPolling();
+    }
+  },
+  methods: {
+    resetMetricsState() {
+      this.metrics = null;
+      this.error = null;
+      this.metricsStableCount = 0;
+      this.lastMetricsSignature = "";
+      this.terminalMode = false;
+      this.terminalPolls = 0;
     },
-    methods: {
-        // WebSocket: 连接
-        connectStream() {
-            if (!this.jobId) return;
-            // 终态任务无需再建立 WS；避免刷新时“先连后关”导致浏览器报 1006
-            const st = String(this.status || '').toLowerCase();
-            const terminal = ['completed', 'failed', 'cancelled', 'deleted'];
-            if (terminal.includes(st)) return;
-            this.closeStream();
-            // 优先使用显式 WS_BASE，否则根据 HTTP 基础地址推导 ws/wss
-            let wsBase = (this.$WS_BASE && this.$WS_BASE()) || '';
-            if (!wsBase) {
-                const isHttps = window.location.protocol === 'https:';
-                const httpBase = (this.$API_BASE && this.$API_BASE()) || window.location.origin;
-                wsBase = httpBase.replace(/^http(s?):\/\//, isHttps ? 'wss://' : 'ws://');
-            }
-            const url = `${wsBase}/api/v2/training-runs/${this.jobId}/metrics/stream`;
-            try {
-                this.ws = new WebSocket(url);
-                this.ws.onopen = () => {
-                    this.streamStatus = this.status || 'connected';
-                    try { console.log('[WS] open:', url); } catch (_) {}
-                    // 首次连接后，用 HTTP 详细指标补齐历史曲线
-                    if (!this.seededFromHttp) {
-                        this.fetchMetrics().then(() => { this.seededFromHttp = true; }).catch(() => {});
-                    }
-                };
-                this.ws.onmessage = (e) => {
-                    try {
-                        // 打印原始消息文本长度，避免巨大日志
-                        try { console.log('[WS] raw length:', (e && e.data && e.data.length) || 0); } catch (_) {}
-                        this.handleStreamMessage(JSON.parse(e.data));
-                    } catch (_) {}
-                };
-                this.ws.onerror = (err) => {
-                    this.streamStatus = null;
-                    try { console.error('[WS] error:', err); } catch (_) {}
-                };
-                this.ws.onclose = (evt) => {
-                    this.streamStatus = null;
-                    try { console.log('[WS] close:', evt && evt.code, evt && evt.reason); } catch (_) {}
-                };
-            } catch (_) {}
-        },
-        // WebSocket: 处理消息
-        handleStreamMessage(payload) {
-            if (!payload) return;
-            if (payload.error) { this.error = payload.error; return; }
-            // v2 WebSocket: {type:'status'|'metric'|'event'|'done', data:{...}}
-            const type = payload.type || '';
-            const data = payload.data || {};
+    formatMetricTitle(name) {
+      return String(name || "")
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (m) => m.toUpperCase());
+    },
+    formatSeriesName(name) {
+      const n = String(name || "").toLowerCase();
+      if (n === "train") return "训练集";
+      if (n === "val") return "验证集";
+      if (n === "test") return "测试集";
+      if (n === "metrics") return "指标";
+      return name || "值";
+    },
+    computeMetricsSignature() {
+      const data = (this.metrics && this.metrics.metrics) || {};
+      const keys = Object.keys(data).sort();
+      const parts = keys.map((k) => {
+        const arr = Array.isArray(data[k]) ? data[k] : [];
+        const len = arr.length;
+        const last = len ? arr[len - 1] : null;
+        return `${k}:${len}:${last}`;
+      });
+      return parts.join("|");
+    },
+    inferMaxEpoch() {
+      const data = (this.metrics && this.metrics.metrics) || {};
+      let maxLen = 0;
+      Object.keys(data).forEach((k) => {
+        const arr = data[k];
+        if (Array.isArray(arr)) maxLen = Math.max(maxLen, arr.length);
+      });
+      return maxLen;
+    },
+    isTerminalStatus() {
+      return ["completed", "failed", "cancelled", "deleted"].includes(String(this.status || "").toLowerCase());
+    },
+    startStatusPolling() {
+      if (!this.jobId) return;
+      this.fetchStatus();
+      this.statusPollingInterval = setInterval(this.fetchStatus, 12000);
+    },
+    async fetchStatus() {
+      if (!this.jobId) return;
+      this.loading = true;
+      try {
+        const statusResponse = await FetchTrainingJobsStatus(this.jobId);
+        this.status = statusResponse.status;
+        if (Number.isFinite(Number(statusResponse.progress))) this.progress = Number(statusResponse.progress);
+        if (Number.isFinite(Number(statusResponse.total_epochs))) {
+          this.totalEpochs = Number(statusResponse.total_epochs) || this.totalEpochs || 0;
+        }
+        if (Number.isFinite(Number(statusResponse.current_epoch))) {
+          this.currentEpoch = Number(statusResponse.current_epoch) + 1;
+        }
 
-            const normalizeStatus = (s) => {
-                const v = String(s || '').toLowerCase();
-                if (v === 'created') return 'pending';
-                return v || null;
-            };
-
-            if (type === 'status') {
-                const st = normalizeStatus(data.status);
-                if (st) {
-                    this.status = st;
-                    this.streamStatus = st;
-                }
-                if (Number.isFinite(Number(data.progress))) this.progress = Number(data.progress);
-                // 后端 current_epoch 为 0-based，这里界面显示 1-based
-                if (Number.isFinite(Number(data.current_epoch))) this.currentEpoch = Number(data.current_epoch) + 1;
-                if (Number.isFinite(Number(data.total_epochs))) this.totalEpochs = Number(data.total_epochs) || this.totalEpochs || 0;
-
-                if (!this.metrics) this.metrics = { metrics: {}, total_epochs: this.totalEpochs };
-                if (this.totalEpochs) this.metrics.total_epochs = this.totalEpochs;
-                return;
-            }
-
-            if (type === 'metric') {
-                const epoch0 = Number(data.epoch);
-                if (!Number.isFinite(epoch0) || epoch0 < 0) return;
-                const idx = Math.max(0, Math.floor(epoch0));
-                this.currentEpoch = Math.max(this.currentEpoch, idx + 1);
-                if (Number.isFinite(Number(data.progress))) this.progress = Number(data.progress);
-
-                if (!this.metrics) this.metrics = { metrics: {}, total_epochs: this.totalEpochs || (idx + 1) };
-                this.metrics.total_epochs = this.totalEpochs || Math.max(this.metrics.total_epochs || 0, idx + 1);
-
-                const kv = (data && data.metrics && typeof data.metrics === 'object') ? data.metrics : {};
-                Object.keys(kv).forEach(key => {
-                    if (!this.metrics.metrics[key]) this.$set(this.metrics.metrics, key, []);
-                    const arr = this.metrics.metrics[key];
-                    while (arr.length < idx) arr.push(null);
-                    const n = Number(kv[key]);
-                    arr[idx] = Number.isFinite(n) ? n : null;
-                });
-                return;
-            }
-
-            if (type === 'done') {
-                const st = normalizeStatus(data.status);
-                if (st) {
-                    this.status = st;
-                    this.streamStatus = st;
-                }
-                return;
-            }
-
-            // Fallback: old payload shape (keep for compatibility)
-            try { console.log('[WS] payload:', payload); } catch (_) {}
-        },
-        // WebSocket: 关闭
-        closeStream() {
-            if (this.ws) { try { this.ws.close(); } catch (_) {} finally { this.ws = null; } }
-        },
-        // 开始状态轮询
-        startStatusPolling() {
-            if (!this.jobId) return;
-
-            // 立即获取一次状态
-            this.fetchStatus();
-
-            // 降低轮询频率：WS 为主，HTTP 仅作兜底
-            this.statusPollingInterval = setInterval(this.fetchStatus, 15000);
-        },
-        
-        // 获取任务状态
-        async fetchStatus() {
-            if (!this.jobId) return;
-
-            // 设置加载状态
-            this.loading = true;
-            
-            try {
-                const statusResponse = await FetchTrainingJobsStatus(this.jobId);
-                this.status = statusResponse.status;
-                // HTTP 兜底也同步进度/轮次（WS 断开或任务结束时仍能显示）
-                if (Number.isFinite(Number(statusResponse.progress))) this.progress = Number(statusResponse.progress);
-                if (Number.isFinite(Number(statusResponse.total_epochs))) this.totalEpochs = Number(statusResponse.total_epochs) || this.totalEpochs || 0;
-                if (Number.isFinite(Number(statusResponse.current_epoch))) {
-                    // 后端 current_epoch 为 0-based，这里界面显示 1-based
-                    this.currentEpoch = Number(statusResponse.current_epoch) + 1;
-                }
-                console.log('Status fetched:', this.status);
-
-                // 根据状态决定下一步操作
-                const terminalNeedMetrics = ['completed', 'failed', 'cancelled'];
-                if (terminalNeedMetrics.includes(this.status)) {
-                    // 终态：尽量补齐一次历史曲线（即便失败也可查看已产出的曲线）
-                    if (!this.hasCompletedMetricsFetch) {
-                        await this.fetchMetrics();
-                        this.hasCompletedMetricsFetch = true;
-                    }
-                } else if (this.status === 'running') {
-                    // 运行中：确保 WS 已连接，并用一次 HTTP 拉取补齐历史曲线
-                    if (!this.ws || this.ws.readyState !== 1) this.connectStream();
-                    if (!this.seededFromHttp) {
-                        await this.fetchMetrics();
-                        this.seededFromHttp = true;
-                    }
-                } else {
-                    // 非 running（pending/queued 等）也保持 WS 连接，便于等待队列 -> running 的实时切换
-                    if (!this.ws || this.ws.readyState !== 1) this.connectStream();
-                }
-
-                // 终止状态：停止轮询并关闭 WS（避免页面一直请求）
-                const terminalStates = ['completed', 'failed', 'cancelled', 'deleted'];
-                if (terminalStates.includes(this.status)) {
-                    this.cleanupAllPolling();
-                    this.closeStream();
-                }
-            } catch (err) {
-                this.error = '获取任务状态失败，请稍后重试。';
-                console.error('Error fetching status:', err);
-                // 出错时停止所有轮询
-                this.cleanupAllPolling();
-            } finally {
-                // 无论成功失败，都结束加载状态
-                this.loading = false;
-            }
-        },
-        
-        // 开始指标轮询
-        startMetricsPolling(intervalMs = 2000) {
-            this.fetchMetrics();
-            if (this.metricsPollingInterval) clearInterval(this.metricsPollingInterval);
-            this.metricsPollingInterval = setInterval(this.fetchMetrics, intervalMs);
-        },
-        
-        // 获取详细指标
-        async fetchMetrics() {
-            if (!this.jobId) return;
-
-            this.loading = true;
-            
-            try {
-                const metricsResponse = await FetchTrainingJobsMetrics_detailed(this.jobId);
-                this.metrics = metricsResponse;
-                console.log('Metrics fetched:', this.metrics);
-            } catch (err) {
-                console.error('Error fetching metrics:', err);
-                // 保留之前的metrics数据，仅在首次获取失败时显示错误
-                if (!this.metrics) {
-                    this.error = '获取指标数据失败，请稍后重试。';
-                }
-            } finally {
-                this.loading = false;
-            }
-        },
-        
-        // 清理状态轮询
-        cleanupStatusPolling() {
-            if (this.statusPollingInterval) {
-                clearInterval(this.statusPollingInterval);
-                this.statusPollingInterval = null;
-            }
-        },
-        
-        // 清理指标轮询
-        cleanupMetricsPolling() {
-            if (this.metricsPollingInterval) {
-                clearInterval(this.metricsPollingInterval);
-                this.metricsPollingInterval = null;
-            }
-        },
-        
-        // 清理所有轮询
-        cleanupAllPolling() {
+        if (this.status === "running") {
+          this.startMetricsPolling(4000);
+        } else if (this.isTerminalStatus()) {
+          if (!this.terminalMode) {
+            this.terminalMode = true;
             this.cleanupStatusPolling();
-            this.cleanupMetricsPolling();
-            this.closeStream();
+          }
+          this.startMetricsPolling(2000);
+        } else {
+          this.startMetricsPolling(8000);
         }
-    },
-    beforeDestroy() {
-        // 确保组件销毁时停止所有轮询
+      } catch (err) {
+        this.error = "获取训练状态失败。请重试。";
+        console.error("Error fetching status:", err);
         this.cleanupAllPolling();
+      } finally {
+        this.loading = false;
+      }
     },
+    startMetricsPolling(intervalMs = 4000) {
+      if (!this.jobId) return;
+      const ms = Math.max(1500, Number(intervalMs) || 4000);
+      if (this.metricsPollingInterval && this.metricsPollingMs === ms) return;
+      this.stopMetricsPolling();
+      this.metricsPollingMs = ms;
+      this.fetchMetrics();
+      this.metricsPollingInterval = setInterval(this.fetchMetrics, ms);
+    },
+    stopMetricsPolling() {
+      if (this.metricsPollingInterval) {
+        clearInterval(this.metricsPollingInterval);
+        this.metricsPollingInterval = null;
+        this.metricsPollingMs = 0;
+      }
+    },
+    isMetricsComplete() {
+      const total = Number(this.totalEpochs) || Number(this.metrics?.total_epochs) || 0;
+      const maxLen = this.inferMaxEpoch();
+      if (!total) return maxLen > 0;
+      return maxLen >= total;
+    },
+    async fetchMetrics() {
+      if (!this.jobId) return;
+      this.loading = true;
+      try {
+        const metricsResponse = await FetchTrainingJobsMetrics_detailed(this.jobId);
+        this.metrics = metricsResponse;
+        const signature = this.computeMetricsSignature();
+        if (signature && signature === this.lastMetricsSignature) {
+          this.metricsStableCount += 1;
+        } else {
+          this.metricsStableCount = 0;
+          this.lastMetricsSignature = signature;
+        }
+
+        if (this.terminalMode) {
+          this.terminalPolls += 1;
+          const shouldStop =
+            this.metricsStableCount >= 2 ||
+            this.isMetricsComplete() ||
+            this.terminalPolls >= this.maxTerminalPolls;
+          if (shouldStop) {
+            this.stopMetricsPolling();
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching metrics:", err);
+        if (!this.metrics) {
+          this.error = "获取指标失败。请重试。";
+        }
+      } finally {
+        this.loading = false;
+      }
+    },
+    cleanupStatusPolling() {
+      if (this.statusPollingInterval) {
+        clearInterval(this.statusPollingInterval);
+        this.statusPollingInterval = null;
+      }
+    },
+    cleanupAllPolling() {
+      this.cleanupStatusPolling();
+      this.stopMetricsPolling();
+    }
+  },
+  beforeDestroy() {
+    this.cleanupAllPolling();
+  }
 };
 </script>
 
-
 <style scoped>
-pre {
-    background-color: #f4f4f4;
-    padding: 1rem;
-    border-radius: 4px;
-    white-space: pre-wrap;
-    word-wrap: break-word;
+.train-manager {
+  --ink-900: #111315;
+  --ink-700: #3e4a5b;
+  --ink-500: #6a7482;
+  --line-200: #e4e7ee;
+  --brand-700: #2b3a67;
+  --brand-500: #4f63c7;
+  --brand-300: #9bb0ff;
+  --card-shadow: 0 18px 35px rgba(16, 18, 24, 0.12);
+  padding: 8px 12px 24px;
+  font-family: "Space Grotesk", "Sora", "Manrope", "Segoe UI", sans-serif;
+  color: var(--ink-900);
 }
 
-.error-message {
-    color: red;
-    font-weight: bold;
-}
-.chartTitle{
-    display: block;
-    margin: 20px 0 10px 50px;
-    font-size: 22px;
-    font-weight: 700;
-    color: #111f68;
-}
-
-.loss-chart .chartTitle {
-    margin: 5px 0 5px 15px;
-    font-size: 18px;
+.tm-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 20px;
+  padding: 20px 24px;
+  border-radius: 20px;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: var(--text-main);
+  box-shadow: none;
 }
 
-.chart-group{
-    margin-top: 30px;
-    padding: 10px;
-    background-color: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-}
-.loss-charts-container {
-    display: flex;
-    justify-content: space-between;
-    margin-top: 20px;
-    padding: 15px;
-    background-color: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-    flex-wrap: wrap;
-    gap: 10px;
-}
-.loss-chart {
-    flex: 1;
-    margin: 0 5px;
-    max-width: 33%;
-    min-width: 300px;
+.tm-hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
-@media (max-width: 1200px) {
-    .loss-charts-container {
-        flex-direction: column;
-    }
-    
-    .loss-chart {
-        max-width: 100%;
-        margin: 10px 0;
-    }
-    
-    .loss-chart .chartTitle {
-        margin: 5px 0 5px 0;
-        text-align: center;
-    }
+.tm-status {
+  align-self: flex-start;
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  background: #eff6ff;
+  color: #3b82f6;
+  border: 1px solid #dbeafe;
 }
 
-@media (max-width: 768px) {
-    .chart-group {
-        margin-top: 20px;
-        padding: 5px;
-    }
-    
-    .loss-charts-container {
-        padding: 10px;
-    }
-    
-    .chartTitle {
-        margin: 10px 0 5px 25px;
-        font-size: 18px;
-    }
-}
-/* 无数据状态样式 */
-.no-data-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 50px 0;
-    color: #666;
-    font-size: 16px;
+.tm-title {
+  margin: 0;
+  font-size: 26px;
+  font-weight: 700;
 }
 
-.no-data-container i {
-    margin-right: 8px;
-    font-size: 20px;
+.tm-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text-secondary);
 }
 
-/* 加载状态样式 */
-.loading-container {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 50px 0;
-    color: #666;
-    font-size: 16px;
+.tm-hero-right {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(120px, 1fr));
+  gap: 12px;
 }
 
-.loading-container i {
-    margin-right: 8px;
-    font-size: 20px;
-    animation: rotate 1.5s linear infinite;
+.tm-stat {
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #f9fafb;
+  border: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
-/* 错误状态样式 */
-.error-message {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    padding: 50px 0;
-    color: #f56c6c;
-    font-size: 16px;
+.tm-stat span {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
 }
 
-.error-message i {
-    margin-right: 8px;
-    font-size: 20px;
+.tm-stat strong {
+  font-size: 16px;
+  font-weight: 700;
 }
 
-/* 动画定义 */
-@keyframes rotate {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.tm-progress-card {
+  margin-top: 18px;
+  padding: 16px 20px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid var(--line-200);
+  box-shadow: 0 8px 18px rgba(16, 18, 24, 0.08);
 }
 
-/* 图表容器样式（保留原有布局） */
-.chart-group {
-    margin-bottom: 20px;
+.tm-progress-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  font-size: 12px;
+  color: var(--ink-500);
+  margin-bottom: 10px;
 }
 
-.loss-charts-container {
-    display: flex;
-    gap: 20px;
-    margin-bottom: 20px;
+.tm-progress-bar {
+  height: 10px;
+  background: #edf0f6;
+  border-radius: 999px;
+  overflow: hidden;
 }
 
-.loss-chart {
-    flex: 1;
+.tm-progress-fill {
+  height: 100%;
+  background: #9ca3af;
+  transition: width 0.3s ease;
 }
 
-.chartTitle {
-    display: block;
-    margin-bottom: 8px;
-    font-weight: bold;
-    color: #333;
+.tm-body {
+  margin-top: 20px;
 }
-.metrics-container{
-    margin-right: 50px;
+
+.state-card {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  border-radius: 14px;
+  background: #fff;
+  border: 1px solid var(--line-200);
+  color: var(--ink-500);
+  font-size: 14px;
+  box-shadow: 0 8px 18px rgba(16, 18, 24, 0.08);
+}
+
+.state-card.error {
+  color: #e11d48;
+  border-color: rgba(225, 29, 72, 0.2);
+}
+
+.metrics-container {
+  margin-top: 10px;
+}
+
+.metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+  gap: 18px;
+}
+
+.metric-card {
+  position: relative;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 8px 0 14px;
+  border: 1px solid #eef0f6;
+  box-shadow: 0 12px 30px rgba(17, 19, 21, 0.1);
+  overflow: hidden;
+}
+
+.metric-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto 0;
+  height: 3px;
+  background: #e5e7eb;
+}
+
+.refresh-note {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #2563eb;
+  font-size: 12px;
+}
+
+.status-running {
+  background: rgba(34, 197, 94, 0.22);
+}
+
+.status-completed {
+  background: rgba(34, 197, 94, 0.22);
+}
+
+.status-failed,
+.status-cancelled,
+.status-deleted {
+  background: rgba(225, 29, 72, 0.2);
+}
+
+.status-queued,
+.status-created,
+.status-pending {
+  background: rgba(249, 216, 110, 0.25);
+  color: #1f2937;
+}
+
+@media (max-width: 960px) {
+  .tm-hero {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .tm-hero-right {
+    width: 100%;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+}
+
+@media (max-width: 720px) {
+  .tm-hero {
+    padding: 18px;
+  }
+
+  .metric-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.metric-card.is-wide {
+  grid-column: span 2;
+}
+
+@media (max-width: 960px) {
+  .metric-card.is-wide {
+    grid-column: span 1;
+  }
 }
 </style>

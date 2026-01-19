@@ -2,7 +2,7 @@
   <div class="UploadZip">
     <div class="file-upload-container">
       <div class="upload-card">
-        <h3 class="upload-title">上传ZIP文件</h3>
+        <h3 class="upload-title">Upload ZIP</h3>
 
         <!-- 文件选择区域 -->
         <div
@@ -23,7 +23,7 @@
 
           <label for="fileInput" class="upload-label cursor-pointer">
             <i class="fa fa-cloud-upload text-4xl mb-2 text-primary"></i>
-            <p v-if="!selectedFile">点击或拖拽文件到此处上传</p>
+            <p v-if="!selectedFile">Click or drag a file here</p>
             <p v-else class="selected-file-name truncate">
               {{ selectedFile.name }}
             </p>
@@ -33,11 +33,11 @@
         <!-- 上传按钮 -->
         <button
           class="upload-button"
-          :disabled="!selectedFile || isUploading"
+          :disabled="!selectedFile || isUploading || !datasetId"
           @click="uploadFile"
         >
           <img src="@/assets/images/Upload/火箭.png" alt="" />
-          {{ isUploading ? "上传中..." : "开始上传" }}
+          {{ isUploading ? "Uploading..." : "Upload" }}
         </button>
 
         <!-- 上传进度条 -->
@@ -49,7 +49,7 @@
         <!-- 上传结果 -->
         <div v-if="uploadSuccess" class="success-message mt-4">
           <i class="fa fa-check-circle text-green-500"></i>
-          <p>上传成功！</p>
+          <p>Upload succeeded.</p>
         </div>
       </div>
     </div>
@@ -58,19 +58,13 @@
 
 <script>
 // 导入上传数据集接口
-import { uploadDataset } from '@/api/datasets';
+import { uploadDatasetToExisting } from '@/api/datasets';
 
 export default {
   name: "UploadZip",
   props: {
-    // 从父组件接收数据集名称
-    datasetName: {
-      type: String,
-      required: true
-    },
-    // 从父组件接收数据集类型
-    datasetType: {
-      type: String,
+    datasetId: {
+      type: [String, Number],
       required: true
     }
   },
@@ -122,7 +116,7 @@ export default {
 
       // 验证文件类型
       if (!file.name.endsWith(".zip")) {
-        this.errorMessage = "请上传ZIP格式的文件";
+        this.errorMessage = "Please upload a .zip file.";
         this.selectedFile = null;
         return;
       }
@@ -133,8 +127,8 @@ export default {
     // 上传文件 - 使用API接口
     async uploadFile() {
       if (!this.selectedFile) return;
-      if (!this.datasetName || !this.datasetType) {
-        this.errorMessage = "请先填写数据集名称和类型";
+      if (!this.datasetId) {
+        this.errorMessage = "Please create the dataset first.";
         return;
       }
 
@@ -145,23 +139,27 @@ export default {
 
       try {
         // 调用上传接口，传入文件、名称和类型
-        const result = await uploadDataset(
-          this.selectedFile,
-          this.datasetName,
-          this.datasetType
+        const result = await uploadDatasetToExisting(
+          this.datasetId,
+          this.selectedFile
         );
+
+        const payload = result && (result.dataset || result.data || result);
+        const returnedId = payload && (payload.dataset_id || payload.id);
+        const displayId = returnedId || this.datasetId;
         
         // 上传成功处理
         this.isUploading = false;
-        this.uploadSuccess = true;
         this.progress = 100;
-        this.$message.success(`上传成功！数据集ID: ${result.dataset.dataset_id}`);
+        this.uploadSuccess = true;
+        this.$message.success(`Upload succeeded. Dataset ID: ${displayId}`);
         // 通知父组件上传成功
-        this.$emit('upload-success', result.dataset.dataset_id);
+        this.$emit('upload-success', this.datasetId);
       } catch (error) {
         // 上传失败处理
         this.isUploading = false;
-        this.errorMessage = `上传失败: ${error.message}`;
+        this.uploadSuccess = false;
+        this.errorMessage = `Upload failed: ${error.message}`;
         this.$message.error(this.errorMessage);
         this.$emit('upload-fail', error.message);
       }

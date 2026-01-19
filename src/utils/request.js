@@ -1,7 +1,7 @@
 import axios from 'axios';
 
 // 统一后端基础地址，便于 WebSocket/HTTP 共用
-export const API_BASE = window.__API_BASE__ || 'http://localhost:18000';
+export const API_BASE = window.__API_BASE__ || 'http://localhost:18001';
 const __IS_HTTPS__ = API_BASE.startsWith('https://');
 export const WS_BASE = window.__WS_BASE__ || (
   __IS_HTTPS__ ? API_BASE.replace('https://', 'wss://') : API_BASE.replace('http://', 'ws://')

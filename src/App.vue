@@ -21,14 +21,20 @@ export default {
 </script>
 
 <style>
-#app{
-  display:flex ;
+#app {
+  display: flex;
   width: 100%;
+  height: 100vh;
+  overflow: hidden;
 }
-.main-content{
-  margin-left: 280px;
-  padding: 20px;
-  width: 100%;
+.main-content {
+  flex: 1;
+  margin-left: 220px; /* Sidebar width + margin */
+  padding: 1.5rem;
+  width: calc(100% - 220px);
+  height: 100vh;
+  overflow-y: auto;
+  position: relative;
+  z-index: 10;
 }
-
 </style>

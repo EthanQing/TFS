@@ -122,50 +122,74 @@ export default {
   top: 0;
   bottom: 0;
   width: 200px;
-  margin-right: 10px;
-  box-shadow: 4px 0 13px rgba(0, 0, 0, 0.2);
+  background: var(--bg-sidebar);
+  border-right: 1px solid #e5e7eb;
+  z-index: 100;
+  padding-top: 2rem;
+  /* Reduced shadow for cleaner look */
+  box-shadow: 1px 0 10px rgba(0, 0, 0, 0.02);
+}
+
+.sidebar ul {
+  list-style: none;
+  padding: 0 1rem;
 }
 
 .sidebar ul li {
   width: 100%;
-  height: 80px;
-  font-size: 18px;
-  transition: background-color 0.3s;
-  border-bottom: 1px solid #f0f1f2;
+  margin-bottom: 0.5rem;
+  border-radius: var(--radius-md);
+  transition: all var(--transition-fast);
+  border: none;
 }
+
 .sidebar ul li:hover {
-  background-color: #f0f1f2;
+  background-color: #f3f4f6;
+  transform: translateX(4px);
 }
 
 /* 激活状态样式 */
 .sidebar ul li.active {
-  background-color: #111f68;
-  color: white;
+  background: #f3f4f6;
+  /* Use a border or darkened background for active state instead of color */
+  border: 1px solid #e5e7eb;
+  box-shadow: none;
 }
 
-/* 确保链接颜色跟随父元素 */
 .sidebar ul li a {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: inherit;
+  padding: 1rem;
   text-decoration: none;
-  box-sizing: border-box;
+  color: var(--text-secondary);
+  font-weight: 500;
+  transition: color 0.2s;
+}
+
+.sidebar ul li.active a {
+  color: var(--text-main);
+  font-weight: 600;
 }
 
 /* 图片样式 */
 .sidebar ul li a img {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   margin-right: 12px;
   flex-shrink: 0;
+  /* Remove invert filter so icons are dark (assuming source is dark/black) */
+  filter: none; 
+  opacity: 0.6;
+}
+
+.sidebar ul li.active a img {
+  opacity: 1;
+  filter: none;
 }
 
 /* 文字样式 */
 .sidebar ul li a span {
-  font-size: 18px;
-  font-weight: 500;
+  font-size: 16px;
+  letter-spacing: 0.02em;
 }
 </style>

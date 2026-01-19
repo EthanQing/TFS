@@ -1,0 +1,68 @@
+:root {
+  /* Primary HSL Values for easy opacity manipulation */
+  --primary-hue: 220;
+  --primary-sat: 20%;
+  --primary-lig: 30%;
+
+  /* Brand Colors - Neutralized */
+  --color-primary: #374151;
+  /* Gray 700 */
+  --color-primary-dark: #1f2937;
+  /* Gray 800 */
+  --color-primary-light: #9ca3af;
+  /* Gray 400 */
+
+  --color-secondary: #4b5563;
+  /* Gray 600 */
+  --color-accent: #6b7280;
+  /* Gray 500 */
+
+  /* Backgrounds */
+  --bg-body: #f9fafb;
+  /* Gray 50 */
+  --bg-body-dark: #111827;
+  --bg-card: #ffffff;
+  --bg-card-glass: rgba(255, 255, 255, 0.9);
+  --bg-sidebar: #ffffff;
+  /* White Sidebar */
+  --bg-hero: #ffffff;
+  --bg-panel: #f3f4f6;
+  /* Gray 100 for stats/panels */
+
+  /* Text */
+  --text-main: #111827;
+  /* Gray 900 */
+  --text-secondary: #4b5563;
+  /* Gray 600 */
+  --text-light: #6b7280;
+  /* Gray 500 - note: this was Slate 50, now darker for light bg */
+
+  /* Gradients - Removed/Neutralized */
+  --gradient-primary: linear-gradient(135deg, #e5e7eb 0%, #f3f4f6 100%);
+  --gradient-flow: #e5e7eb;
+  /* Simple gray for active states */
+
+  /* Shadows */
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.05);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
+  --shadow-glow: none;
+
+  /* Radius */
+  --radius-sm: 0.375rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
+  --radius-full: 9999px;
+
+  /* Transitions */
+  --transition-fast: 0.15s ease;
+  --transition-normal: 0.3s ease;
+}
+
+/* Dark Mode Support (if needed later) or specifics */
+[data-theme='dark'] {
+  --bg-body: #0f172a;
+  --bg-card: rgba(30, 41, 59, 0.7);
+  --text-main: #f1f5f9;
+  --text-secondary: #94a3b8;
+}

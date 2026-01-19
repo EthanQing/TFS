@@ -1,11 +1,7 @@
 <template>
   <div class="train-logs">
     <div class="toolbar">
-      <el-radio-group v-model="which" size="small" @change="restart">
-        <el-radio-button label="stdout">stdout</el-radio-button>
-        <el-radio-button label="stderr">stderr</el-radio-button>
-        <el-radio-button label="both">全部</el-radio-button>
-      </el-radio-group>
+      <div class="log-mode">日志模式</div>
 
       <div class="spacer"></div>
 
@@ -39,7 +35,7 @@ export default {
   data() {
     return {
       jobId: null,
-      which: "stdout",
+      which: "both",
       lines: [],
       ws: null,
       error: null,
@@ -143,16 +139,10 @@ export default {
         this.error = "无法创建日志 WebSocket 连接";
       }
     },
-    lineClass(line) {
-      const s = String(line || "");
-      if (s.startsWith("[stderr]")) return "stderr";
-      if (s.startsWith("[stdout]")) return "stdout";
+    lineClass(_line) {
       return "";
     },
-    prefixFor(which) {
-      if (this.which !== "both") return "";
-      if (which === "stderr") return "[stderr] ";
-      if (which === "stdout") return "[stdout] ";
+    prefixFor(_which) {
       return "";
     },
     appendLines(which, newLines, mode) {
@@ -244,6 +234,12 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
+}
+
+.log-mode {
+  font-size: 13px;
+  color: #4a4f62;
+  font-weight: 600;
 }
 
 .toolbar {

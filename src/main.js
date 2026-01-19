@@ -10,6 +10,7 @@ import router from '@/router'
 
 import "@/styles/reset.css";
 import "@/styles/global.css";
+import "@/styles/element-overrides.css";
 
 import { preloadReferenceData } from "@/store/referenceStore";
 

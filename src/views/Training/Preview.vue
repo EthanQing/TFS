@@ -118,13 +118,14 @@
 import {
   FetchDatasetType
 } from "@/api/datasets";
-import { GetInferenceResult, uploadInferenceImage } from "@/api/models";
+import { GetInferenceResult, uploadInferenceImage, fetchModelVersionsByRunId, registerModelVersionFromRun } from "@/api/models";
 import { previewStore } from "@/store/previewStore";
 export default {
   name: "PreviewPart",
   data() {
     return {
       jobId: null,
+      modelVersionId: null,
       imageSizes: ["320px", "640px"],
       activeSize: "320px", // 默认激活第一个按钮
       value1: 0.32,
@@ -167,63 +168,171 @@ export default {
     setActiveSize(size) {
       this.activeSize = size;
     },
+
     async onPredict() {
       try {
         const jobId = this.$route?.query?.jobId || this.jobId;
         if (!jobId) {
-          this.$message && this.$message.error("缺少 jobId");
+          this.$message && this.$message.error("Missing jobId");
           return;
         }
-        // 若 datasetType 还未加载，尝试拉取一次
+
+        // Resolve model version for this training run.
+        const modelVersionId = await this.resolveModelVersionId(jobId);
+        if (!modelVersionId) {
+          this.$message && this.$message.error("No model version found. Register a model version first.");
+          return;
+        }
+
+        // If datasetType not loaded, try once.
         if (!this.datasetType) {
           await this.fetchDatasetType();
         }
-        const task_type = this.datasetType?.dataset_type || "detection";
-        // 取得当前选择的图片 URL/文件
+
+        // Get current image URL/file
         let imageUrl = previewStore.imageUrl || "";
         const imageFile = previewStore.imageFile || null;
 
-        // 如果是本地 blob 或为空，优先尝试上传到后端以获得可访问 URL
+        // If blob/empty, upload to backend to get /static/temp path
         const isAccessible =
           imageUrl.startsWith("http://") ||
           imageUrl.startsWith("https://") ||
           imageUrl.startsWith("/static/");
         if ((!imageUrl || !isAccessible) && imageFile) {
           const uploadRes = await uploadInferenceImage(imageFile);
-          // 兼容不同返回格式
-          imageUrl =
-            uploadRes?.image_url || uploadRes?.url || uploadRes?.path || "";
+          imageUrl = uploadRes?.path || uploadRes?.url || uploadRes?.image_url || "";
         }
 
         if (!imageUrl) {
           this.$message &&
             this.$message.error(
-              "请先上传图片，或上传接口未返回可访问的 image_url"
+              "Please upload an image or ensure the upload API returns a valid path."
             );
           return;
         }
 
+        const conf = Math.max(0.001, Number(this.value1) || 0.001);
+        const iou = Math.max(0.001, Number(this.value2) || 0.001);
         const payload = {
-          job_id: jobId,
-          image_url: imageUrl,
-          task_type,
-          return_polygons: task_type === "segmentation",
-          conf_threshold: Number(this.value1),
-          iou_threshold: Number(this.value2),
+          model_version_id: Number(modelVersionId),
+          conf,
+          iou,
+          input_meta: {
+            job_id: jobId,
+          },
         };
+        const imgEl = this.$refs.img;
+        if (imgEl?.naturalWidth && imgEl?.naturalHeight) {
+          payload.input_meta.image_width = imgEl.naturalWidth;
+          payload.input_meta.image_height = imgEl.naturalHeight;
+        }
+
+        if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
+          payload.image_url = imageUrl;
+        } else {
+          payload.input_path = imageUrl;
+        }
+
         const res = await GetInferenceResult(payload);
-        // 存入共享状态，供绘制组件叠加框
+        if (res?.error_message) {
+          throw new Error(res.error_message);
+        }
+        const mapped = this.mapInferenceResult(res);
+
         try {
-          previewStore.setInferenceResult(res);
-          // 通知预览组件更新绘制
+          previewStore.setInferenceResult(mapped);
           window.dispatchEvent(new CustomEvent("preview-inference-updated"));
         } catch (e) {}
-        this.$message && this.$message.success("已发送推理请求");
-        // 如需展示结果，可在此处理 res
+
+        this.$message && this.$message.success("Inference request sent");
         console.log("inference result", res);
       } catch (e) {
-        this.$message && this.$message.error(e?.message || "推理失败");
+        this.$message && this.$message.error(e?.message || "Inference failed");
       }
+    },
+    async resolveModelVersionId(jobId) {
+      if (this.modelVersionId) return this.modelVersionId;
+      const id = String(jobId || '').trim();
+      if (!id) return null;
+
+      try {
+        const list = await fetchModelVersionsByRunId(id, 1, 5);
+        if (list && list.length) {
+          const mv = list[0];
+          const mvId = mv?.model_version_id || mv?.id;
+          if (mvId != null) {
+            this.modelVersionId = mvId;
+            return mvId;
+          }
+        }
+      } catch (e) {
+        console.warn('fetchModelVersionsByRunId failed:', e?.message || e);
+      }
+
+      // Auto-register a development model version for preview if none exists.
+      const version = `run-${String(id).slice(0, 8)}`;
+      try {
+        const created = await registerModelVersionFromRun({
+          run_id: id,
+          version,
+          stage: 'development',
+          description: 'Auto-created for preview inference',
+        });
+        const mvId = created?.model_version_id || created?.id;
+        if (mvId != null) {
+          this.modelVersionId = mvId;
+          return mvId;
+        }
+      } catch (e) {
+        console.warn('registerModelVersionFromRun failed:', e?.message || e);
+        throw e;
+      }
+
+      return null;
+    },
+    mapInferenceResult(raw) {
+      if (!raw) return raw;
+      const output = raw.output || {};
+      const preds = Array.isArray(output.predictions) ? output.predictions : [];
+      const names = output.names && typeof output.names === 'object' ? output.names : {};
+      const img = this.$refs.img;
+      const width = Number(img?.naturalWidth) || Number(raw?.input_meta?.image_width) || 0;
+      const height = Number(img?.naturalHeight) || Number(raw?.input_meta?.image_height) || 0;
+
+      const boxes = preds.map((p) => {
+        const xyxy = Array.isArray(p?.xyxy) ? p.xyxy : [];
+        let x1 = Number(xyxy[0] ?? 0);
+        let y1 = Number(xyxy[1] ?? 0);
+        let x2 = Number(xyxy[2] ?? 0);
+        let y2 = Number(xyxy[3] ?? 0);
+
+        // If coordinates are in pixels, normalize using image size.
+        const maxVal = Math.max(x1, y1, x2, y2);
+        if (width > 0 && height > 0 && maxVal > 1.5) {
+          x1 = x1 / width;
+          x2 = x2 / width;
+          y1 = y1 / height;
+          y2 = y2 / height;
+        }
+
+        return {
+          x1,
+          y1,
+          x2,
+          y2,
+          conf: Number(p?.confidence ?? p?.conf ?? 0),
+          cls: p?.class_id ?? p?.cls,
+          category_name: p?.class_name ?? names?.[p?.class_id],
+        };
+      });
+
+      return {
+        ...raw,
+        boxes,
+        polygons: Array.isArray(raw?.polygons) ? raw.polygons : [],
+        image_width: width || raw?.image_width,
+        image_height: height || raw?.image_height,
+      };
     },
     setActiveTab(tab) {
       this.activeTab = tab;
@@ -232,11 +341,17 @@ export default {
       // 优先从路由参数获取
       const routeJobId = this.$route.query.jobId;
       if (routeJobId) {
+        if (this.jobId !== routeJobId) {
+          this.modelVersionId = null;
+        }
         this.jobId = routeJobId;
       } else {
         // 从localStorage获取
         const storedJobId = localStorage.getItem("currentJobId");
         if (storedJobId) {
+          if (this.jobId !== storedJobId) {
+            this.modelVersionId = null;
+          }
           this.jobId = storedJobId;
         }
       }
