@@ -1,34 +1,35 @@
 <template>
   <div class="architecture-page page-container">
     <header class="arch-hero">
-      <div class="arch-hero-left">
+      <div class="arch-hero-content">
         <div class="arch-eyebrow">模型库</div>
         <h1 class="arch-title">模型架构</h1>
         <p class="arch-subtitle">浏览支持的主干网络和变体。</p>
       </div>
-      <div class="arch-hero-right">
-        <div class="arch-stat glass-panel-sm">
-          <div class="arch-stat-label">系列</div>
-          <div class="arch-stat-value">{{ groupedList.length }}</div>
+      
+      <div class="arch-hero-stats">
+        <div class="hero-stat">
+          <div class="stat-value">{{ groupedList.length }}</div>
+          <div class="stat-label">系列</div>
         </div>
-        <div class="arch-stat glass-panel-sm">
-          <div class="arch-stat-label">总数</div>
-          <div class="arch-stat-value">{{ totalArchitectures }}</div>
+        <div class="hero-stat">
+          <div class="stat-value">{{ totalArchitectures }}</div>
+          <div class="stat-label">总数</div>
         </div>
-        <el-button type="primary" class="primary-action" @click="fetchArchitectures">刷新</el-button>
+        <el-button type="primary" class="refresh-btn" icon="el-icon-refresh" circle @click="fetchArchitectures"></el-button>
       </div>
     </header>
 
     <section class="arch-body">
       <div v-if="loading" class="state loading">
         <i class="el-icon-loading"></i>
-        <span>正在加载架构...</span>
+        <span>正在加载模型架构...</span>
       </div>
 
       <div v-else-if="error" class="state error">
         <i class="el-icon-warning"></i>
         <span>{{ error }}</span>
-        <el-button size="mini" type="primary" class="primary-action" @click="fetchArchitectures">重试</el-button>
+        <el-button size="mini" type="primary" @click="fetchArchitectures">Retry</el-button>
       </div>
 
       <div v-else-if="groupedList.length === 0" class="state empty">
@@ -37,16 +38,16 @@
       </div>
 
       <div v-else class="family-groups">
-        <section class="family-group glass-panel" v-for="group in groupedList" :key="group.family">
+        <section class="family-group" v-for="group in groupedList" :key="group.family">
           <header class="family-header">
             <div class="family-title">{{ group.family }}</div>
-            <div class="family-count">{{ group.items.length }}</div>
+            <div class="family-count">{{ group.items.length }} variants</div>
           </header>
           <div class="arch-grid">
             <article v-for="item in group.items" :key="item.arch_id || item.model_variant" class="arch-card">
               <div class="arch-card-header">
-                <div class="arch-name" :title="formatVariant(item.model_variant) || '未命名'">
-                  {{ formatVariant(item.model_variant) || '未命名' }}
+                <div class="arch-name" :title="formatVariant(item.model_variant)">
+                  {{ formatVariant(item.model_variant) || 'Unnamed' }}
                 </div>
                 <span v-if="item.task_type" class="arch-tag">{{ displayTaskType(item.task_type) }}</span>
               </div>
@@ -56,7 +57,7 @@
                   <span class="meta-value">{{ item.arch_id }}</span>
                 </div>
                 <div class="meta-row" v-if="item.pretrained_path">
-                  <span class="meta-label">预训练模型</span>
+                  <span class="meta-label">Pretrained</span>
                   <el-tooltip :content="item.pretrained_path" placement="top" :open-delay="500">
                     <span class="meta-value">{{ truncate(item.pretrained_path) }}</span>
                   </el-tooltip>
@@ -69,7 +70,6 @@
     </section>
   </div>
 </template>
-
 
 <script>
 import { FetchArchitectureDetail } from "@/api/models";
@@ -129,8 +129,7 @@ export default {
         const response = await FetchArchitectureDetail();
         this.architectures = response;
       } catch (error) {
-        this.error = error.message || "加载架构失败。";
-        console.error("Failed to fetch architectures:", error);
+        this.error = error.message || "Failed to load architectures.";
       } finally {
         this.loading = false;
       }
@@ -145,7 +144,6 @@ export default {
     },
     displayTaskType(t){
       if(!t) return '-';
-      const norm = String(t).toLowerCase();
       const map = {
         detection: '目标检测',
         classify: '图像分类',
@@ -153,7 +151,7 @@ export default {
         segment: '图像分割',
         segmentation: '图像分割'
       };
-      return map[norm] || t;
+      return map[String(t).toLowerCase()] || t;
     }
   },
   mounted() {
@@ -164,116 +162,102 @@ export default {
 
 <style scoped>
 .architecture-page {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 24px;
 }
 
+/* Hero */
 .arch-hero {
-  flex-shrink: 0;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  padding: 32px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  gap: 2rem;
-  padding: 2rem;
-  border-radius: var(--radius-lg);
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  color: var(--text-main);
-  position: relative;
-  overflow: hidden;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
 }
 
-.arch-hero::before {
-  content: none;
-}
-
-.arch-hero-left {
+.arch-hero-content {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  position: relative;
-  z-index: 1;
+  gap: 8px;
 }
 
 .arch-eyebrow {
   font-size: 0.75rem;
-  letter-spacing: 0.1em;
   text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: var(--color-primary);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .arch-title {
   font-size: 2rem;
-  font-weight: 700;
-  margin: 0;
+  font-weight: 800;
   color: var(--text-main);
+  margin: 0;
+  line-height: 1.2;
 }
 
 .arch-subtitle {
-  font-size: 0.9rem;
   color: var(--text-secondary);
+  font-size: 1rem;
   margin: 0;
 }
 
-.arch-hero-right {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  position: relative;
-  z-index: 1;
+.arch-hero-stats {
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
 
-.arch-stat {
-  padding: 0.5rem 1rem;
-  min-width: 80px;
-  background: #f3f4f6;
-  border: 1px solid #e5e7eb;
-  border-radius: var(--radius-md);
-  text-align: center;
+.hero-stat {
+    text-align: center;
+    padding: 10px 20px;
+    background: var(--bg-body);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
 }
 
-.arch-stat-label {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
+.stat-value {
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--text-main);
+    line-height: 1;
 }
 
-.arch-stat-value {
-  font-size: 1.125rem;
-  font-weight: 700;
-  color: var(--color-primary);
+.stat-label {
+    font-size: 0.7rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    text-transform: uppercase;
 }
 
-.primary-action {
-  border-radius: var(--radius-full) !important;
-  font-weight: 600;
-}
-
+/* Body */
 .arch-body {
   flex: 1;
-  overflow-y: auto;
-  padding-right: 0.5rem;
-  padding-bottom: 2rem;
-}
-
-/* Family Groups */
-.family-groups {
   display: flex;
   flex-direction: column;
-  gap: 2rem;
+  gap: 32px;
 }
 
 .family-group {
-  padding: 1.5rem;
+    background: var(--bg-card);
+    border: 1px solid var(--border-light);
+    border-radius: var(--radius-lg);
+    padding: 24px;
+    box-shadow: var(--shadow-sm);
 }
 
 .family-header {
   display: flex;
   align-items: center;
-  gap: 1rem;
-  margin-bottom: 1.5rem;
+  gap: 12px;
+  margin-bottom: 20px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border-light);
 }
 
 .family-title {
@@ -283,48 +267,48 @@ export default {
 }
 
 .family-count {
-  padding: 0.2rem 0.6rem;
+  padding: 4px 10px;
   border-radius: var(--radius-full);
-  background: rgba(0,0,0,0.05); /* Adaptive */
+  background: var(--bg-body);
   color: var(--text-secondary);
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: 500;
+  border: 1px solid var(--border-color);
 }
 
 /* Grid */
 .arch-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 20px;
 }
 
 .arch-card {
-  background: rgba(255,255,255,0.6);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
-  padding: 1.25rem;
+  padding: 16px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 12px;
   transition: all 0.2s ease;
 }
 
 .arch-card:hover {
-  transform: translateY(-4px);
+  transform: translateY(-2px);
   box-shadow: var(--shadow-md);
-  background: #fff;
-  border-color: var(--color-primary-light);
+  border-color: var(--color-primary-subtle);
+  background: white;
 }
 
 .arch-card-header {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
-  gap: 0.5rem;
+  gap: 8px;
 }
 
 .arch-name {
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 700;
   color: var(--text-main);
   overflow: hidden;
@@ -333,29 +317,28 @@ export default {
 }
 
 .arch-tag {
-  padding: 0.15rem 0.5rem;
+  padding: 2px 8px;
   border-radius: var(--radius-full);
   background: var(--color-primary-light);
-  color: #fff; /* or dark text if light bg */
-  background: rgba(59, 130, 246, 0.1);
   color: var(--color-primary);
-  font-size: 0.7rem;
+  font-size: 0.65rem;
   font-weight: 600;
   flex-shrink: 0;
+  height: fit-content;
 }
 
 .arch-meta {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  padding-top: 0.75rem;
+  gap: 6px;
+  padding-top: 8px;
   border-top: 1px solid rgba(0,0,0,0.05);
 }
 
 .meta-row {
   display: flex;
   justify-content: space-between;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
 }
 
 .meta-label {
@@ -368,7 +351,7 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 150px;
+  max-width: 140px;
 }
 
 /* States */
@@ -376,20 +359,10 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 0.75rem;
-  padding: 4rem;
+  gap: 12px;
+  padding: 60px;
   color: var(--text-secondary);
-  font-weight: 500;
 }
 
-.state i {
-  font-size: 1.5rem;
-}
-
-@media (max-width: 960px) {
-  .arch-hero {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
+.state i { font-size: 1.5rem; }
 </style>

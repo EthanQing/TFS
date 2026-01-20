@@ -406,24 +406,16 @@ export default {
   gap: 2rem;
   padding: 2rem;
   border-radius: var(--radius-lg);
-  background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 50%, #60a5fa 100%);
-  box-shadow: var(--shadow-lg);
-  color: white;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  box-shadow: none;
+  color: var(--text-main);
   position: relative;
   overflow: hidden;
 }
 
 .detail-hero::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    right: -10%;
-    width: 300px;
-    height: 300px;
-    background: radial-gradient(circle, #93c5fd 0%, transparent 70%);
-    opacity: 0.2;
-    filter: blur(40px);
-    pointer-events: none;
+    content: none;
 }
 
 .hero-left {
@@ -438,9 +430,9 @@ export default {
   align-self: flex-start;
   padding: 0.25rem 0.75rem;
   border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255,255,255,0.3);
-  color: white;
+  background: #ffffff;
+  border: 1px solid #e5e7eb;
+  color: var(--text-secondary);
   font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.2s;
@@ -449,7 +441,7 @@ export default {
   gap: 0.25rem;
 }
 
-.back-link:hover { background: rgba(255, 255, 255, 0.3); }
+.back-link:hover { background: #f3f4f6; color: var(--text-main); }
 
 .hero-content {
     display: flex;
@@ -462,13 +454,14 @@ export default {
   letter-spacing: 0.1em;
   font-size: 0.75rem;
   opacity: 0.8;
-  color: #bfdbfe;
+  color: var(--color-primary);
 }
 
 .hero-title {
   font-size: 2rem;
   font-weight: 700;
   margin: 0;
+  color: var(--text-main);
 }
 
 .hero-meta {
@@ -504,13 +497,13 @@ export default {
   min-width: 90px;
   padding: 0.5rem 1rem;
   border-radius: var(--radius-md);
-  background: rgba(255, 255, 255, 0.15);
-  backdrop-filter: blur(4px);
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
   text-align: center;
 }
 
-.stat-label { font-size: 0.7rem; color: rgba(255,255,255,0.8); }
-.stat-value { font-size: 1.125rem; font-weight: 700; color: white; margin-top: 0.25rem; }
+.stat-label { font-size: 0.7rem; color: var(--text-secondary); }
+.stat-value { font-size: 1.125rem; font-weight: 700; color: var(--color-primary); margin-top: 0.25rem; }
 
 /* Body */
 .detail-body {

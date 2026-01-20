@@ -29,9 +29,9 @@ export default {
 }
 .main-content {
   flex: 1;
-  margin-left: 220px; /* Sidebar width + margin */
+  margin-left: 240px; /* Sidebar width */
   padding: 1.5rem;
-  width: calc(100% - 220px);
+  width: calc(100% - 240px);
   height: 100vh;
   overflow-y: auto;
   position: relative;

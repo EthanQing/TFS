@@ -15,14 +15,6 @@
           <span>进度</span>
           <strong>{{ progress ? progress + '%' : '-' }}</strong>
         </div>
-        <div class="tm-stat">
-          <span>图表</span>
-          <strong>{{ metricGroups.length }}</strong>
-        </div>
-        <div class="tm-stat">
-          <span>状态</span>
-          <strong>{{ refreshLabel }}</strong>
-        </div>
       </div>
     </section>
 
@@ -59,7 +51,12 @@
           <span>暂无可用指标。</span>
         </div>
         <div v-else class="metric-grid">
-          <div v-for="group in metricGroups" :key="group.key" class="metric-card" :class="{ 'is-wide': group.isWide }">
+          <div
+            v-for="group in metricGroups"
+            :key="group.key"
+            class="metric-card"
+            :class="{ 'is-wide': group.isWide, 'is-half': group.isHalf }"
+          >
             <chart
               :metrics="metrics"
               :custom-series="group.series"
@@ -194,11 +191,10 @@ export default {
 
       list.forEach((g) => {
         g.series.sort((a, b) => String(a.name).localeCompare(String(b.name), "zh"));
-        // Mark mAP metrics as wide
-        if (String(g.key).toLowerCase().includes("map")) {
-          g.isWide = true;
-          // Use a slightly better title if needed, but keeping existing logic is fine
-        }
+        const k = String(g.key).toLowerCase();
+        // Layout: first 2 rows are 2-up (mAP + Precision/Recall), third row is 3-up (losses).
+        if (k.includes("map")) g.isWide = true;
+        if (k.includes("precision") || k.includes("recall")) g.isHalf = true;
       });
 
       list.sort((a, b) => {
@@ -352,6 +348,20 @@ export default {
       try {
         const metricsResponse = await FetchTrainingJobsMetrics_detailed(this.jobId);
         this.metrics = metricsResponse;
+        
+        // Sync currentEpoch with actual metrics data length
+        const metricsEpoch = this.inferMaxEpoch();
+        if (metricsEpoch > this.currentEpoch) {
+          this.currentEpoch = metricsEpoch;
+        }
+        // Update progress based on metrics if total epochs is known
+        if (this.totalEpochs > 0 && metricsEpoch > 0) {
+          const metricsProgress = Math.round((metricsEpoch / this.totalEpochs) * 100);
+          if (metricsProgress > this.progress) {
+            this.progress = metricsProgress;
+          }
+        }
+        
         const signature = this.computeMetricsSignature();
         if (signature && signature === this.lastMetricsSignature) {
           this.metricsStableCount += 1;
@@ -398,17 +408,9 @@ export default {
 
 <style scoped>
 .train-manager {
-  --ink-900: #111315;
-  --ink-700: #3e4a5b;
-  --ink-500: #6a7482;
-  --line-200: #e4e7ee;
-  --brand-700: #2b3a67;
-  --brand-500: #4f63c7;
-  --brand-300: #9bb0ff;
-  --card-shadow: 0 18px 35px rgba(16, 18, 24, 0.12);
   padding: 8px 12px 24px;
   font-family: "Space Grotesk", "Sora", "Manrope", "Segoe UI", sans-serif;
-  color: var(--ink-900);
+  color: var(--text-main);
 }
 
 .tm-hero {
@@ -416,12 +418,12 @@ export default {
   justify-content: space-between;
   align-items: flex-end;
   gap: 20px;
-  padding: 20px 24px;
-  border-radius: 20px;
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
+  padding: 24px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid #e2e8f0;
   color: var(--text-main);
-  box-shadow: none;
+  box-shadow: var(--shadow-sm);
 }
 
 .tm-hero-left {
@@ -439,14 +441,15 @@ export default {
   letter-spacing: 1px;
   text-transform: uppercase;
   background: #eff6ff;
-  color: #3b82f6;
-  border: 1px solid #dbeafe;
+  color: var(--color-primary);
+  border: 1px solid #bfdbfe;
 }
 
 .tm-title {
   margin: 0;
   font-size: 26px;
   font-weight: 700;
+  color: var(--text-main);
 }
 
 .tm-subtitle {
@@ -462,10 +465,10 @@ export default {
 }
 
 .tm-stat {
-  padding: 10px 12px;
-  border-radius: 14px;
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  padding: 12px 16px;
+  border-radius: var(--radius-md);
+  background: var(--bg-body);
+  border: 1px solid #e2e8f0;
   display: flex;
   flex-direction: column;
   gap: 4px;
@@ -474,48 +477,52 @@ export default {
 .tm-stat span {
   font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 1px;
+  letter-spacing: 0.5px;
   color: var(--text-secondary);
+  font-weight: 600;
 }
 
 .tm-stat strong {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
+  color: var(--text-main);
 }
 
 .tm-progress-card {
-  margin-top: 18px;
-  padding: 16px 20px;
-  border-radius: 16px;
-  background: #fff;
-  border: 1px solid var(--line-200);
-  box-shadow: 0 8px 18px rgba(16, 18, 24, 0.08);
+  margin-top: 20px;
+  padding: 20px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px solid #e2e8f0;
+  box-shadow: var(--shadow-sm);
 }
 
 .tm-progress-row {
   display: flex;
   flex-wrap: wrap;
-  gap: 14px;
-  font-size: 12px;
-  color: var(--ink-500);
-  margin-bottom: 10px;
+  gap: 16px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-weight: 500;
 }
 
 .tm-progress-bar {
-  height: 10px;
-  background: #edf0f6;
+  height: 8px;
+  background: #f1f5f9;
   border-radius: 999px;
   overflow: hidden;
 }
 
 .tm-progress-fill {
   height: 100%;
-  background: #9ca3af;
+  background: var(--color-primary);
   transition: width 0.3s ease;
+  border-radius: 999px;
 }
 
 .tm-body {
-  margin-top: 20px;
+  margin-top: 24px;
 }
 
 .state-card {
@@ -523,46 +530,54 @@ export default {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 24px;
-  border-radius: 14px;
-  background: #fff;
-  border: 1px solid var(--line-200);
-  color: var(--ink-500);
+  padding: 32px;
+  border-radius: var(--radius-lg);
+  background: var(--bg-card);
+  border: 1px dashed #cbd5e1;
+  color: var(--text-secondary);
   font-size: 14px;
-  box-shadow: 0 8px 18px rgba(16, 18, 24, 0.08);
+  box-shadow: none;
 }
 
 .state-card.error {
-  color: #e11d48;
-  border-color: rgba(225, 29, 72, 0.2);
+  color: #ef4444;
+  border-color: #fca5a5;
+  background: #fef2f2;
 }
 
 .metrics-container {
-  margin-top: 10px;
+  margin-top: 16px;
 }
 
 .metric-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
-  gap: 18px;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 20px;
 }
 
 .metric-card {
   position: relative;
-  background: #ffffff;
-  border-radius: 18px;
-  padding: 8px 0 14px;
-  border: 1px solid #eef0f6;
-  box-shadow: 0 12px 30px rgba(17, 19, 21, 0.1);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 12px 0 16px;
+  border: 1px solid #e2e8f0;
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
+  grid-column: span 2;
+  transition: all var(--transition-normal);
+}
+
+.metric-card:hover {
+  box-shadow: var(--shadow-md);
+  transform: translateY(-2px);
 }
 
 .metric-card::before {
   content: "";
   position: absolute;
   inset: 0 0 auto 0;
-  height: 3px;
-  background: #e5e7eb;
+  height: 4px;
+  background: #f1f5f9;
 }
 
 .refresh-note {
@@ -570,29 +585,38 @@ export default {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #2563eb;
+  color: var(--color-primary);
   font-size: 12px;
+  font-weight: 500;
 }
 
+/* Status variants */
 .status-running {
-  background: rgba(34, 197, 94, 0.22);
+  background: #ecfdf5 !important;
+  color: #059669 !important;
+  border-color: #a7f3d0 !important;
 }
 
 .status-completed {
-  background: rgba(34, 197, 94, 0.22);
+  background: #f0f9ff !important;
+  color: #0284c7 !important;
+  border-color: #bae6fd !important;
 }
 
 .status-failed,
 .status-cancelled,
 .status-deleted {
-  background: rgba(225, 29, 72, 0.2);
+  background: #fef2f2 !important;
+  color: #dc2626 !important;
+  border-color: #fecaca !important;
 }
 
 .status-queued,
 .status-created,
 .status-pending {
-  background: rgba(249, 216, 110, 0.25);
-  color: #1f2937;
+  background: #fffbeb !important;
+  color: #d97706 !important;
+  border-color: #fde68a !important;
 }
 
 @media (max-width: 960px) {
@@ -604,6 +628,14 @@ export default {
   .tm-hero-right {
     width: 100%;
     grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  }
+
+  .metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric-card {
+    grid-column: span 1;
   }
 }
 
@@ -618,10 +650,24 @@ export default {
 }
 
 .metric-card.is-wide {
-  grid-column: span 2;
+  grid-column: span 3;
+}
+
+.metric-card.is-half {
+  grid-column: span 3;
 }
 
 @media (max-width: 960px) {
+  .metric-card.is-wide {
+    grid-column: span 2;
+  }
+
+  .metric-card.is-half {
+    grid-column: span 1;
+  }
+}
+
+@media (max-width: 720px) {
   .metric-card.is-wide {
     grid-column: span 1;
   }

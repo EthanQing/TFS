@@ -1,34 +1,38 @@
 <template>
   <div class="datasets-page page-container">
     <header class="ds-hero">
-      <div class="ds-hero-left">
-        <div class="ds-eyebrow">数据集中心</div>
+      <div class="ds-hero-content">
+        <div class="ds-eyebrow">数据中心</div>
         <h1 class="ds-title">数据集</h1>
-        <p class="ds-subtitle">集中创建、上传和管理训练数据。</p>
+        <p class="ds-subtitle">集中创建、上传和管理您的训练数据。</p>
+        
+        <div class="ds-actions">
+           <el-button
+            type="primary"
+            icon="el-icon-plus"
+            class="hero-action"
+            @click="dialogFormVisible = true"
+          >新建数据集</el-button>
+        </div>
       </div>
-      <div class="ds-hero-right">
+      
+      <!-- Optional: Add a decorative element or keep clean -->
+    </header>
+
+    <section class="ds-toolbar">
+      <div class="toolbar-left">
         <div class="search-shell">
           <i class="el-icon-search"></i>
           <el-input
             v-model="searchQuery"
-            placeholder="搜索数据集"
+            placeholder="搜索数据集..."
             class="search-input"
             clearable
           ></el-input>
         </div>
-        <el-button
-          type="primary"
-          class="primary-action"
-          @click="dialogFormVisible = true"
-        >新建数据集</el-button>
-      </div>
-    </header>
-
-    <section class="ds-toolbar glass-panel">
-      <div class="toolbar-left">
+        
         <div class="filter-group">
-          <span class="filter-label">Type</span>
-          <el-select v-model="value" placeholder="All types" class="filter-select" @change="handleFilterChange">
+          <el-select v-model="value" placeholder="全部类型" class="filter-select" @change="handleFilterChange">
             <el-option
               v-for="item in options"
               :key="item.value"
@@ -38,23 +42,26 @@
           </el-select>
         </div>
       </div>
+      
       <div class="toolbar-right">
-        <span class="filter-label">排序</span>
-        <button
-          class="chip"
-          :class="{ active: activeFilter === 'category' }"
-          @click="setActiveFilter('category')"
-        >类别</button>
-        <button
-          class="chip"
-          :class="{ active: activeFilter === 'image' }"
-          @click="setActiveFilter('image')"
-        >图片数</button>
-        <button
-          class="chip"
-          :class="{ active: activeFilter === 'size' }"
-          @click="setActiveFilter('size')"
-        >大小</button>
+        <span class="filter-label">排序:</span>
+        <div class="sort-actions">
+           <button
+            class="chip"
+            :class="{ active: activeFilter === 'category' }"
+            @click="setActiveFilter('category')"
+          >类别</button>
+          <button
+            class="chip"
+            :class="{ active: activeFilter === 'image' }"
+            @click="setActiveFilter('image')"
+          >图片数</button>
+          <button
+            class="chip"
+            :class="{ active: activeFilter === 'size' }"
+            @click="setActiveFilter('size')"
+          >大小</button>
+        </div>
       </div>
     </section>
 
@@ -67,13 +74,13 @@
           @click="goDetail(d)"
         >
           <div class="card-media" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
-            <span class="card-type">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
+            <span class="card-type-badge">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
             <div class="card-overlay"></div>
           </div>
           <div class="card-body">
             <div class="card-header">
                 <div class="card-title">{{ d.dataset_name }}</div>
-                <div class="card-sub">ID: {{ d.dataset_id || '-' }}</div>
+                <div class="card-id">ID: {{ d.dataset_id || '-' }}</div>
             </div>
             
             <div class="card-stats">
@@ -97,129 +104,115 @@
         </div>
       </section>
 
-      <div v-else class="empty-state glass-panel">
+      <div v-else class="empty-state">
+        <div class="empty-icon">
+          <i class="el-icon-folder-opened"></i>
+        </div>
         <div class="empty-title">暂无数据集</div>
-        <div class="empty-desc">创建您的第一个数据集以开始。</div>
-        <el-button type="primary" class="primary-action" @click="dialogFormVisible = true">创建数据集</el-button>
+        <div class="empty-desc">创建您的第一个数据集项目以开始。</div>
+        <el-button type="primary" @click="dialogFormVisible = true">创建数据集</el-button>
       </div>
     </section>
 
     <!-- Custom Popup -->
     <div v-if="showPopup" class="mask" @click="showPopup = false">
-      <div class="popup glass-panel" @click.stop>
-        <p>确定删除此数据集吗？</p>
+      <div class="popup" @click.stop>
+        <div class="popup-header">
+           <i class="el-icon-warning text-warning"></i>
+           <span>确认删除</span>
+        </div>
+        <p class="popup-body">确定要删除此数据集吗？此操作不可撤销。</p>
         <div class="popup-actions">
-          <el-button size="small" @click="showPopup = false">取消</el-button>
-          <el-button size="small" type="danger" @click="handleDelete(currentDatasetId)">删除</el-button>
+          <el-button @click="showPopup = false">取消</el-button>
+          <el-button type="danger" @click="handleDelete(currentDatasetId)">删除</el-button>
         </div>
       </div>
     </div>
 
     <el-dialog
-      title="创建数据集"
+      title="创建新数据集"
       :visible.sync="dialogFormVisible"
-      width="720px"
+      width="600px"
       custom-class="dataset-dialog"
+      append-to-body
     >
       <div class="dialog-content">
-        <div class="dialog-subtitle">先创建数据集，然后在详情页上传文件。</div>
         <el-form :model="form" :rules="rules" ref="formRef" label-position="top">
-            <el-form-item
-            label="数据集名称"
-            prop="name"
-            >
-            <el-input v-model="form.name" autocomplete="off" :disabled="createdDatasetId" placeholder="例如：交通标志"></el-input>
+            <el-form-item label="数据集名称" prop="name">
+              <el-input v-model="form.name" autocomplete="off" :disabled="createdDatasetId" placeholder="例如：交通标志"></el-input>
             </el-form-item>
-            <el-form-item
-            label="数据集类型"
-            prop="type"
-            >
-            <el-select v-model="form.type" placeholder="选择类型" :disabled="createdDatasetId" style="width: 100%">
-                <el-option
-                v-for="item in selectOptions"
-                :key="item.value"
-                :label="item.label"
-                :value="item.value"
-                ></el-option>
-            </el-select>
+            <el-form-item label="任务类型" prop="type">
+              <el-select v-model="form.type" placeholder="选择类型" :disabled="createdDatasetId" style="width: 100%">
+                  <el-option
+                  v-for="item in selectOptions"
+                  :key="item.value"
+                  :label="item.label"
+                  :value="item.value"
+                  ></el-option>
+              </el-select>
             </el-form-item>
         </el-form>
 
-        <div class="create-dataset-actions">
-            <el-button
-            type="primary"
-            :loading="creatingDataset"
-            :disabled="createdDatasetId"
-            @click="handleCreateDataset"
-            >创建</el-button>
-            <el-button
-            v-if="createdDatasetId"
-            type="primary"
-            plain
-            class="view-detail-btn"
-            @click="goToCreatedDetail"
-            >打开详情</el-button>
-            <el-button
-            v-if="createdDatasetId"
-            type="text"
-            class="reset-dataset-btn"
-            @click="resetCreatedDataset"
-            >继续创建</el-button>
-            <span v-if="createdDatasetId" class="created-tip">已创建。ID：{{ createdDatasetId }}</span>
-            <span v-else class="created-tip">创建后在详情页上传 ZIP 文件。</span>
+        <div class="dialog-footer-actions">
+            <span v-if="createdDatasetId" class="created-tip success">
+               <i class="el-icon-success"></i> 已创建! ID: {{ createdDatasetId }}
+            </span>
+            <div class="actions-right">
+                <el-button @click="dialogFormVisible = false" v-if="!createdDatasetId">取消</el-button>
+                <el-button
+                v-if="!createdDatasetId"
+                type="primary"
+                :loading="creatingDataset"
+                @click="handleCreateDataset"
+                >创建</el-button>
+                
+                <template v-else>
+                    <el-button type="text" @click="resetCreatedDataset">继续创建</el-button>
+                    <el-button type="primary" @click="goToCreatedDetail">查看详情</el-button>
+                </template>
+            </div>
         </div>
       </div>
     </el-dialog>
   </div>
 </template>
 
-
 <script>
+// Logic remains mostly the same, ensuring imports are correct
 import { fetchDatasets, createDataset, deleteDataset, FetchDatasetStatistics, FetchDatasetPreviewImage, FetchDatasetClassNames } from "@/api/datasets";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
   name: "Datasets",
-  components: {},
   data() {
     return {
-      searchQuery: "", // Search keywords
+      searchQuery: "",
       options: [
-        { value: "all", label: "全部" },
-        { value: "detection", label: "检测" },
-        { value: "segmentation", label: "分割" },
-        { value: "classification", label: "分类" },
+        { value: "all", label: "全部类型" },
+        { value: "detection", label: "目标检测" },
+        { value: "segmentation", label: "图像分割" },
+        { value: "classification", label: "图像分类" },
       ],
       selectOptions: [
-        { value: "detection", label: "检测" },
-        { value: "segmentation", label: "分割" },
-        { value: "classification", label: "分类" },
+        { value: "detection", label: "目标检测" },
+        { value: "segmentation", label: "图像分割" },
+        { value: "classification", label: "图像分类" },
       ],
       value: "all",
       activeFilter: null,
       datasets: [],
       originalDatasets: [],
       dialogFormVisible: false,
-      form: {
-        name: "",
-        type: "",
-      },
-      formLabelWidth: "120px",
+      form: { name: "", type: "" },
       rules: {
-        name: [
-          { required: true, message: "请输入数据集名称", trigger: "blur" },
-        ],
-        type: [
-          { required: true, message: "请选择数据集类型", trigger: "change" },
-        ],
+        name: [{ required: true, message: "请输入数据集名称", trigger: "blur" }],
+        type: [{ required: true, message: "请选择任务类型", trigger: "change" }],
       },
       showPopup: false,
       currentDatasetId: null,
       createdDatasetId: null,
       creatingDataset: false,
       defaultPreview: defaultDatasetImg,
-      bodyOverflowBackup: '',
-      htmlOverflowBackup: '',
     };
   },
   watch: {
@@ -227,55 +220,27 @@ export default {
       if (!val) {
         this.createdDatasetId = null;
         this.creatingDataset = false;
-        if (this.$refs.formRef) {
-          this.$refs.formRef.resetFields();
-        }
+        if (this.$refs.formRef) this.$refs.formRef.resetFields();
       }
     }
   },
-
   computed: {
-    // 综合过滤：先按名称搜索，再按类型过滤，最后排序
     filteredDatasets() {
       let result = [...this.datasets];
-      
-      // 1. 仅按名称搜索过滤
       if (this.searchQuery) {
         const query = this.searchQuery.toLowerCase();
-        result = result.filter(dataset => {
-          // 只保留名称匹配的过滤逻辑
-          return dataset.dataset_name.toLowerCase().includes(query);
-        });
+        result = result.filter(dataset => dataset.dataset_name.toLowerCase().includes(query));
       }
-      
-      // 2. 类型过滤
       if (this.value !== 'all' && this.value) {
-        result = result.filter(dataset => {
-          return dataset.dataset_type === this.value;
-        });
+        result = result.filter(dataset => dataset.dataset_type === this.value);
       }
-      
-      // 3. 排序
       if (this.activeFilter === 'category') {
-        result = result.sort((a, b) => {
-          const aClasses = a.num_classes || 0;
-          const bClasses = b.num_classes || 0;
-          return bClasses - aClasses;
-        });
+        result.sort((a, b) => (b.num_classes || 0) - (a.num_classes || 0));
       } else if (this.activeFilter === 'image') {
-        result = result.sort((a, b) => {
-          const aImages = a.num_images || 0;
-          const bImages = b.num_images || 0;
-          return bImages - aImages;
-        });
+        result.sort((a, b) => (b.num_images || 0) - (a.num_images || 0));
       } else if (this.activeFilter === 'size') {
-        result = result.sort((a, b) => {
-          const aSize = this.parseDatasetSize(a.dataset_size_mb);
-          const bSize = this.parseDatasetSize(b.dataset_size_mb);
-          return bSize - aSize;
-        });
+        result.sort((a, b) => this.parseDatasetSize(b.dataset_size_mb) - this.parseDatasetSize(a.dataset_size_mb));
       }
-      
       return result;
     }
   },
@@ -283,86 +248,69 @@ export default {
     setActiveFilter(filter) {
       this.activeFilter = this.activeFilter === filter ? null : filter;
     },
-    // 处理筛选器变化
-    handleFilterChange() {
-      // 筛选变化时会自动触发computed重新计算
-    },
+    handleFilterChange() {},
     goDetail(dataset) {
       if (this.$route.path !== "/datadetail") {
-        const queryData = {
-          datasetId: dataset.dataset_id,
-          datasetName: dataset.dataset_name,
-          datasetType: dataset.dataset_type,
-          numClasses: dataset.num_classes,
-          numImages: dataset.num_images,
-          datasetSize: dataset.dataset_size_mb
-        };
         this.$router.push({
           path: "/datadetail",
-          query: queryData
+          query: {
+            datasetId: dataset.dataset_id,
+            datasetName: dataset.dataset_name,
+            datasetType: dataset.dataset_type,
+            numClasses: dataset.num_classes,
+            numImages: dataset.num_images,
+            datasetSize: dataset.dataset_size_mb
+          }
         });
       }
     },
     resetCreatedDataset() {
       this.createdDatasetId = null;
-      this.$nextTick(() => {
-        if (this.$refs.formRef) {
-          this.$refs.formRef.clearValidate();
-        }
-      });
+      this.form.name = "";
+      this.form.type = "";
+      this.$nextTick(() => { if (this.$refs.formRef) this.$refs.formRef.clearValidate(); });
     },
     goToCreatedDetail() {
       if (!this.createdDatasetId) return;
-      const queryData = {
-        datasetId: this.createdDatasetId,
-        datasetName: this.form.name,
-        datasetType: this.form.type,
-      };
       this.dialogFormVisible = false;
-      this.$router.push({ path: "/datadetail", query: queryData });
+      this.$router.push({ 
+        path: "/datadetail", 
+        query: { datasetId: this.createdDatasetId, datasetName: this.form.name, datasetType: this.form.type } 
+      });
     },
-
     async handleCreateDataset() {
-      if (this.creatingDataset) return;
-      if (this.createdDatasetId) return;
+      if (this.creatingDataset || this.createdDatasetId) return;
       try {
         this.creatingDataset = true;
         await this.$refs.formRef.validate();
-        const payload = {
-          name: this.form.name,
-          dataset_type: this.form.type,
-        };
+        const payload = { name: this.form.name, dataset_type: this.form.type };
         const ds = await createDataset(payload);
         this.createdDatasetId = ds && (ds.dataset_id || ds.id);
-        this.$message({ type: 'success', message: `数据集已创建: ${this.form.name}` });
+        this.$message.success(`Dataset Created: ${this.form.name}`);
         this.fetchDatasetsList();
       } catch (error) {
-        this.$message({ type: 'error', message: '创建失败: ' + (error.message || error) });
+        this.$message.error('Creation failed: ' + (error.message || error));
       } finally {
         this.creatingDataset = false;
       }
     },
-
     async fetchDatasetsList() {
       try {
         const list = await fetchDatasets();
-        // 确保list是数组
         this.datasets = Array.isArray(list) ? list : [];
-        this.originalDatasets = Array.isArray(list) ? [...list] : [];
+        this.originalDatasets = [...this.datasets];
         this.seedPreviewFromCache();
         this.loadStatsParallel();
         this.loadPreviewsParallel(4);
       } catch (e) {
         console.error('Failed to fetch datasets:', e);
         this.datasets = [];
-        this.originalDatasets = [];
       }
     },
     seedPreviewFromCache() {
       this.datasets.forEach(d => {
         const key = `ds_preview_${d.dataset_id}`;
         const cached = localStorage.getItem(key) || '';
-        // 仅当缓存存在且不是默认占位图时使用
         if (cached && !/images\/image\.png$/.test(cached)) {
           this.$set(d, 'preview_image_url', cached);
         } else {
@@ -375,11 +323,8 @@ export default {
       const jobs = this.datasets.map(async d => {
         try {
           const s = await FetchDatasetStatistics(d.dataset_id);
-          // 后端 v2 统计字段：total_images / total_size_mb 等
           this.$set(d, 'num_images', s.num_images || 0);
           this.$set(d, 'dataset_size_mb', s.dataset_size_mb || '0MB');
-
-          // 类别数：优先从 data.yaml 读取（例如 coco128），避免首页一直显示 0 分类
           try {
             const names = await FetchDatasetClassNames(d.storage_path || d.dataset_name || d.name);
             this.$set(d, 'num_classes', Array.isArray(names) ? names.length : 0);
@@ -387,9 +332,7 @@ export default {
             this.$set(d, 'num_classes', 0);
           }
         } catch (_) {
-          this.$set(d, 'num_classes', 0);
-          this.$set(d, 'num_images', 0);
-          this.$set(d, 'dataset_size_mb', '0MB');
+            // retain defaults
         }
       });
       await Promise.allSettled(jobs);
@@ -402,24 +345,23 @@ export default {
           if (!d) return;
           try {
             const url = await FetchDatasetPreviewImage(d.dataset_id);
-            this.$set(d, 'preview_image_url', url || '');
-            // 仅当 URL 有效且非默认占位时写入缓存
             if (url && !/images\/image\.png$/.test(url)) {
-              localStorage.setItem(`ds_preview_${d.dataset_id}`, url);
+               this.$set(d, 'preview_image_url', url);
+               localStorage.setItem(`ds_preview_${d.dataset_id}`, url);
             }
           } catch (_) {}
         }
       };
-      const n = Math.min(concurrency, queue.length || 0);
-      await Promise.all(Array.from({ length: n }, worker));
+      await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
     },
     async handleDelete(id) {
       try {
         await deleteDataset(id, { force: true, deleteFiles: true });
         this.showPopup = false;
         this.fetchDatasetsList();
+        this.$message.success('Dataset deleted');
       } catch (error) {
-        alert(`删除失败: ${error.message}`);
+        this.$message.error(`Delete failed: ${error.message}`);
       }
     },
     handleShowDeletePopup(datasetId) {
@@ -428,39 +370,24 @@ export default {
     },
     formatImageCount(count) {
       if (!count) return '0';
-      if (count >= 1000) {
-        return (count / 1000).toFixed(1) + 'K';
-      }
+      if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
       return count.toString();
     },
     formatDatasetSize(sizeStr) {
       if (!sizeStr) return '0MB';
-      if (typeof sizeStr === 'string' && sizeStr.includes('MB')) {
-        return sizeStr;
-      }
-      if (typeof sizeStr === 'number') {
-        return sizeStr.toFixed(1) + 'MB';
-      }
+      if (typeof sizeStr === 'string' && sizeStr.includes('MB')) return sizeStr;
+      if (typeof sizeStr === 'number') return sizeStr.toFixed(1) + 'MB';
       return sizeStr;
     },
     getDatasetTypeLabel(type) {
-      const typeMap = {
-        'detection': '目标检测',
-        'segmentation': '图像分割', 
-        'classification': '图像分类',
-      };
-      return typeMap[type] || type || '未知';
+        const map = { 'detection': '目标检测', 'segmentation': '图像分割', 'classification': '图像分类' };
+        return map[type] || type || '未知';
     },
     parseDatasetSize(sizeStr) {
       if (!sizeStr) return 0;
-      if (typeof sizeStr === 'number') {
-        return sizeStr;
-      }
-      if (typeof sizeStr === 'string') {
-        const match = sizeStr.match(/(\d+\.?\d*)/);
-        return match ? parseFloat(match[1]) : 0;
-      }
-      return 0;
+      if (typeof sizeStr === 'number') return sizeStr;
+      const match = sizeStr.match(/(\d+\.?\d*)/);
+      return match ? parseFloat(match[1]) : 0;
     },
   },
   mounted() {
@@ -469,214 +396,181 @@ export default {
 };
 </script>
 
-
 <style scoped>
 .datasets-page {
-  height: 100%;
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: 24px;
 }
 
 /* Hero Section */
 .ds-hero {
-  flex-shrink: 0;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  padding: 32px;
   display: flex;
   justify-content: space-between;
-  align-items: flex-end;
-  gap: 2rem;
-  padding: 2rem;
-  border-radius: var(--radius-lg);
-  background: #ffffff;
-  border: 1px solid #e5e7eb;
-  color: var(--text-main);
-  position: relative;
-  overflow: hidden;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
 }
 
-.ds-hero::before {
-  content: none;
-}
-
-.ds-hero-left {
+.ds-hero-content {
   display: flex;
   flex-direction: column;
-  gap: 0.5rem;
-  position: relative;
-  z-index: 1;
+  gap: 8px;
 }
 
 .ds-eyebrow {
   font-size: 0.75rem;
-  letter-spacing: 0.1em;
   text-transform: uppercase;
+  letter-spacing: 0.1em;
   color: var(--color-primary);
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .ds-title {
   font-size: 2rem;
-  font-weight: 700;
-  margin: 0;
+  font-weight: 800;
   color: var(--text-main);
+  margin: 0;
+  line-height: 1.2;
 }
 
 .ds-subtitle {
-  font-size: 0.9rem;
   color: var(--text-secondary);
+  font-size: 1rem;
   margin: 0;
+  max-width: 600px;
 }
 
-.ds-hero-right {
-  display: flex;
-  align-items: center;
-  gap: 1rem;
-  position: relative;
-  z-index: 1;
-}
-
-.search-shell {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  padding: 0.5rem 1rem;
-  background: #f3f4f6;
-  border-radius: var(--radius-full);
-  border: 1px solid #e5e7eb;
-  transition: all 0.3s ease;
-}
-
-.search-shell:focus-within {
-  background: #ffffff;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(0,0,0,0.05);
-}
-
-.search-shell i {
-  color: var(--text-secondary);
-}
-
-.search-input ::v-deep .el-input__inner {
-  border: none;
-  background: transparent;
-  color: var(--text-main);
-  height: auto;
-  padding: 0;
-  line-height: normal;
-}
-
-.search-input ::v-deep .el-input__inner::placeholder {
-  color: var(--text-secondary);
-  opacity: 0.7;
-}
-
-.primary-action {
-  border-radius: var(--radius-full) !important;
-  font-weight: 600;
+.ds-actions {
+    margin-top: 16px;
 }
 
 /* Toolbar */
 .ds-toolbar {
-  padding: 1rem;
   display: flex;
   justify-content: space-between;
-  gap: 1rem;
   align-items: center;
   flex-wrap: wrap;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
 }
 
 .toolbar-left, .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 16px;
+}
+
+.search-shell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  padding: 6px 16px;
+  transition: all 0.2s;
+  width: 280px;
+}
+
+.search-shell:focus-within {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px var(--color-primary-subtle);
+}
+
+.search-input ::v-deep .el-input__inner {
+  border: none;
+  background: transparent;
+  padding: 0;
+  height: auto;
 }
 
 .filter-group {
+    min-width: 160px;
+}
+
+.sort-actions {
     display: flex;
-    align-items: center;
-    gap: 0.5rem;
+    gap: 8px;
 }
 
-.filter-label {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-    font-weight: 500;
-}
-
-/* Custom Chip Buttons */
 .chip {
-  padding: 0.5rem 1rem;
+  padding: 6px 12px;
   border-radius: var(--radius-full);
   border: 1px solid transparent;
-  background: rgba(0,0,0,0.05); /* slightly dark on light theme */
-  cursor: pointer;
-  font-size: 0.875rem;
-  font-weight: 500;
+  background: transparent;
+  font-size: 0.85rem;
   color: var(--text-secondary);
-  transition: all 0.2s ease;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
 }
 
 .chip:hover {
-  background: rgba(0,0,0,0.1);
-  color: var(--text-main);
+  background: var(--bg-body);
+  color: var(--color-primary);
 }
 
 .chip.active {
-  background: var(--color-primary);
-  color: white;
-  box-shadow: var(--shadow-sm);
+  background: var(--color-primary-light);
+  color: var(--color-primary);
+  font-weight: 600;
 }
 
-/* Grid & Cards */
+/* Grid */
 .ds-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 0.5rem;
+    flex: 1;
 }
 
 .dataset-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  gap: 1.5rem;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
 }
 
 .dataset-card {
-  background: var(--bg-card-glass);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: var(--radius-lg);
   overflow: hidden;
-  cursor: pointer;
   transition: all var(--transition-normal);
-  backdrop-filter: blur(10px);
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .dataset-card:hover {
-  transform: translateY(-5px);
+  transform: translateY(-4px);
   box-shadow: var(--shadow-lg);
-  border-color: var(--color-primary-light);
+  border-color: var(--color-primary-subtle);
 }
 
 .card-media {
-  height: 160px;
+  height: 180px;
   background-size: cover;
   background-position: center;
   position: relative;
 }
 
 .card-overlay {
-    position: absolute;
-    inset: 0;
-    background: linear-gradient(180deg, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%);
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(0,0,0,0.4), transparent);
 }
 
-.card-type {
+.card-type-badge {
   position: absolute;
-  top: 1rem;
-  left: 1rem;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 0.25rem 0.75rem;
+  top: 12px;
+  left: 12px;
+  background: rgba(255, 255, 255, 0.95);
+  padding: 4px 10px;
   border-radius: var(--radius-full);
   font-size: 0.75rem;
   font-weight: 600;
@@ -687,164 +581,162 @@ export default {
 
 .card-more {
   position: absolute;
-  top: 1rem;
-  right: 1rem;
+  top: 12px;
+  right: 12px;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   background: rgba(255, 255, 255, 0.9);
   border: none;
-  width: 28px;
-  height: 28px;
-  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  z-index: 2;
-  box-shadow: var(--shadow-sm);
   color: var(--text-secondary);
+  z-index: 2;
+  transition: all 0.2s;
 }
 
 .card-more:hover {
-    background: white;
-    color: var(--color-primary);
+  background: white;
+  color: var(--color-primary);
+  transform: scale(1.1);
 }
 
 .card-body {
-  padding: 1.5rem;
+  padding: 20px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 16px;
   flex: 1;
-}
-
-.card-header {
-    margin-bottom: 0.5rem;
 }
 
 .card-title {
   font-size: 1.125rem;
   font-weight: 700;
   color: var(--text-main);
+  margin-bottom: 4px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.card-sub {
+.card-id {
   font-size: 0.75rem;
-  color: var(--text-secondary);
+  color: var(--text-light);
+  font-family: monospace;
 }
 
 .card-stats {
   margin-top: auto;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 0.5rem;
-  border-top: 1px solid rgba(0,0,0,0.05);
-  padding-top: 1rem;
+  gap: 8px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
 }
 
 .stat-item {
-  display: flex;
-  flex-direction: column;
   text-align: center;
-  background: rgba(0,0,0,0.02);
-  padding: 0.5rem;
-  border-radius: var(--radius-md);
 }
 
 .stat-label {
   font-size: 0.7rem;
   color: var(--text-secondary);
-  margin-bottom: 0.25rem;
+  text-transform: uppercase;
+  margin-bottom: 2px;
 }
 
 .stat-value {
-  font-size: 0.875rem;
-  font-weight: 600;
-  color: var(--color-primary);
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-main);
 }
 
 /* Empty State */
 .empty-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 4rem;
-  border: 1px dashed rgba(0,0,0,0.1);
   text-align: center;
+  padding: 60px;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-color);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  color: var(--text-light);
+  margin-bottom: 16px;
 }
 
 .empty-title {
   font-size: 1.25rem;
   font-weight: 700;
-  margin-bottom: 0.5rem;
+  margin-bottom: 8px;
+  color: var(--text-main);
 }
 
 .empty-desc {
   color: var(--text-secondary);
-  margin-bottom: 1.5rem;
+  margin-bottom: 24px;
 }
 
 /* Popup */
 .mask {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.5);
   backdrop-filter: blur(4px);
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
+  z-index: 2000;
 }
 
 .popup {
-  width: 320px;
-  padding: 2rem;
-  display: flex;
-  flex-direction: column;
-  gap: 1.5rem;
-  text-align: center;
+  background: white;
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  width: 400px;
+  box-shadow: var(--shadow-xl);
 }
 
-.popup p {
-    font-weight: 600;
-    font-size: 1.125rem;
+.popup-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-bottom: 12px;
+}
+
+.text-warning {
+    color: var(--color-warning);
+}
+
+.popup-body {
+  color: var(--text-secondary);
+  margin-bottom: 24px;
+  line-height: 1.5;
 }
 
 .popup-actions {
   display: flex;
-  justify-content: center;
-  gap: 1rem;
+  justify-content: flex-end;
+  gap: 12px;
 }
 
-/* Custom Dialog Content */
-
-.dialog-content {
-    padding: 1rem 2rem;
-}
-
-.dialog-subtitle {
-    margin-bottom: 1.5rem;
-    color: var(--text-secondary);
-}
-
-.create-dataset-actions {
+/* Dialog Footer */
+.dialog-footer-actions {
     display: flex;
+    justify-content: space-between;
     align-items: center;
-    gap: 1rem;
-    margin-top: 2rem;
+    margin-top: 24px;
 }
 
-.created-tip {
-    font-size: 0.875rem;
-    color: var(--text-secondary);
-}
-
-@media (max-width: 960px) {
-  .ds-hero {
-    flex-direction: column;
-    align-items: flex-start;
-  }
+.created-tip.success {
+    color: var(--color-success);
+    font-weight: 500;
+    font-size: 0.9rem;
 }
 </style>

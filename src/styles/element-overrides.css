@@ -1,134 +1,290 @@
-/* Element UI Theme Overrides */
+/* Element UI Theme Overrides - Deep Blue/Light Theme */
 
-/* Buttons */
+/* ================== Typography ================== */
+body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+}
+
+/* ================== Buttons ================== */
 .el-button {
     font-weight: 500;
     border-radius: var(--radius-md);
-    border: none;
+    padding: 10px 20px;
+    height: auto;
     transition: all var(--transition-fast);
+    border: 1px solid var(--border-color);
 }
 
+/* Primary Button */
 .el-button--primary {
-    background: var(--gradient-primary);
-    box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.3);
+    background-color: var(--color-primary);
+    border-color: var(--color-primary);
+    color: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .el-button--primary:hover,
 .el-button--primary:focus {
-    background: linear-gradient(135deg, #2563eb 0%, #7c3aed 100%);
+    background-color: var(--color-primary-dark);
+    border-color: var(--color-primary-dark);
     transform: translateY(-1px);
-    box-shadow: 0 6px 8px -1px rgba(59, 130, 246, 0.4);
+    box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.2);
 }
 
+/* Default/White Button */
 .el-button--default {
-    background: #fff;
-    border: 1px solid #e2e8f0;
-    color: var(--text-main);
+    background-color: #fff;
+    color: var(--text-secondary);
 }
 
 .el-button--default:hover {
-    border-color: var(--color-primary);
     color: var(--color-primary);
-    background-color: #f8fafc;
+    border-color: var(--color-primary-subtle);
+    background-color: var(--color-primary-light);
 }
 
-/* Cards */
-.el-card {
+/* Text Button */
+.el-button--text {
+    color: var(--color-primary);
     border: none;
-    border-radius: var(--radius-lg);
-    background: var(--bg-card);
-    box-shadow: var(--shadow-md);
-    transition: box-shadow var(--transition-normal);
+    background: transparent;
+    padding-left: 0;
+    padding-right: 0;
 }
 
-.el-card:hover {
-    box-shadow: var(--shadow-lg);
+.el-button--text:hover {
+    color: var(--color-primary-dark);
+    text-decoration: underline;
+    background: transparent;
+}
+
+/* Danger Button */
+.el-button--danger {
+    background-color: var(--color-danger);
+    border-color: var(--color-danger);
+}
+
+/* ================== Forms & Inputs ================== */
+.el-input__inner {
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-color);
+    padding: 0 16px;
+    height: 40px;
+    line-height: 40px;
+    color: var(--text-main);
+    transition: all var(--transition-fast);
+    background-color: #fff;
+}
+
+.el-input__inner:hover {
+    border-color: #cbd5e1;
+    /* Slate 300 */
+}
+
+/* Focus State - Blue Ring */
+.el-input__inner:focus,
+.el-textarea__inner:focus {
+    border-color: var(--color-primary);
+    outline: none;
+    box-shadow: var(--shadow-glow);
+}
+
+.el-input__inner::placeholder {
+    color: var(--text-light);
+}
+
+/* ================== Selects & Dropdowns ================== */
+.el-select .el-input.is-focus .el-input__inner {
+    border-color: var(--color-primary);
+}
+
+.el-select-dropdown {
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-xl);
+    border: 1px solid var(--border-light);
+}
+
+.el-select-dropdown__item.selected {
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+.el-select-dropdown__item.hover,
+.el-select-dropdown__item:hover {
+    background-color: var(--color-primary-light);
+}
+
+/* ================== Cards ================== */
+.el-card {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-light);
+    background-color: var(--bg-card);
+    box-shadow: var(--shadow-sm);
+    transition: box-shadow var(--transition-normal);
+    color: var(--text-main);
+}
+
+.el-card.is-hover-shadow:hover {
+    box-shadow: var(--shadow-md);
 }
 
 .el-card__header {
-    border-bottom: 1px solid rgba(226, 232, 240, 0.6);
-    padding: 1.25rem 1.5rem;
+    padding: 16px 24px;
+    border-bottom: 1px solid var(--border-light);
     font-weight: 600;
+    font-size: 1rem;
     color: var(--text-main);
+    background-color: #fff;
+    /* Ensure headers are clean */
 }
 
-/* Tables */
-.el-table {
-    background-color: transparent !important;
-    color: var(--text-main);
+.el-card__body {
+    padding: 24px;
 }
 
-.el-table th,
-.el-table tr,
-.el-table td {
-    background-color: transparent !important;
-}
-
-.el-table th.is-leaf {
-    border-bottom: 2px solid #e2e8f0;
-    color: var(--text-secondary);
-    font-weight: 600;
-    text-transform: uppercase;
-    font-size: 0.75rem;
-    letter-spacing: 0.05em;
-}
-
-.el-table td {
-    border-bottom: 1px solid #f1f5f9;
-}
-
-.el-table--enable-row-hover .el-table__body tr:hover>td {
-    background-color: rgba(59, 130, 246, 0.05) !important;
-}
-
-/* Inputs */
-.el-input__inner {
-    border-radius: var(--radius-md);
-    border: 1px solid #cbd5e1;
-    background-color: rgba(255, 255, 255, 0.8);
-    padding-left: 1rem;
-    transition: all var(--transition-fast);
-}
-
-.el-input__inner:focus {
-    border-color: var(--color-primary);
-    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
-}
-
-/* Dialogs */
+/* ================== Dialogs ================== */
 .el-dialog {
-    border-radius: var(--radius-lg);
-    background: rgba(255, 255, 255, 0.95);
-    box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
-    backdrop-filter: blur(4px);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    overflow: hidden;
 }
 
 .el-dialog__header {
-    padding: 1.5rem;
-    border-bottom: 1px solid #f1f5f9;
+    padding: 24px;
+    border-bottom: 1px solid var(--border-light);
+    background-color: #fff;
 }
 
 .el-dialog__title {
+    font-size: 1.25rem;
     font-weight: 700;
     color: var(--text-main);
+    line-height: 1.4;
+}
+
+.el-dialog__body {
+    padding: 32px;
+    color: var(--text-secondary);
 }
 
 .el-dialog__footer {
-    padding: 1.5rem;
-    background-color: #f8fafc;
-    border-top: 1px solid #f1f5f9;
-    border-bottom-left-radius: var(--radius-lg);
-    border-bottom-right-radius: var(--radius-lg);
+    padding: 24px;
+    background-color: var(--bg-body);
+    border-top: 1px solid var(--border-light);
+    text-align: right;
 }
 
-/* Pagination */
+/* ================== Tables ================== */
+.el-table {
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    color: var(--text-main);
+}
+
+.el-table th {
+    background-color: var(--bg-body) !important;
+    /* Slight gray background for headers */
+    color: var(--text-secondary);
+    font-weight: 600;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    border-bottom: 1px solid var(--border-color);
+    padding: 12px 0;
+}
+
+.el-table td {
+    padding: 16px 0;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.el-table--enable-row-hover .el-table__body tr:hover>td {
+    background-color: var(--color-primary-light) !important;
+    /* Very light blue on hover */
+}
+
+/* ================== Pagination ================== */
 .el-pagination.is-background .el-pager li:not(.disabled).active {
     background-color: var(--color-primary);
     color: #fff;
+    box-shadow: var(--shadow-sm);
 }
 
 .el-pagination.is-background .el-pager li {
     border-radius: var(--radius-sm);
     background-color: #fff;
-    border: 1px solid #e2e8f0;
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+    font-weight: 500;
+}
+
+.el-pagination.is-background .el-pager li:hover {
+    color: var(--color-primary);
+    border-color: var(--color-primary-subtle);
+}
+
+/* ================== Tags & Badges ================== */
+.el-tag {
+    border-radius: var(--radius-full);
+    border: 1px solid;
+    font-weight: 500;
+}
+
+/* Primary Tag */
+.el-tag--primary,
+.el-tag {
+    background-color: var(--color-primary-light);
+    border-color: var(--color-primary-subtle);
+    color: var(--color-primary);
+}
+
+/* Success Tag */
+.el-tag--success {
+    background-color: #ecfdf5;
+    /* Emerald 50 */
+    border-color: #a7f3d0;
+    color: #059669;
+    /* Emerald 600 */
+}
+
+/* Warning Tag */
+.el-tag--warning {
+    background-color: #fffbeb;
+    /* Amber 50 */
+    border-color: #fcd34d;
+    color: #d97706;
+    /* Amber 600 */
+}
+
+/* Danger Tag */
+.el-tag--danger {
+    background-color: #fff1f2;
+    /* Rose 50 */
+    border-color: #fda4af;
+    color: #e11d48;
+    /* Rose 600 */
+}
+
+/* ================== Tabs ================== */
+.el-tabs__item {
+    font-size: 1rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+}
+
+.el-tabs__item.is-active {
+    color: var(--color-primary);
+    font-weight: 600;
+}
+
+.el-tabs__active-bar {
+    background-color: var(--color-primary);
+    height: 3px;
+    border-radius: 3px;
+}
+
+.el-tabs__nav-wrap::after {
+    background-color: var(--border-light);
+    height: 1px;
 }

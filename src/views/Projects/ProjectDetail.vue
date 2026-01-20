@@ -247,16 +247,22 @@ export default {
       return this.projectModels.length || 0;
     },
     totalSize() {
-      const ensureMB = v => {
-        if (v === undefined || v === null || String(v).length === 0) return null;
-        const s = String(v).trim();
-        if (/mb$/i.test(s)) return s;
-        const n = parseFloat(s);
-        if (!isNaN(n)) return `${n}MB`;
-        return `${s}MB`;
-      };
-      if (this.projectInfo && this.projectInfo.total_size_mb !== undefined) {
-        return ensureMB(this.projectInfo.total_size_mb) || '0MB';
+      // First check if we have actual model data with sizes
+      if (Array.isArray(this.projectModels) && this.projectModels.length > 0) {
+        const sum = this.projectModels.reduce((acc, m) => {
+          const size = parseFloat(m.model_size_mb) || 0;
+          return acc + size;
+        }, 0);
+        if (sum > 0) {
+          return sum.toFixed(1) + 'MB';
+        }
+      }
+      // Fallback to projectInfo
+      if (this.projectInfo && this.projectInfo.total_size_mb) {
+        const size = parseFloat(this.projectInfo.total_size_mb);
+        if (!isNaN(size) && size > 0) {
+          return size.toFixed(1) + 'MB';
+        }
       }
       return '0MB';
     },

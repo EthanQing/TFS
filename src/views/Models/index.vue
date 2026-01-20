@@ -1,117 +1,125 @@
 <template>
-  <div class="projects" v-if="false">
-    <!-- top 部分 -->
-    <div class="top">
-      <h3>任务列表</h3>
-  <!-- 按钮已迁移到 ProjectsDetail 组件 -->
-    </div>
-
-    <!-- secondFloor 部分 -->
-    <div class="secondFloor">
-      <el-input
-        v-model="searchQuery"
-        placeholder="请输入模型名称搜索"
-        class="input"
-      ></el-input>
-      <div class="topNavigation">
-        <el-menu
-          :default-active="activeIndex"
-          class="el-menu-demo"
-          mode="horizontal"
-          @select="handleSelect"
-        >
-          <el-menu-item index="1" class="nav-item">全部</el-menu-item>
-        </el-menu>
-      </div>
-    </div>
-    <!-- clickShow部分 -->
-    <!-- <div class="clickShow" v-show="isShow">
-        <span>分类方式</span>
-        <div class="buttons">
-            <button :class="{ active: activeButton === 'model' }" @click="setActiveButton('model')">
-                mAP
-            </button>
-            <button :class="{ active: activeButton === 'size' }" @click="setActiveButton('size')">
-                大小
-            </button>
-            <button :class="{ active: activeButton === 'date' }" @click="setActiveButton('date')">
-                日期
-            </button>
+  <div class="models-page page-container">
+    <header class="md-hero">
+      <div class="md-hero-content">
+        <div class="md-eyebrow">训练中心</div>
+        <h1 class="md-title">任务与模型</h1>
+        <p class="md-subtitle">管理训练任务并查看模型性能指标。</p>
+        
+        <div class="md-actions">
+           <!-- Action buttons can be added here if needed, currently on card or sub-nav -->
         </div>
-    </div> -->
+      </div>
+      
+      <div class="md-hero-stats">
+        <div class="hero-stat">
+           <div class="stat-value">{{ filteredJobs.length }}</div>
+           <div class="stat-label">任务总数</div>
+        </div>
+      </div>
+    </header>
 
-    <!-- showList 部分 -->
-    <div class="showList">
-      <ul>
-        <li
-          v-for="job in filteredJobs"
-          :key="job.job_id"
-          @click="ShowModelDetail(job.job_id)"
-        >
-          <div class="circle" :class="statusClass(job.status)"></div>
-          <div class="messagePart">
-            <span class="title1">{{ job.job_name }}</span>
-            <span class="title2">{{
-              job.architecture?.model_variant || "-"
-            }}</span>
-            <!-- 添加项目信息显示 -->
-            <span class="project-info"
-              >项目名称: {{ job.project.project_name }}</span
-            >
-          </div>
-          <div class="detailPart">
-            <!-- 按钮移到状态左侧 -->
-            <span class="detail3" v-if="job.status === 'pending'">
-              <el-button
-                type="success"
-                size="mini"
-                @click.stop="startJob(job.job_id)"
-                :loading="startingJobs[job.job_id]"
-                class="start-button"
-                >开始训练</el-button
-              >
-            </span>
-            <span class="detail1">{{ job.status }}</span>
-            <span class="detail2"
-              >{{ job.current_epoch }}/{{ job.parameters?.epochs || "-" }}</span
-            >
-            <!-- 新增模型大小显示 -->
-            <span class="detail-size"
-              >大小: {{ formatModelSize(job.model_size_mb) }}</span
-            >
-            <span class="more-options" @click.stop>
-              <el-dropdown
-                trigger="click"
-                @command="handleCommand($event, job.job_id)"
-              >
-                <span class="el-dropdown-link">
-                  <i class="el-icon-more"></i>
-                </span>
-                <el-dropdown-menu slot="dropdown">
-                  <el-dropdown-item command="view">查看详情</el-dropdown-item>
-                  <el-dropdown-item command="export" divided
-                    >导出模型</el-dropdown-item
-                  >
-                  <el-dropdown-item command="delete" divided
-                    >删除</el-dropdown-item
-                  >
-                </el-dropdown-menu>
-              </el-dropdown>
-            </span>
-          </div>
-        </li>
-      </ul>
-    </div>
+    <section class="md-toolbar">
+       <div class="toolbar-left">
+        <div class="search-shell">
+            <i class="el-icon-search"></i>
+            <el-input
+                v-model="searchQuery"
+                placeholder="搜索模型..."
+                class="search-input"
+                clearable
+            ></el-input>
+        </div>
+        
+        <el-radio-group v-model="statusFilter" size="small" class="status-filter">
+            <el-radio-button label="all">全部</el-radio-button>
+            <el-radio-button label="running">运行中</el-radio-button>
+            <el-radio-button label="completed">已完成</el-radio-button>
+        </el-radio-group>
+       </div>
+       
+       <div class="toolbar-right">
+           <el-button type="primary" icon="el-icon-plus" @click="goStep1">新建训练任务</el-button>
+       </div>
+    </section>
 
-    <!-- dialog部分 -->
+    <section class="md-body">
+       <div v-if="filteredJobs.length === 0" class="empty-state">
+           <div class="empty-icon"><i class="el-icon-cpu"></i></div>
+           <div class="empty-title">暂无训练任务</div>
+           <div class="empty-desc">开始新的训练任务以生成模型。</div>
+           <el-button type="primary" @click="goStep1">开始训练</el-button>
+       </div>
+
+       <div v-else class="models-grid">
+           <article 
+             v-for="job in filteredJobs" 
+             :key="job.job_id" 
+             class="model-card"
+             @click="ShowModelDetail(job.job_id)"
+           >
+              <div class="card-status-strip" :class="statusClass(job.status)"></div>
+              
+              <div class="card-body">
+                  <div class="card-header">
+                      <div class="model-name" :title="job.job_name">{{ job.job_name }}</div>
+                      <div class="model-sub">{{ job.architecture?.model_variant || '未知变体' }}</div>
+                  </div>
+                  
+                  <div class="card-meta">
+                      <div class="meta-row">
+                          <i class="el-icon-folder-opened"></i>
+                          <span>{{ job.project?.project_name || '无项目' }}</span>
+                      </div>
+                      <div class="meta-row">
+                          <i class="el-icon-data-line"></i>
+                          <span>{{ job.current_epoch }}/{{ job.parameters?.epochs || '-' }} 轮</span>
+                      </div>
+                  </div>
+                  
+                  <div class="card-footer">
+                      <div class="status-badge" :class="statusClass(job.status)">
+                          <span class="status-dot"></span>
+                          {{ job.status || '等待中' }}
+                      </div>
+                      <div class="model-size">{{ formatModelSize(job.model_size_mb) }}</div>
+                  </div>
+              </div>
+
+              <div class="card-actions" @click.stop>
+                  <el-button 
+                    v-if="job.status === 'pending'" 
+                    type="success" 
+                    size="mini" 
+                    class="action-btn"
+                    :loading="startingJobs[job.job_id]"
+                    @click="startJob(job.job_id)"
+                  >开始</el-button>
+                  
+                  <el-dropdown trigger="click" @command="handleCommand($event, job.job_id)">
+                    <span class="more-btn">
+                        <i class="el-icon-more"></i>
+                    </span>
+                    <el-dropdown-menu slot="dropdown">
+                        <el-dropdown-item command="view">查看详情</el-dropdown-item>
+                        <el-dropdown-item command="export" divided>导出模型</el-dropdown-item>
+                        <el-dropdown-item command="delete" divided class="text-danger">删除</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </el-dropdown>
+              </div>
+           </article>
+       </div>
+    </section>
+
+    <!-- Dialogs -->
     <el-dialog
-      title=""
+      title="Create Training Task"
       :visible.sync="dialogVisible"
-      width="58%"
-      :style="{ minWidth: '900px' }"
-      class="EldialogWrapper"
+      width="900px"
+      custom-class="training-dialog"
+      :close-on-click-modal="false"
     >
-      <div class="Eldialog">
+      <div class="dialog-content-wrapper">
         <component
           :is="currentDialogComponent"
           :project="selectedProjectFromContext"
@@ -120,14 +128,6 @@
           @close="dialogVisible = false"
         />
       </div>
-      <span slot="footer" class="dialog-footer">
-        <el-button
-          class="custom-primary-btn"
-          v-show="dialogVisible && $route.path !== '/models/modelsstep1'"
-          @click="goLastStep"
-          >上一步</el-button
-        >
-      </span>
     </el-dialog>
   </div>
 </template>
@@ -135,40 +135,22 @@
 <script>
 import { fetchTrainingJobs, startTrainingJob, DeleteTrainingJob } from "@/api/training";
 import ModelsStep2 from "@/views/Models/CreateModel/Step2.vue";
+
 export default {
   name: "Models",
   data() {
     return {
-      searchQuery: "", // 搜索关键词
-      activeIndex: "1",
-      isShow: true,
-      activeButton: "model", // 默认选中"模型"按钮
+      searchQuery: "",
+      statusFilter: "all",
       dialogVisible: false,
-      stepsActive: 1,
-      selectedProject: null, // 添加选中的项目数据
       trainingJobs: [],
       startingJobs: {},
       currentDialogComponent: null,
+      selectedProject: null, 
     };
   },
   computed: {
-    // 根据搜索关键词筛选模型
-    filteredJobs() {
-      // 如果没有搜索关键词，返回所有模型
-      if (!this.searchQuery) {
-        return this.trainingJobs;
-      }
-
-      // 转换为小写以实现不区分大小写的搜索
-      const query = this.searchQuery.toLowerCase();
-
-      // 只根据模型名称(job_name)进行筛选
-      return this.trainingJobs.filter((job) =>
-        job.job_name.toLowerCase().includes(query)
-      );
-    },
     selectedProjectFromContext() {
-      // 从路由或 localStorage 获取当前项目
       const pid = this.$route.query && this.$route.query.projectId
       if (pid) {
         try {
@@ -181,144 +163,108 @@ export default {
       }
       return this.selectedProject
     },
+    filteredJobs() {
+      let jobs = this.trainingJobs;
+      
+      // Status Filter
+      if (this.statusFilter !== 'all') {
+          if (this.statusFilter === 'running') {
+              jobs = jobs.filter(j => ['running', 'training'].includes(j.status?.toLowerCase()));
+          } else if (this.statusFilter === 'completed') {
+              jobs = jobs.filter(j => ['completed', 'success'].includes(j.status?.toLowerCase()));
+          }
+      }
+
+      // Search Filter
+      if (this.searchQuery) {
+        const query = this.searchQuery.toLowerCase();
+        jobs = jobs.filter(job => job.job_name.toLowerCase().includes(query));
+      }
+      return jobs;
+    }
   },
   methods: {
     statusClass(status){
       if(!status) return 'status-pending';
       const s = status.toLowerCase();
-      if(s==='completed' || s==='copleted') return 'status-completed';
-      if(s==='pending') return 'status-pending';
-      if(s==='fail' || s==='failed' || s==='error') return 'status-fail';
-      if(s==='running' || s==='training') return 'status-running';
+      if(s === 'completed' || s === 'success') return 'status-completed';
+      if(s === 'fail' || s === 'failed' || s === 'error') return 'status-fail';
+      if(s === 'running' || s === 'training') return 'status-running';
       return 'status-pending';
     },
-    // 处理导航菜单选择事件
-    handleSelect(key, keyPath) {
-      this.activeIndex = key;
-    },
-    // 控制searchShow显示/隐藏的事件
-    changeShow() {
-      this.isShow = !this.isShow;
-    },
-    // 设置激活的按钮
-    setActiveButton(button) {
-      this.activeButton = button;
+    goStep1() {
+      this.dialogVisible = true;
+      this.currentDialogComponent = ModelsStep2
     },
     ShowModelDetail(jobId) {
       if (this.$route.path !== "/projectscharts/trainpart") {
         this.$router.push({
           path: "/projectscharts/trainpart",
-          query: {
-            jobId: jobId,
-          },
+          query: { jobId: jobId },
         });
       }
-      // 将jobId保存在localStorage，以便在组件间切换时保持状态
       localStorage.setItem("currentJobId", jobId);
     },
-    // 处理下拉菜单命令
     handleCommand(command, jobId) {
-      switch (command) {
-        case "view":
-          this.ShowModelDetail(jobId);
-          break;
-        case "export":
-          this.exportModel(jobId);
-          break;
-        case "delete":
-          this.deleteModel(jobId);
-          break;
-        default:
-          break;
-      }
+      if (command === "view") this.ShowModelDetail(jobId);
+      else if (command === "export") this.$message.info("Export feature coming soon");
+      else if (command === "delete") this.deleteModel(jobId);
     },
-    // 导出模型
-    exportModel(jobId) {
-      this.$message({
-        message: "模型导出功能正在开发中",
-        type: "info",
-      });
-    },
-    // 删除模型
     async deleteModel(jobId) {
-      this.$confirm("确定要删除该模型吗?", "提示", {
-        confirmButtonText: "确定",
-        cancelButtonText: "取消",
-        type: "warning",
-      })
-        .then(async () => {
-          try {
-            await DeleteTrainingJob(jobId);
-            this.$message({
-              type: "success",
-              message: "删除成功!",
-            });
-            this.loadTrainingJobs(); // 重新加载数据
-          } catch (error) {
-            this.$message({
-              type: "error",
-              message: "删除失败: " + error.message,
-            });
-          }
-        })
-        .catch(() => {
-          this.$message({
-            type: "info",
-            message: "已取消删除",
-          });
+      try {
+        await this.$confirm("Delete this training task? This action cannot be undone.", "Confirm Delete", {
+          confirmButtonText: "Delete",
+          cancelButtonText: "Cancel",
+          type: "warning",
         });
-    },
-    // 创建任务入口由 ProjectsDetail 触发（通过路由参数或 localStorage 标记）
-    goStep1() {
-      this.dialogVisible = true;
-      this.currentDialogComponent = ModelsStep2
-      this.stepsActive = 1;
-    },
-    onTaskAdded() {
-      this.loadTrainingJobs()
-    },
-    goNextStep() {},
-    goLastStep() {},
-    // 处理项目选择事件
-    handleUseProject(project) {
-      this.selectedProject = project;
-      this.$nextTick(() => {
-        setTimeout(() => {
-          this.EventBus.$emit("projectSelected", project);
-        }, 200);
-      });
+        await DeleteTrainingJob(jobId);
+        this.$message.success("Deleted successfully");
+        this.loadTrainingJobs();
+      } catch (e) {
+         if(e !== 'cancel') this.$message.error("Delete failed: " + (e.message || e));
+      }
     },
     async loadTrainingJobs() {
       try {
         this.trainingJobs = await fetchTrainingJobs();
       } catch (error) {
-        this.$message.error("加载训练任务失败");
+        this.$message.error("Failed to load tasks");
       }
     },
     async startJob(jobId) {
       this.$set(this.startingJobs, jobId, true);
       try {
         await startTrainingJob(jobId);
-        this.$message.success("训练已开始");
+        this.$message.success("Training started");
         this.loadTrainingJobs();
       } catch (error) {
-        this.$message.error("启动训练失败");
+        this.$message.error("Failed to start training");
       } finally {
         this.$set(this.startingJobs, jobId, false);
       }
     },
-    // 格式化模型大小显示
+    onTaskAdded() {
+        this.loadTrainingJobs();
+    },
+    handleUseProject(project) {
+       this.selectedProject = project;
+       this.$nextTick(() => {
+        setTimeout(() => {
+          this.EventBus.$emit("projectSelected", project);
+        }, 200);
+      });
+    },
     formatModelSize(sizeMb) {
-      if (sizeMb === undefined || sizeMb === null) return "-";
+      if (!sizeMb) return "-";
       return sizeMb.toFixed(1) + "MB";
     },
   },
   mounted() {
     this.loadTrainingJobs();
     this.EventBus.$on("taskAdded", this.loadTrainingJobs);
-    this.EventBus.$on("closeDialog", () => {
-      this.dialogVisible = false;
-    });
+    this.EventBus.$on("closeDialog", () => { this.dialogVisible = false; });
+    
+    // Auto open logic
     const autoFlag = localStorage.getItem('autoOpenCreateJob');
     if (this.$route.query.openCreate === '1' || autoFlag === '1') {
       this.goStep1();
@@ -329,400 +275,286 @@ export default {
     this.EventBus.$off("taskAdded", this.loadTrainingJobs);
     this.EventBus.$off("closeDialog");
   },
-  components: {},
 };
 </script>
 
 <style scoped>
-.projects {
+.models-page {
   display: flex;
   flex-direction: column;
-  margin-left: 10px;
-  box-sizing: border-box;
-  width: 100%;
-  padding-right: 30px;
+  gap: 24px;
 }
 
-@media (max-width: 1200px) {
-  .projects {
-    margin-left: 5px;
-    padding-right: 10px;
-  }
-}
-
-.top {
+/* Hero */
+.md-hero {
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-color);
+  padding: 32px;
   display: flex;
-  align-items: center;
   justify-content: space-between;
-  margin-bottom: 20px;
-}
-
-.top h3 {
-  font-size: 24px;
-  font-weight: bolder;
-  color: #111f68;
-}
-
-.top button {
-  width: 112px;
-  height: 40px;
-  border-radius: 20px;
-  background-color: #111f68;
-  color: #fff;
-  line-height: 40px;
-  font-weight: 450;
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  font-size: 14px;
-}
-
-/* secondFloor 部分样式 */
-.secondFloor {
-  display: flex;
   align-items: center;
-  width: 100%;
-  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.md-hero-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.md-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--color-primary);
+  font-weight: 700;
+}
+
+.md-title {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-main);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.md-subtitle {
+  color: var(--text-secondary);
+  font-size: 1rem;
+  margin: 0;
+}
+
+.hero-stat {
+    text-align: center;
+    padding: 12px 24px;
+    background: var(--bg-body);
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border-light);
+}
+
+.stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: var(--color-primary);
+    line-height: 1;
+}
+
+.stat-label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+    text-transform: uppercase;
+}
+
+/* Toolbar */
+.md-toolbar {
+  padding: 16px;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-light);
+  box-shadow: var(--shadow-sm);
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
   flex-wrap: wrap;
-  gap: 10px;
 }
 
-.input {
-  /* margin-left: 10px; */
-  width: 300px;
-  max-width: 100%;
-  min-width: 200px;
+.toolbar-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
 }
 
-@media (max-width: 768px) {
-  .secondFloor {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-
-  .input {
-    margin: 0;
-    width: 100%;
-    min-width: auto;
-  }
-}
-
-.circle {
+.search-shell {
   display: flex;
   align-items: center;
-  margin-right: 20px;
-  height: 100%;
-  width: 10px;
-  transition: background-color .25s;
+  gap: 8px;
+  background: var(--bg-body);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-full);
+  padding: 6px 16px;
+  width: 280px;
 }
 
-/* 状态颜色 */
-.status-completed { background-color: #087922 !important; }
-.status-pending { background-color: #c9c9c9 !important; }
-.status-fail { background-color: #ff4d4f !important; }
-.status-running { background-color: #111f68 !important; }
-
-/* 导航菜单样式 */
-.el-menu-demo {
-  display: flex;
-  border-bottom: none !important;
+.search-shell:focus-within {
+  border-color: var(--color-primary);
 }
 
-.el-menu-demo .nav-item {
-  margin: 0 10px !important;
-  min-width: 80px !important;
-  text-align: center !important;
-}
-
-.el-menu-demo .el-menu-item.is-active {
-  color: #111f68 !important;
-  border-bottom: 2px solid #111f68 !important;
-}
-
-.showList {
-  width: 100%;
-  background-color: #fff;
-  margin-left: -10px;
-}
-
-.showList ul {
-  display: flex;
-  flex-wrap: wrap;
-  width: 100%;
-  background-color: #FBFCFD;
-}
-
-.showList ul li {
-  width: 100%;
-  height: 90px;
-  background-color: #fff;
-  margin: 10px;
-  box-shadow: 0 0 10px 3px rgba(0, 0, 0, 0.05);
-  display: flex;
-  position: relative;
-  align-items: center;
-  padding-right: 120px; /* 为右侧按钮留出空间 */
-}
-
-.showList ul li:hover {
-  box-shadow: 0 0 12px 3px rgba(0, 0, 0, 0.1);
-}
-
-.clickShow span {
-  color: #111f68;
-  font-weight: 500;
-  font-size: 15px;
-}
-
-.buttons {
-  margin: 20px 0;
-}
-
-.buttons button {
-  width: 70px;
-  height: 34px;
-  background-color: #f3f3f3;
-  border-radius: 15px;
-  color: #111f68;
-  font-weight: 600;
+.search-input ::v-deep .el-input__inner {
   border: none;
-  cursor: pointer;
-  transition: all 0.3s;
+  background: transparent;
+  padding: 0;
+  height: auto;
 }
 
-.buttons button:nth-child(2) {
-  margin: 0 10px;
+/* Grid */
+.md-body {
+    flex: 1;
 }
 
-/* 激活状态的按钮样式 */
-.buttons button.active {
-  background-color: #111f68;
-  color: #fff;
+.models-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 24px;
 }
 
-.showList img {
-  width: 24px;
-  height: 24px;
-}
-
-.Last {
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background-color: #f5f2f2;
-  margin: 25px 20px;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-}
-
-.messagePart {
+.model-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  transition: all var(--transition-normal);
   display: flex;
   flex-direction: column;
-  margin: 18px 0 0 10px;
-  color: #111f68;
-  flex: 1;
-  min-width: 0; /* 允许内容收缩 */
-  max-width: calc(100% - 120px); /* 限制最大宽度，为右侧按钮留空间 */
-}
-
-.title1 {
-  font-size: 16px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.title2 {
-  font-size: 13px;
-  margin-top: 5px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 新增项目ID样式 */
-.project-info {
-  font-size: 12px;
-  margin-top: 5px;
-  color: #666;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.detailPart {
-  display: flex;
-  align-items: center;
-  color: #111f68;
-  position: absolute;
-  right: 15px;
-  top: 50%;
-  transform: translateY(-50%);
-  gap: 10px;
-  flex-wrap: nowrap;
-}
-
-.detailPart .detail1 {
-  font-weight: bolder;
-  white-space: nowrap;
-}
-
-.detailPart .detail2 {
-  margin: 0 15px;
-  white-space: nowrap;
-}
-
-/* 新增模型大小显示样式 */
-.detail-size {
-  font-size: 12px;
-  color: #666;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 更多选项按钮样式 */
-.more-options {
-  display: flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-.more-options .el-dropdown-link {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-}
-
-.more-options .el-dropdown-link:hover {
-  background-color: #f5f7fa;
-}
-
-.more-options i {
-  font-size: 18px;
-  color: #606266;
-}
-
-@media (max-width: 1024px) {
-  .showList ul li {
-    padding-right: 60px; /* 在中等屏幕上减少右侧空间 */
-  }
-
-  .detailPart {
-    right: 10px;
-    gap: 5px;
-  }
-
-  .detailPart .detail2 {
-    margin: 0 8px;
-  }
-}
-
-@media (max-width: 768px) {
-  .showList ul li {
-    padding-right: 40px; /* 在小屏幕上进一步减少右侧空间 */
-    height: auto;
-    min-height: 90px;
-    padding-top: 15px;
-    padding-bottom: 15px;
-  }
-
-  .messagePart {
-    margin: 0 10px;
-    max-width: calc(100% - 50px);
-  }
-
-  .detailPart {
-    right: 5px;
-    flex-direction: column;
-    gap: 5px;
-    align-items: flex-end;
-  }
-
-  .detailPart .detail2 {
-    margin: 0;
-  }
-}
-
-.leftPart {
-  display: flex;
-  flex-direction: column;
-  color: #111f68;
-  margin-left: 40px;
-  width: 350px;
-  height: 700px;
-  margin-top: -30px;
-  border-right: 1px solid rgba(0, 0, 0, 0.15);
-}
-
-.leftPart span:nth-child(1) {
-  font-size: 20px;
-  margin-bottom: 40px;
-}
-
-.leftPart span:nth-child(2) {
-  margin-bottom: 80px;
-}
-
-/* 对话框样式 */
-.el-dialog__wrapper {
-  position: fixed !important;
-  top: -10% !important;
-  /* 按视口比例定位，适配不同屏幕 */
-}
-
-/* 确保对话框内容自适应 */
-.EldialogWrapper .el-dialog {
-  display: flex;
-  flex-direction: column;
-  max-width: 100%;
-  max-height: 90vh;
-}
-
-.EldialogWrapper .el-dialog__body {
-  overflow: auto;
-  padding: 15px 20px;
-}
-
-.Eldialog {
-  display: flex;
   position: relative;
-  width: 100%;
-  max-width: 100%;
-  overflow: hidden;
+  cursor: pointer;
 }
 
-.dialog-footer {
-  position: absolute;
-  right: 50px;
-  bottom: 30px;
+.model-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-lg);
+  border-color: var(--color-primary-subtle);
 }
 
-/* 自定义按钮样式 */
-.custom-primary-btn {
-  background-color: #111f68 !important;
-  border-color: #111f68 !important;
-  color: #fff !important;
+.card-status-strip {
+    height: 4px;
+    width: 100%;
 }
 
-/* 按钮悬停状态 */
-.custom-primary-btn:hover,
-.custom-primary-btn:focus {
-  background-color: #182a8f !important;
-  border-color: #182a8f !important;
+.status-completed { background-color: var(--color-success) !important; color: var(--color-success); }
+.status-pending { background-color: #cbd5e1 !important; color: #64748b; }
+.status-fail { background-color: var(--color-danger) !important; color: var(--color-danger); }
+.status-running { background-color: var(--color-primary) !important; color: var(--color-primary); }
+
+.card-body {
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
 }
 
-/* 按钮点击状态 */
-.custom-primary-btn:active {
-  background-color: #0c164a !important;
-  border-color: #0c164a !important;
+.card-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
 }
-.start-button{
-    margin-right: 15px;
+
+.model-name {
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.model-sub {
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.card-meta {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    padding: 12px 0;
+    border-top: 1px solid var(--border-light);
+    border-bottom: 1px solid var(--border-light);
+}
+
+.meta-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.85rem;
+    color: var(--text-secondary);
+}
+
+.card-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.status-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: currentColor;
+}
+
+.model-size {
+    font-size: 0.85rem;
+    color: var(--text-main);
+    font-weight: 500;
+    background: var(--bg-panel);
+    padding: 2px 8px;
+    border-radius: var(--radius-sm);
+}
+
+.card-actions {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+    display: flex;
+    gap: 8px;
+}
+
+.more-btn {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    color: var(--text-secondary);
+    transition: all 0.2s;
+}
+
+.more-btn:hover {
+    background: var(--bg-panel);
+    color: var(--text-main);
+}
+
+.text-danger { color: var(--color-danger); }
+
+/* Empty */
+.empty-state {
+  text-align: center;
+  padding: 60px;
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border-color);
+}
+
+.empty-icon {
+  font-size: 3rem;
+  color: var(--text-light);
+  margin-bottom: 16px;
+}
+
+.empty-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+.empty-desc {
+    color: var(--text-secondary);
+    margin-bottom: 24px;
+}
+
+/* Dialog */
+.dialog-content-wrapper {
+    padding: 10px;
 }
 </style>

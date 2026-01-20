@@ -376,9 +376,10 @@ export default {
 }
 
 .pc-hero-right {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  display: flex;
+  flex-direction: row;
   gap: 12px;
+  flex-shrink: 0;
 }
 
 .pc-stat {

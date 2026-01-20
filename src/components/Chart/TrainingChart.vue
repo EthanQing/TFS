@@ -132,6 +132,11 @@ export default {
         return 0;
       }
     },
+    _toXYData(arr) {
+      // Transform [y0, y1, y2...] to [[1, y0], [2, y1], [3, y2]...] for value xAxis
+      if (!Array.isArray(arr)) return [];
+      return arr.map((val, idx) => [idx + 1, val]);
+    },
     getChartOption() {
       const data = this.metrics?.metrics || {};
       const useCustom = Array.isArray(this.customSeries) && this.customSeries.length > 0;
@@ -139,14 +144,14 @@ export default {
       let title = "";
       let yAxisName = "";
       const palette = [
-        "#4f63c7",
-        "#f6c949",
-        "#22c55e",
-        "#f97316",
-        "#06b6d4",
-        "#e11d48",
-        "#a855f7",
-        "#64748b"
+        "#3b82f6", // Blue 500
+        "#6366f1", // Indigo 500
+        "#0ea5e9", // Sky 500
+        "#10b981", // Emerald 500
+        "#f59e0b", // Amber 500
+        "#ef4444", // Red 500
+        "#8b5cf6", // Violet 500
+        "#64748b"  // Slate 500
       ];
 
       if (useCustom) {
@@ -157,7 +162,7 @@ export default {
           return {
             name: item && item.name ? item.name : `系列 ${idx + 1}`,
             type: "line",
-            data: (item && item.data) || [],
+            data: this._toXYData((item && item.data) || []),
             symbol: "circle",
             symbolSize: 4,
             showSymbol: false,
@@ -174,38 +179,38 @@ export default {
               {
                 name: "精确率",
                 type: "line",
-                data: data["metrics/precision(B)"] || [],
+                data: this._toXYData(data["metrics/precision(B)"] || []),
                 symbol: "circle",
                 symbolSize: 6,
                 showSymbol: false,
-                itemStyle: { color: "#FF6B6B" }
+                itemStyle: { color: "#f43f5e" } // Rose 500
               },
               {
                 name: "召回率",
                 type: "line",
-                data: data["metrics/recall(B)"] || [],
+                data: this._toXYData(data["metrics/recall(B)"] || []),
                 symbol: "rect",
                 symbolSize: 6,
                 showSymbol: false,
-                itemStyle: { color: "#4ECDC4" }
+                itemStyle: { color: "#14b8a6" } // Teal 500
               },
               {
                 name: "mAP50",
                 type: "line",
-                data: data["metrics/mAP50(B)"] || [],
+                data: this._toXYData(data["metrics/mAP50(B)"] || []),
                 symbol: "triangle",
                 symbolSize: 6,
                 showSymbol: false,
-                itemStyle: { color: "#FFD166" }
+                itemStyle: { color: "#f59e0b" } // Amber 500
               },
               {
                 name: "mAP50-95",
                 type: "line",
-                data: data["metrics/mAP50-95(B)"] || [],
+                data: this._toXYData(data["metrics/mAP50-95(B)"] || []),
                 symbol: "diamond",
                 symbolSize: 6,
                 showSymbol: false,
-                itemStyle: { color: "#1A535C" }
+                itemStyle: { color: "#3b82f6" } // Blue 500
               }
             ];
             break;
@@ -216,20 +221,20 @@ export default {
               {
                 name: "训练集",
                 type: "line",
-                data: data["train/box_loss"] || [],
+                data: this._toXYData(data["train/box_loss"] || []),
                 symbol: "circle",
                 symbolSize: 4,
                 showSymbol: false,
-                itemStyle: { color: "#3498DB" }
+                itemStyle: { color: "#3b82f6" }
               },
               {
                 name: "验证集",
                 type: "line",
-                data: data["val/box_loss"] || [],
+                data: this._toXYData(data["val/box_loss"] || []),
                 symbol: "circle",
                 symbolSize: 4,
                 showSymbol: false,
-                itemStyle: { color: "#E74C3C" }
+                itemStyle: { color: "#f43f5e" }
               }
             ];
             break;
@@ -240,20 +245,20 @@ export default {
               {
                 name: "训练集",
                 type: "line",
-                data: data["train/cls_loss"] || [],
+                data: this._toXYData(data["train/cls_loss"] || []),
                 symbol: "circle",
                 symbolSize: 4,
                 showSymbol: false,
-                itemStyle: { color: "#3498DB" }
+                itemStyle: { color: "#3b82f6" }
               },
               {
                 name: "验证集",
                 type: "line",
-                data: data["val/cls_loss"] || [],
+                data: this._toXYData(data["val/cls_loss"] || []),
                 symbol: "circle",
                 symbolSize: 4,
                 showSymbol: false,
-                itemStyle: { color: "#E74C3C" }
+                itemStyle: { color: "#f43f5e" }
               }
             ];
             break;
@@ -264,20 +269,20 @@ export default {
               {
                 name: "训练集",
                 type: "line",
-                data: data["train/dfl_loss"] || [],
+                data: this._toXYData(data["train/dfl_loss"] || []),
                 symbol: "circle",
                 symbolSize: 4,
                 showSymbol: false,
-                itemStyle: { color: "#3498DB" }
+                itemStyle: { color: "#3b82f6" }
               },
               {
                 name: "验证集",
                 type: "line",
-                data: data["val/dfl_loss"] || [],
+                data: this._toXYData(data["val/dfl_loss"] || []),
                 symbol: "circle",
                 symbolSize: 4,
                 showSymbol: false,
-                itemStyle: { color: "#E74C3C" }
+                itemStyle: { color: "#f43f5e" }
               }
             ];
             break;
@@ -319,16 +324,22 @@ export default {
         tooltip: {
           trigger: "axis",
           formatter: function (params) {
+            // For value type xAxis with [x, y] data, axisValue is the x value
             let result = `<div style="font-weight:bold;margin-bottom:5px">轮次 ${
-              params[0]?.axisValue ?? "-"
+              params[0]?.data?.[0] ?? params[0]?.axisValue ?? "-"
             } </div>`;
             params.forEach(param => {
               const colorSpan = `<span style="display:inline-block;margin-right:5px;width:10px;height:10px;border-radius:50%;background-color:${
                 param.color
               }"></span>`;
+              // For [x, y] data format, value is the array, so extract y (index 1)
+              let yVal = param.value;
+              if (Array.isArray(param.value) && param.value.length >= 2) {
+                yVal = param.value[1];
+              }
               const v =
-                param && param.value != null && isFinite(param.value)
-                  ? Number(param.value).toFixed(4)
+                yVal != null && isFinite(yVal)
+                  ? Number(yVal).toFixed(4)
                   : "-";
               result += `${colorSpan}${param.seriesName}: <strong>${v}</strong><br/>`;
             });
@@ -340,16 +351,14 @@ export default {
           }
         },
         xAxis: {
-          type: "category",
-          data: Array.from({ length: maxLen }, (_, i) => i + 1),
+          type: "value",
+          min: 0,
+          max: maxLen,
+          interval: 5,
           name: "轮次",
           nameLocation: "middle",
           nameGap: 25,
           axisLabel: {
-            interval:
-              this.chartType === "metrics"
-                ? "auto"
-                : Math.max(Math.floor(maxLen / 10) - 1, 0),
             fontSize: this.chartType === "metrics" ? 12 : 10
           }
         },

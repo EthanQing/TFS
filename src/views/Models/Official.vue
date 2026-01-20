@@ -2,25 +2,25 @@
   <div class="official-panel">
     <div class="panel-top">
       <div>
-        <div class="panel-title">Official Model Catalog</div>
-        <div class="panel-subtitle">Start from Ultralytics pre-trained models.</div>
+        <div class="panel-title">官方模型目录</div>
+        <div class="panel-subtitle">从 Ultralytics 预训练模型开始。</div>
       </div>
       <div class="dataset-chip" v-if="selectedProject">
-        <span class="label">Dataset</span>
+        <span class="label">数据集</span>
         <span class="value">{{ datasetLabel }}</span>
       </div>
     </div>
 
     <div class="arch-section">
-      <div class="section-title">Detection Architectures</div>
+      <div class="section-title">检测架构</div>
       <div v-if="archLoading" class="arch-state">
         <i class="el-icon-loading"></i>
-        <span>Loading architectures...</span>
+        <span>加载架构中...</span>
       </div>
       <div v-else-if="archError" class="arch-state error">
         <i class="el-icon-warning"></i>
         <span>{{ archError }}</span>
-        <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">Retry</el-button>
+        <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
       </div>
       <div v-else class="arch-groups">
         <div v-for="group in architectureGroups" :key="group.family" class="arch-group">
@@ -41,14 +41,14 @@
 
     <div class="metric-grid">
       <div class="metric-card">
-        <div class="metric-label">Accuracy</div>
+        <div class="metric-label">准确率</div>
         <div class="metric-value">{{ accuracyLabel }}%</div>
         <div class="metric-bar">
           <div class="metric-fill" :style="{ width: accuracyWidth + '%' }"></div>
         </div>
       </div>
       <div class="metric-card">
-        <div class="metric-label">Speed</div>
+        <div class="metric-label">速度(ms)</div>
         <div class="metric-value">{{ speedLabel }}ms</div>
         <div class="metric-bar">
           <div class="metric-fill" :style="{ width: speedWidth + '%' }"></div>
@@ -58,32 +58,32 @@
 
     <div class="advanced-panel">
       <button class="advanced-toggle" type="button" @click="showAdvancedModelConfiguration">
-        <span>Advanced settings</span>
+        <span>高级设置</span>
         <span class="chevron" :class="{ open: isRotated }"></span>
       </button>
       <div v-show="isRotated" class="advanced-grid">
         <div class="field-row">
-          <div class="field-label">Pretrained weights</div>
+          <div class="field-label">预训练权重</div>
           <el-switch v-model="pretrainedEnabled"></el-switch>
         </div>
         <div class="field-row">
-          <div class="field-label">Epochs</div>
+          <div class="field-label">训练轮次</div>
           <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
         </div>
         <div class="field-row">
-          <div class="field-label">Image size</div>
+          <div class="field-label">图像尺寸</div>
           <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
         </div>
         <div class="field-row">
-          <div class="field-label">Patience</div>
+          <div class="field-label">耐心值</div>
           <el-input v-model="patience" size="small" placeholder="100" class="field-input"></el-input>
         </div>
         <div class="field-row">
-          <div class="field-label">Learning rate</div>
+          <div class="field-label">学习率</div>
           <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
         </div>
         <div class="field-row">
-          <div class="field-label">Device</div>
+          <div class="field-label">设备</div>
           <div class="device-toggle">
             <button @click="selectedDevice = 'Auto'" :class="{ active: selectedDevice === 'Auto' }">Auto</button>
             <button @click="selectedDevice = 'GPU'" :class="{ active: selectedDevice === 'GPU' }">GPU</button>
@@ -91,11 +91,11 @@
           </div>
         </div>
         <div class="field-row">
-          <div class="field-label">Batch size</div>
+          <div class="field-label">批次大小</div>
           <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
         </div>
         <div class="field-row">
-          <div class="field-label">Optimizer</div>
+          <div class="field-label">优化器</div>
           <el-select v-model="optimizer" size="small" placeholder="Select">
             <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
           </el-select>
@@ -376,8 +376,15 @@ export default {
   },
   mounted() {
     loadArchitectures();
-    this.ensureDefaultModel();
     this.$nextTick(() => {
+      this.ensureDefaultModel();
+      // Ensure model-selected is emitted after initial selection
+      if (this.selectedModel) {
+        this.$emit("model-selected", {
+          model: this.selectedModel,
+          architecture_id: this.selectedArchitectureId || null
+        });
+      }
       this.emitConfigChange();
     });
   }

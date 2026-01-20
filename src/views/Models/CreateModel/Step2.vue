@@ -2,23 +2,23 @@
   <div class="models-step2">
     <header class="step-hero">
       <div class="hero-text">
-        <div class="hero-eyebrow">Training Configuration</div>
-        <h2 class="hero-title">Configure your run</h2>
+        <div class="hero-eyebrow">训练参数配置</div>
+        <h2 class="hero-title">配置您的运行环境</h2>
         <p class="hero-sub">
-          Select a model architecture and tune training parameters for this project.
+          选择模型架构并调整此项目的训练参数。
         </p>
       </div>
       <div class="hero-cards">
         <div class="hero-card">
-          <div class="hero-label">Project</div>
+          <div class="hero-label">项目</div>
           <div class="hero-value">{{ projectName }}</div>
         </div>
         <div class="hero-card">
-          <div class="hero-label">Dataset</div>
+          <div class="hero-label">数据集</div>
           <div class="hero-value">{{ datasetName }}</div>
         </div>
         <div class="hero-card">
-          <div class="hero-label">Model</div>
+          <div class="hero-label">模型</div>
           <div class="hero-value">{{ modelName }}</div>
         </div>
       </div>
@@ -26,8 +26,8 @@
 
     <section class="step-body">
       <div class="step-toolbar">
-        <div class="tab-pill active">Official Models</div>
-        <div class="tab-note">Ultralytics curated architectures</div>
+        <div class="tab-pill active">官方模型</div>
+        <div class="tab-note">Ultralytics 精选架构</div>
       </div>
 
       <div class="step-panel">
@@ -51,7 +51,7 @@
         :disabled="!canSubmit"
         class="primary-btn"
       >
-        {{ isAdding ? 'Adding...' : 'Add Training Job' }}
+        {{ isAdding ? '添加中...' : '添加训练任务' }}
       </el-button>
     </footer>
   </div>
@@ -118,10 +118,10 @@ export default {
       return !!(this.selectedProject && this.selectedModel && this.trainParams.dataset_name);
     },
     footerMessage() {
-      if (!this.selectedProject) return "Select a project to continue.";
-      if (!this.selectedModel) return "Pick a model architecture to enable training.";
-      if (!this.trainParams.dataset_name) return "This project has no dataset linked.";
-      return "Ready to add a training job.";
+      if (!this.selectedProject) return "选择一个项目以继续。";
+      if (!this.selectedModel) return "选择一个模型架构以启用训练。";
+      if (!this.trainParams.dataset_name) return "该项目未关联数据集。";
+      return "准备添加训练任务。";
     }
   },
   methods: {
@@ -241,6 +241,8 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 20px;
+  max-height: 70vh;
+  overflow-y: auto;
 }
 
 .step-hero {

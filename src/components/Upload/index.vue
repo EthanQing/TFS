@@ -201,7 +201,7 @@ export default {
 }
 
 .drop-area.is-dragover {
-  border-color: #4285f4;
+  border-color: var(--color-primary);
   background-color: #f8fafc;
 }
 
@@ -225,10 +225,10 @@ export default {
 
 .upload-button {
   width: 100%;
-  background-color: #111f68;
+  background-color: var(--color-primary);
   color: white;
   border: none;
-  border-radius: 4px;
+  border-radius: var(--radius-md);
   padding: 10px 16px;
   margin-top: 20px;
   font-size: 16px;
@@ -246,7 +246,7 @@ export default {
 }
 
 .upload-button:hover:not(:disabled) {
-  background-color: #111f68;
+  background-color: var(--color-primary-dark);
 }
 
 .progress-container {
@@ -258,7 +258,7 @@ export default {
 
 .progress-bar {
   height: 100%;
-  background-color: #4285f4;
+  background-color: var(--color-primary);
   transition: width 0.3s;
 }
 

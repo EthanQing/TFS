@@ -1,68 +1,81 @@
 :root {
-  /* Primary HSL Values for easy opacity manipulation */
-  --primary-hue: 220;
-  --primary-sat: 20%;
-  --primary-lig: 30%;
+  /* Brand Colors - Professional Blue */
+  --color-primary: #2563eb;
+  /* Blue 600 - Main Brand Color */
+  --color-primary-dark: #1d4ed8;
+  /* Blue 700 - Hover/Active */
+  --color-primary-light: #eff6ff;
+  /* Blue 50 - Backgrounds/Tints */
+  --color-primary-subtle: #dbeafe;
+  /* Blue 100 - Borders/Subtle Highlights */
 
-  /* Brand Colors - Neutralized */
-  --color-primary: #374151;
-  /* Gray 700 */
-  --color-primary-dark: #1f2937;
-  /* Gray 800 */
-  --color-primary-light: #9ca3af;
-  /* Gray 400 */
+  /* Functional Colors */
+  --color-success: #10b981;
+  /* Emerald 500 */
+  --color-warning: #f59e0b;
+  /* Amber 500 */
+  --color-danger: #f43f5e;
+  /* Rose 500 */
+  --color-info: #3b82f6;
+  /* Blue 500 */
 
-  --color-secondary: #4b5563;
-  /* Gray 600 */
-  --color-accent: #6b7280;
-  /* Gray 500 */
-
-  /* Backgrounds */
-  --bg-body: #f9fafb;
-  /* Gray 50 */
-  --bg-body-dark: #111827;
+  /* Backgrounds - High Contrast Light Theme */
+  --bg-body: #f8fafc;
+  /* Slate 50 - Main App Background */
   --bg-card: #ffffff;
-  --bg-card-glass: rgba(255, 255, 255, 0.9);
+  /* White - Card Background */
+  --bg-card-glass: rgba(255, 255, 255, 0.98);
+  /* Less transparent for cleaner look */
   --bg-sidebar: #ffffff;
-  /* White Sidebar */
-  --bg-hero: #ffffff;
-  --bg-panel: #f3f4f6;
-  /* Gray 100 for stats/panels */
+  --bg-panel: #f1f5f9;
+  /* Slate 100 */
+  --bg-header: #ffffff;
 
-  /* Text */
-  --text-main: #111827;
-  /* Gray 900 */
-  --text-secondary: #4b5563;
-  /* Gray 600 */
-  --text-light: #6b7280;
-  /* Gray 500 - note: this was Slate 50, now darker for light bg */
+  /* Text - Crisp & Readable */
+  --text-main: #0f172a;
+  /* Slate 900 - Headings/Primary Text */
+  --text-secondary: #475569;
+  /* Slate 600 - Body/Secondary Text */
+  --text-light: #94a3b8;
+  /* Slate 400 - Placeholder/Disabled */
+  --text-inverse: #ffffff;
 
-  /* Gradients - Removed/Neutralized */
-  --gradient-primary: linear-gradient(135deg, #e5e7eb 0%, #f3f4f6 100%);
-  --gradient-flow: #e5e7eb;
-  /* Simple gray for active states */
-
-  /* Shadows */
+  /* Shadows - Modern & Soft */
   --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
-  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.05);
-  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.05), 0 4px 6px -4px rgb(0 0 0 / 0.05);
-  --shadow-glow: none;
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.08), 0 2px 4px -2px rgb(0 0 0 / 0.04);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.08), 0 4px 6px -4px rgb(0 0 0 / 0.04);
+  --shadow-glow: 0 0 0 3px rgba(37, 99, 235, 0.15);
+  /* Focus Ring */
 
-  /* Radius */
+  /* Borders */
+  --border-color: #e2e8f0;
+  /* Slate 200 */
+  --border-light: #f1f5f9;
+  /* Slate 100 */
+  --border-focus: #2563eb;
+  /* Blue 600 */
+
+  /* Layout & Geometry */
   --radius-sm: 0.375rem;
-  --radius-md: 0.75rem;
-  --radius-lg: 1rem;
+  /* 6px */
+  --radius-md: 0.5rem;
+  /* 8px */
+  --radius-lg: 0.75rem;
+  /* 12px */
+  --radius-xl: 1rem;
+  /* 16px */
   --radius-full: 9999px;
 
   /* Transitions */
   --transition-fast: 0.15s ease;
-  --transition-normal: 0.3s ease;
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Dark Mode Support (if needed later) or specifics */
+/* Dark Mode Support (Reserved) */
 [data-theme='dark'] {
   --bg-body: #0f172a;
-  --bg-card: rgba(30, 41, 59, 0.7);
-  --text-main: #f1f5f9;
+  --bg-card: #1e293b;
+  --text-main: #f8fafc;
   --text-secondary: #94a3b8;
+  --border-color: #334155;
 }
