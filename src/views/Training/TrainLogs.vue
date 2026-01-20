@@ -234,6 +234,8 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  height: 100%;
+  box-sizing: border-box;
 }
 
 .log-mode {
@@ -247,6 +249,7 @@ export default {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  flex-shrink: 0;
 }
 
 .spacer {
@@ -263,10 +266,12 @@ export default {
   background: rgba(245, 108, 108, 0.08);
   border-radius: 8px;
   font-size: 13px;
+  flex-shrink: 0;
 }
 
 .log-box {
-  height: 520px;
+  flex: 1;
+  min-height: 300px;
   overflow: auto;
   border-radius: 10px;
   border: 1px solid #e8ecef;

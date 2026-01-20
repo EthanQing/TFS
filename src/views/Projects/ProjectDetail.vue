@@ -415,12 +415,32 @@ export default {
         const detail = await FetchProjectsDetail(projectId);
         this.projectInfo = detail;
 
-        // Enhance dataset info
+        // Enhance dataset info - use multiple fallback sources
         try {
+            // First, preserve any dataset info that might already be in the API response
+            if (!this.projectInfo.dataset && this.projectInfo.dataset_name) {
+              this.projectInfo.dataset = { dataset_name: this.projectInfo.dataset_name };
+            }
+            
+            // Try to enhance with full dataset info from referenceStore
             await loadDatasets();
             const ds = referenceStore.datasets.find(d => d.dataset_id === this.projectInfo.dataset_id);
-            if (ds) this.projectInfo.dataset = { dataset_name: ds.dataset_name };
-        } catch(e) {}
+            if (ds) {
+              this.projectInfo.dataset = { 
+                dataset_id: ds.dataset_id,
+                dataset_name: ds.dataset_name 
+              };
+            }
+        } catch(e) {
+            console.warn('Failed to enhance dataset info:', e);
+            // Fallback: if we have dataset_id but no dataset object, try to create a minimal one
+            if (this.projectInfo.dataset_id && !this.projectInfo.dataset) {
+              this.projectInfo.dataset = { 
+                dataset_id: this.projectInfo.dataset_id,
+                dataset_name: `Dataset #${this.projectInfo.dataset_id}` 
+              };
+            }
+        }
 
         if (Array.isArray(detail.training_jobs)) {
           this.projectModels = detail.training_jobs;

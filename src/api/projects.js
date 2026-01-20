@@ -17,12 +17,25 @@ function pickPageItems(data) {
 
 function mapProjectOut(p) {
     if (!p || typeof p !== 'object') return p;
+
+    // Preserve dataset info from various possible API response formats
+    let dataset = p.dataset;
+    if (!dataset && (p.dataset_id || p.dataset_name)) {
+        dataset = {
+            dataset_id: p.dataset_id,
+            dataset_name: p.dataset_name || (p.dataset_id ? `Dataset #${p.dataset_id}` : null)
+        };
+    }
+
     return {
         ...p,
         project_id: p.project_id || p.id,
         project_name: p.project_name || p.name,
         // Keep backend fields too for later API calls.
         name: p.name || p.project_name,
+        // Ensure dataset info is available
+        dataset: dataset,
+        dataset_name: p.dataset_name || (dataset && dataset.dataset_name),
     };
 }
 

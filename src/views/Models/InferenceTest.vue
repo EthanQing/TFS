@@ -667,154 +667,155 @@ export default {
 .inference-test-container {
     display: flex;
     flex-direction: column;
-    margin-left: 10px;
     box-sizing: border-box;
-    width: calc(100% - 20px);
-    min-width: 800px;
+    width: 100%;
+    padding: 0;
 }
 
 .top {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
 }
 
 .top h3 {
-    font-size: 24px;
-    font-weight: bolder;
+    font-size: 18px;
+    font-weight: 600;
     color: #111f68;
+    margin: 0;
 }
 
 .top-actions {
     display: flex;
-    gap: 10px;
+    gap: 8px;
 }
 
 .top-actions .el-button {
     border-radius: 6px;
+    font-size: 12px;
+    padding: 8px 12px;
 }
 
-/* 主内容区域 */
+/* 主内容区域 - 更紧凑 */
 .content-wrapper {
     display: flex;
-    gap: 20px;
+    gap: 16px;
     width: 100%;
-    height: calc(100vh - 150px);
+    min-height: 0;
 }
 
-/* 左侧：配置 */
+/* 左侧：配置 - 紧凑化 */
 .config-section {
-    flex: 0 0 35%;
-    max-width: 400px;
-    overflow-y: auto;
+    flex: 0 0 320px;
+    max-width: 320px;
     display: flex;
     flex-direction: column;
+    max-height: calc(100vh - 180px);
+    overflow-y: auto;
 }
 
-/* 右侧：结果 */
+/* 右侧：结果 - 更大空间 */
 .right-section {
     flex: 1;
     display: flex;
     flex-direction: column;
-    gap: 20px;
-    min-height: 0;
+    gap: 12px;
+    min-width: 0;
+    max-height: calc(100vh - 180px);
     overflow-y: auto;
 }
 
-/* 通用卡片样式 */
+/* 通用卡片样式 - 紧凑化 */
 .section-card {
     background: #ffffff;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+    border-radius: 10px;
+    padding: 14px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
     border: 1px solid #e8ecef;
     flex-shrink: 0;
 }
 
 .section-title {
-    font-size: 16px;
+    font-size: 14px;
     font-weight: 600;
     color: #111f68;
-    margin: 0 0 16px 0;
+    margin: 0 0 12px 0;
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .section-title i {
-    font-size: 18px;
+    font-size: 14px;
 }
 
 .result-count {
-    font-size: 12px;
+    font-size: 11px;
     color: #8e9aaf;
     font-weight: normal;
 }
 
-/* 配置内容 */
+/* 配置内容 - 紧凑化 */
 .config-content {
     display: flex;
     flex-direction: column;
-    gap: 16px;
-    flex: 1;
-    overflow-y: auto;
+    gap: 12px;
 }
 
 .config-group {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .group-label {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: #111f68;
 }
 
-/* 自定义Radio组 */
+/* 自定义Radio组 - 紧凑化 */
 .radio-group-custom {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .radio-option-custom {
     display: flex;
     align-items: center;
-    padding: 12px;
-    gap: 12px;
-    background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
-    border: 2px solid #e8ecef;
-    border-radius: 8px;
-    font-size: 14px;
+    padding: 8px 10px;
+    gap: 6px;
+    background: #f9fafb;
+    border: 1px solid #e8ecef;
+    border-radius: 6px;
+    font-size: 12px;
     cursor: pointer;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
+    flex: 1;
 }
 
 .radio-option-custom:hover {
     border-color: #111f68;
-    background: linear-gradient(135deg, #f0f3f9 0%, #ffffff 100%);
+    background: #f0f3f9;
 }
 
 .radio-option-custom.active {
-    border-color: #111f68 !important;
-    background: linear-gradient(135deg, #e8ecf5 0%, #ffffff 100%) !important;
-    box-shadow: 0 2px 8px rgba(17, 31, 104, 0.15);
+    border-color: #111f68;
+    background: #e8ecf5;
 }
 
-/* Radio圆圈 */
+/* Radio圆圈 - 紧凑化 */
 .radio-circle {
-    width: 18px;
-    height: 18px;
+    width: 14px;
+    height: 14px;
     border-radius: 50%;
     border: 2px solid #dcdfe6;
     display: flex;
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
 }
 
 .radio-option-custom.active .radio-circle {
@@ -822,11 +823,11 @@ export default {
 }
 
 .radio-inner {
-    width: 10px;
-    height: 10px;
+    width: 8px;
+    height: 8px;
     border-radius: 50%;
     background-color: transparent;
-    transition: all 0.3s ease;
+    transition: all 0.2s ease;
 }
 
 .radio-option-custom.active .radio-inner {
@@ -835,9 +836,8 @@ export default {
 
 /* 图标样式 */
 .radio-option-custom i {
-    font-size: 18px;
+    font-size: 14px;
     color: #6c757d;
-    transition: color 0.3s ease;
     flex-shrink: 0;
 }
 
@@ -848,8 +848,7 @@ export default {
 /* 文字样式 */
 .radio-option-custom span {
     color: #606266;
-    transition: all 0.3s ease;
-    flex: 1;
+    font-size: 12px;
 }
 
 .radio-option-custom.active span {
@@ -857,7 +856,7 @@ export default {
     font-weight: 600;
 }
 
-/* 上传区域 */
+/* 上传区域 - 紧凑化 */
 .upload-area {
     background: transparent;
     border: none;
@@ -868,61 +867,41 @@ export default {
 }
 
 .upload-area >>> .el-upload-dragger {
-    background: linear-gradient(135deg, #f0f3f9 0%, #ffffff 100%);
+    background: #f9fafb;
     border: 2px dashed #111f68;
-    border-radius: 12px;
-    padding: 50px 30px;
-    min-height: 200px;
+    border-radius: 8px;
+    padding: 24px 16px;
+    min-height: 100px;
     text-align: center;
     cursor: pointer;
-    transition: all 0.3s;
-    position: relative;
-    overflow: hidden;
+    transition: all 0.2s;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 18px;
+    gap: 8px;
     width: 100%;
-}
-
-.upload-area >>> .el-upload-dragger::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    right: 0;
-    bottom: 0;
-    background: radial-gradient(circle at top right, rgba(17, 31, 104, 0.05), transparent);
-    pointer-events: none;
 }
 
 .upload-area >>> .el-upload-dragger:hover {
     border-color: #111f68;
-    background: linear-gradient(135deg, #e8ecf5 0%, #ffffff 100%);
-    box-shadow: 0 8px 24px rgba(17, 31, 104, 0.15);
+    background: #f0f3f9;
 }
 
 .upload-area i {
-    font-size: 50px;
+    font-size: 32px;
     color: #111f68;
-    display: block;
-    margin: 0;
 }
 
 .upload-text {
-    font-size: 16px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 500;
     color: #111f68;
-    margin: 0;
-    line-height: 1.4;
 }
 
 .upload-tip {
-    font-size: 13px;
-    color: #6c757d;
-    margin: 0;
-    line-height: 1.4;
+    font-size: 11px;
+    color: #8e9aaf;
 }
 
 /* 文件列表 */
@@ -970,30 +949,30 @@ export default {
     white-space: nowrap;
 }
 
-/* 参数项 */
+/* 参数项 - 紧凑化 */
 .param-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 12px;
-    background: linear-gradient(135deg, #f9fafb 0%, #ffffff 100%);
-    border-radius: 8px;
-    border: 1.5px solid #e8ecef;
-    gap: 12px;
-    transition: all 0.3s ease;
+    padding: 8px 10px;
+    background: #f9fafb;
+    border-radius: 6px;
+    border: 1px solid #e8ecef;
+    gap: 8px;
+    transition: all 0.2s ease;
 }
 
 .param-item:hover {
     border-color: #111f68;
-    background: linear-gradient(135deg, #f0f3f9 0%, #ffffff 100%);
+    background: #f0f3f9;
 }
 
 .param-name {
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
     color: #111f68;
     flex: 0 0 auto;
-    min-width: 80px;
+    min-width: 60px;
 }
 
 .param-item .el-select {
@@ -1004,18 +983,18 @@ export default {
     flex: 1;
 }
 
-/* 操作按钮 */
+/* 操作按钮 - 紧凑化 */
 .action-buttons {
     display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 4px;
 }
 
 .action-buttons .el-button {
     flex: 1;
-    min-width: 120px;
     border-radius: 6px;
-    font-size: 13px;
+    font-size: 12px;
+    padding: 8px 12px;
 }
 
 .custom-primary-btn {
@@ -1053,76 +1032,72 @@ export default {
     transform: translateY(-2px);
 }
 
-/* 统计区域 */
+/* 统计区域 - 紧凑化 */
 .stats-content {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
 }
 
 .stat-cards-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
-    gap: 10px;
+    gap: 8px;
 }
 
 .stat-card {
-    padding: 14px;
-    background: linear-gradient(135deg, #ffffff 0%, #f9fafb 100%);
-    border-radius: 10px;
+    padding: 10px;
+    background: #f9fafb;
+    border-radius: 8px;
     display: flex;
     align-items: center;
-    gap: 12px;
-    border: 1.5px solid #e8ecef;
-    transition: all 0.3s ease;
+    gap: 8px;
+    border: 1px solid #e8ecef;
+    transition: all 0.2s ease;
 }
 
 .stat-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(17, 31, 104, 0.1);
     border-color: #111f68;
 }
 
 .stat-icon {
-    width: 44px;
-    height: 44px;
-    border-radius: 10px;
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 22px;
-    background: linear-gradient(135deg, #111f68 0%, #0d1554 100%);
+    font-size: 16px;
+    background: #111f68;
     color: #fff;
     flex-shrink: 0;
 }
 
 .stat-icon.success {
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: #fff;
+    background: #10b981;
 }
 
 .stat-icon.warning {
-    background: linear-gradient(135deg, #f59e0b 0%, #d97706 100%);
-    color: #fff;
+    background: #f59e0b;
 }
 
 .stat-icon.info {
-    background: linear-gradient(135deg, #06b6d4 0%, #0891b2 100%);
-    color: #fff;
+    background: #06b6d4;
 }
 
 .stat-info {
     flex: 1;
+    min-width: 0;
 }
 
 .stat-label {
-    font-size: 11px;
+    font-size: 10px;
     color: #8e9aaf;
-    margin-bottom: 2px;
+    margin-bottom: 1px;
 }
 
 .stat-value {
-    font-size: 18px;
+    font-size: 14px;
     font-weight: 600;
     color: #111f68;
 }

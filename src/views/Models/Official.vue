@@ -66,6 +66,33 @@
           <div class="field-label">预训练权重</div>
           <el-switch v-model="pretrainedEnabled"></el-switch>
         </div>
+        <div class="field-row" v-if="pretrainedEnabled">
+          <div class="field-label">上传预训练权重</div>
+          <div class="upload-compact">
+            <el-upload
+              ref="pretrainUploader"
+              action="#"
+              :auto-upload="false"
+              :on-change="handlePretrainFileChange"
+              :show-file-list="false"
+              :disabled="uploadingPretrain"
+              accept=".pt,.pth,.ckpt"
+              class="upload-hidden"
+            >
+              <el-button size="small" type="primary" :loading="uploadingPretrain" class="browse-btn">
+                <i class="el-icon-folder-opened" v-if="!uploadingPretrain"></i>
+                {{ uploadingPretrain ? '上传中...' : '选择文件' }}
+              </el-button>
+            </el-upload>
+            <span v-if="pretrainedFileName" class="file-name" :title="pretrainedFileName">
+              <i class="el-icon-document"></i>
+              {{ pretrainedFileName }}
+              <i class="el-icon-close remove-icon" @click="removePretrainFile"></i>
+            </span>
+            <span v-else class="file-hint">.pt / .pth / .ckpt</span>
+          </div>
+          <div v-if="pretrainUploadError" class="upload-error">{{ pretrainUploadError }}</div>
+        </div>
         <div class="field-row">
           <div class="field-label">训练轮次</div>
           <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
@@ -107,6 +134,7 @@
 
 <script>
 import { referenceStore, loadArchitectures } from "@/store/referenceStore";
+import { uploadPretrainedWeights } from "@/api/training";
 
 export default {
   name: "Official",
@@ -136,6 +164,10 @@ export default {
       ],
       optimizer: "Auto",
       pretrainedEnabled: true,
+      pretrainedFileName: "",
+      pretrainedPath: "",
+      uploadingPretrain: false,
+      pretrainUploadError: "",
       modelMetrics: {
         YOLO11n: { accuracy: 35.0, speedMs: 6.1 },
         YOLO11s: { accuracy: 41.3, speedMs: 8.7 },
@@ -321,12 +353,43 @@ export default {
       this.emitConfigChange();
     },
     pretrainedEnabled() {
+      if (!this.pretrainedEnabled) {
+        this.pretrainedFileName = "";
+        this.pretrainedPath = "";
+        this.pretrainUploadError = "";
+      }
       this.emitConfigChange();
     }
   },
   methods: {
     reloadArchitectures() {
       loadArchitectures({ force: true });
+    },
+    async handlePretrainFileChange(file) {
+      const raw = file && (file.raw || file);
+      if (!raw) return;
+      this.pretrainUploadError = "";
+      this.uploadingPretrain = true;
+      try {
+        const res = await uploadPretrainedWeights(raw);
+        this.pretrainedFileName = res?.filename || raw.name || "";
+        this.pretrainedPath = res?.token || res?.path || "";
+        this.emitConfigChange();
+      } catch (err) {
+        const msg = err?.message || "无法上传预训练权重";
+        this.pretrainUploadError = msg;
+        this.pretrainedFileName = "";
+        this.pretrainedPath = "";
+        this.emitConfigChange();
+      } finally {
+        this.uploadingPretrain = false;
+      }
+    },
+    removePretrainFile() {
+      this.pretrainedFileName = "";
+      this.pretrainedPath = "";
+      this.pretrainUploadError = "";
+      this.emitConfigChange();
     },
     ensureDefaultModel() {
       if (this.selectedModel) return;
@@ -358,6 +421,7 @@ export default {
         device: this.getDeviceValue(),
         optimizer: String(this.optimizer || "auto").toLowerCase(),
         use_pretrained: this.pretrainedEnabled,
+        pretrained_model_path: this.pretrainedEnabled ? this.pretrainedPath : "",
         dataset_name: this.selectedProject?.dataset?.dataset_name || ""
       };
 
@@ -600,6 +664,10 @@ export default {
   border: 1px solid #e4e7ee;
 }
 
+.field-row.wide {
+  grid-column: 1 / -1;
+}
+
 .field-label {
   font-size: 11px;
   text-transform: uppercase;
@@ -609,6 +677,72 @@ export default {
 
 .field-input ::v-deep .el-input__inner {
   border-radius: 10px;
+}
+
+/* Compact upload row */
+.upload-compact {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.upload-hidden ::v-deep .el-upload {
+  display: inline-block;
+}
+
+.browse-btn {
+  border-radius: 8px !important;
+  background: linear-gradient(135deg, #111f68 0%, #0d1554 100%) !important;
+  border-color: #111f68 !important;
+  color: #fff !important;
+  font-weight: 500;
+  padding: 8px 14px;
+}
+
+.browse-btn:hover {
+  background: linear-gradient(135deg, #1a2d8a 0%, #111f68 100%) !important;
+}
+
+.file-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #2b3a67;
+  background: #fff;
+  border: 1px solid #e4e7ee;
+  border-radius: 8px;
+  padding: 6px 12px;
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-name .el-icon-document {
+  color: #4f63c7;
+}
+
+.remove-icon {
+  cursor: pointer;
+  color: #d64545;
+  margin-left: 4px;
+}
+
+.remove-icon:hover {
+  color: #b33c3c;
+}
+
+.file-hint {
+  font-size: 12px;
+  color: #9ca3af;
+}
+
+.upload-error {
+  font-size: 11px;
+  color: #d64545;
+  margin-top: 4px;
 }
 
 .device-toggle {

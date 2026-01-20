@@ -56,7 +56,7 @@
         class="pc-tab"
         :class="{ active: activeTab === 'preview' }"
         @click="setActiveTab('preview'), goPreviewPart()"
-      >预览</button>
+      >简单推理</button>
     </nav>
 
     <section class="pc-content">
@@ -312,10 +312,15 @@ export default {
   --brand-300: #9bb0ff;
   --card-shadow: 0 18px 35px rgba(16, 18, 24, 0.12);
   padding: 24px;
-  min-height: 100vh;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   background: #f9fafb;
   font-family: "Space Grotesk", "Sora", "Manrope", "Segoe UI", sans-serif;
   color: var(--ink-900);
+  box-sizing: border-box;
 }
 
 .pc-hero {
@@ -323,12 +328,13 @@ export default {
   justify-content: space-between;
   align-items: flex-end;
   gap: 24px;
-  padding: 24px;
-  border-radius: 24px;
+  padding: 20px;
+  border-radius: 16px;
   background: #fff;
   border: 1px solid #e5e7eb;
   color: var(--text-main);
   box-shadow: none;
+  flex-shrink: 0;
 }
 
 .pc-hero-left {
@@ -416,10 +422,11 @@ export default {
 }
 
 .pc-meta-panel {
-  margin-top: 18px;
+  margin-top: 14px;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .pc-chip {
@@ -447,10 +454,11 @@ export default {
 }
 
 .pc-tabs {
-  margin-top: 22px;
+  margin-top: 16px;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
+  flex-shrink: 0;
 }
 
 .pc-tab {
@@ -478,7 +486,10 @@ export default {
 }
 
 .pc-content {
-  margin-top: 18px;
+  margin-top: 16px;
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
 }
 
 @keyframes spin {

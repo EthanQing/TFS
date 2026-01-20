@@ -188,63 +188,61 @@ export default {
 </script>
 
 <style scoped>
-.ConfigurationPart{
-  margin-left: 20px;
-  padding: 20px;
+.ConfigurationPart {
+  padding: 20px 24px;
   background-color: #fff;
-  border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
-  /* 占满可用宽度并避免水平溢出 */
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
   box-sizing: border-box;
-  width: auto;
-  max-width: 96%;
-  overflow-x: hidden;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
 }
 
 .ConfigurationPart ul {
   list-style: none;
   padding: 0;
   margin: 0;
+  /* 固定两列布局，更加整齐 */
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 12px 24px;
 }
-.title{
-  font-size: 22px;
+
+.title {
+  font-size: 18px;
   font-weight: 600;
-  margin-bottom: 10px;
+  margin-bottom: 16px;
   color: #111f68;
 }
-.ConfigurationPart ul li{
+
+.ConfigurationPart ul li {
   display: flex;
-  justify-content: flex-start; /* 左对齐，右侧值用 margin-left:auto 贴右 */
+  justify-content: space-between;
   align-items: center;
-  width: 100%;
-  box-sizing: border-box; /* 让 padding 计入宽度，避免溢出 */
-  height: 50px;
-  font-size: 15px;
-  margin: 8px 0;
-  padding: 0 20px;
-  border-bottom: 1px solid #E4E7ED;
-  background-color: #fff;
-  border-radius: 4px;
-  transition: background-color 0.3s;
-  overflow: hidden; /* 确保子元素不会把行撑出容器 */
+  box-sizing: border-box;
+  height: 44px;
+  font-size: 14px;
+  padding: 0 16px;
+  background-color: #f9fafb;
+  border-radius: 10px;
+  border: 1px solid #e5e7eb;
+  transition: all 0.2s;
+  overflow: hidden;
 }
 
 .ConfigurationPart ul li:hover {
-  background-color: #F5F7FA;
+  background-color: #f3f4f6;
+  border-color: #d1d5db;
 }
 
-.description{
-  font-size: 15px;
-  margin-bottom: 20px;
-  color: #666;
-}
-
-.ConfigurationPart ul li span{
-  flex: 1 1 auto; /* 名称占据剩余空间 */
-  min-width: 0; /* 允许收缩以启用省略号 */
-  line-height: 50px;
-  color: #333;
+.ConfigurationPart ul li span {
+  flex: 1 1 auto;
+  min-width: 0;
+  line-height: 44px;
+  color: #374151;
   font-weight: 500;
+  font-size: 13px;
   text-align: left;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -252,33 +250,38 @@ export default {
   margin-right: 12px;
 }
 
-.ConfigurationPart ul li div{
-  /* 允许在窄屏时收缩，避免把容器撑破 */
-  flex: 0 1 300px;
-  margin-left: auto; /* 将值推到容器最右侧（留有行内 padding） */
-  width: auto;
-  min-width: 30px;
-  max-width: 10%;
-  height: 32px;
+.ConfigurationPart ul li div {
+  flex: 0 0 auto;
+  min-width: 50px;
+  max-width: 140px;
+  height: 28px;
   box-sizing: border-box;
-  background-color: #f3f3f3;
-  border-radius: 16px;
-  line-height: 32px;
+  background-color: #fff;
+  border-radius: 6px;
+  line-height: 26px;
   text-align: center;
   padding: 0 12px;
-  color: #606266;
+  color: #111f68;
   font-weight: 600;
   font-size: 13px;
-  border: 1px solid #DCDFE6;
-  white-space: nowrap; /* 单行显示，配合省略号 */
+  border: 1px solid #e5e7eb;
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* 窄屏优化：进一步限制右侧值的最大宽度 */
+/* 中等屏幕保持两列 */
+@media (max-width: 1200px) {
+  .ConfigurationPart ul {
+    gap: 10px 16px;
+  }
+}
+
+/* 小屏幕改为单列 */
 @media (max-width: 768px) {
-  .ConfigurationPart ul li div {
-    max-width: 55%;
+  .ConfigurationPart ul {
+    grid-template-columns: 1fr;
+    gap: 10px;
   }
 }
 
@@ -287,13 +290,14 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
-  color: #666;
+  padding: 24px;
+  color: #6b7280;
+  font-size: 13px;
 }
 
 .loading-container i {
-  font-size: 20px;
-  margin-right: 10px;
+  font-size: 18px;
+  margin-right: 8px;
   animation: spin 1s linear infinite;
 }
 
@@ -307,13 +311,14 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
-  color: #f56c6c;
+  padding: 24px;
+  color: #ef4444;
+  font-size: 13px;
 }
 
 .error-container i {
-  font-size: 20px;
-  margin-right: 10px;
+  font-size: 18px;
+  margin-right: 8px;
 }
 
 /* 无数据状态样式 */
@@ -321,12 +326,13 @@ export default {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
-  color: #999;
+  padding: 24px;
+  color: #9ca3af;
+  font-size: 13px;
 }
 
 .no-data-container i {
-  font-size: 20px;
-  margin-right: 10px;
+  font-size: 18px;
+  margin-right: 8px;
 }
 </style>

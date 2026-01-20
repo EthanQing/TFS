@@ -1,96 +1,63 @@
 <template>
   <div class="PreviewPart">
-    <!-- <span class="title">测试</span>
-    <span class="message">预览你的模型</span> -->
-    <div class="PartWrap">
-      <div class="leftPart">
-        <!-- <span>设置</span> -->
-        <!-- <div class="firstLine">
-          <span>图片尺寸</span>
-          <button
-            v-for="(size, index) in imageSizes"
-            :key="index"
-            :class="{ active: activeSize === size }"
-            @click="setActiveSize(size)"
-          >
-            {{ size }}
-          </button>
-        </div> -->
-        <div class="dataPart">
-          <div class="data-item">
-            <span>置信阈值</span>
-            <div
-              class="slider-container"
-              style="display: flex; align-items: center"
-            >
+    <div class="preview-container">
+      <!-- 左侧控制栏 -->
+      <div class="controls-panel">
+        <div class="control-group">
+          <div class="control-item">
+            <label>置信阈值</label>
+            <div class="slider-row">
               <el-slider
                 v-model="value1"
                 :min="0"
                 :max="1"
                 :step="0.01"
                 :show-tooltip="false"
-                style="flex: 1; margin: 0 8px"
+                class="compact-slider"
               ></el-slider>
-              <span style="width: 50px; text-align: left; color: #111f68">{{
-                value1.toFixed(2)
-              }}</span>
+              <span class="slider-value">{{ value1.toFixed(2) }}</span>
             </div>
           </div>
-          <div class="data-item">
-            <span>IoU阈值</span>
-            <div
-              class="slider-container"
-              style="display: flex; align-items: center"
-            >
+          <div class="control-item">
+            <label>IoU阈值</label>
+            <div class="slider-row">
               <el-slider
                 v-model="value2"
                 :min="0"
                 :max="1"
                 :step="0.01"
                 :show-tooltip="false"
-                style="flex: 1; margin: 0 8px"
+                class="compact-slider"
               ></el-slider>
-              <span style="width: 50px; text-align: left; color: #111f68">{{
-                value2.toFixed(2)
-              }}</span>
-              <button class="postImg" @click="onPredict">预 测</button>
+              <span class="slider-value">{{ value2.toFixed(2) }}</span>
             </div>
           </div>
         </div>
+        <button class="predict-btn" @click="onPredict">预 测</button>
       </div>
-    </div>
-    <div class="rightPart">
-      <div class="clickChangePart">
-        <div
-          :class="{ active: activeTab === 'image' }"
-          @click="setActiveTab('image')"
+
+      <!-- 右侧预览区域 -->
+      <div class="preview-panel">
+        <div 
+          class="image-preview-area" 
+          :class="{ 'drag-over': isDragging }"
+          @click="openFilePicker"
+          @dragenter.prevent="onDragEnter"
+          @dragover.prevent="onDragOver"
+          @dragleave.prevent="onDragLeave"
+          @drop.prevent="onDrop"
         >
-          图片
-        </div>
-        <!-- <div
-            :class="{ active: activeTab === 'camera' }"
-            @click="setActiveTab('camera'), clickShowCamera()"
-          >
-            相机
-          </div> -->
-      </div>
-      <!-- 内嵌原 ClickShowImg 组件的功能 -->
-      <div class="ClickShowImg">
-        <div class="upload-area" @click="openFilePicker">
           <div class="canvas-wrap">
-            <img
-              v-if="imageUrl"
-              :src="imageUrl"
-              class="preview-img"
-              ref="img"
-              @load="onImageLoad"
-            />
-            <div v-else class="placeholder"></div>
+            <img v-if="imageUrl" :src="imageUrl" class="preview-img" ref="img" @load="onImageLoad" />
+            <div v-else class="placeholder">
+              <i class="el-icon-upload"></i>
+              <span>点击或拖拽图片到此处上传</span>
+            </div>
             <canvas ref="canvas" class="overlay-canvas"></canvas>
           </div>
-          <div class="bottom-actions" @click.stop>
+          <div class="action-bar" @click.stop>
             <el-upload
-              class="upload-trigger"
+              class="upload-btn"
               ref="uploader"
               action="#"
               :show-file-list="false"
@@ -98,19 +65,18 @@
               :before-upload="beforeAvatarUpload"
               :http-request="doLocalUpload"
             >
-              <i class="el-icon-upload"></i>
+              <i class="el-icon-upload2"></i>
               <span>上传图片</span>
             </el-upload>
-            <button v-if="imageUrl" class="clear-trigger" @click="clearImage">
+            <button v-if="imageUrl" class="clear-btn" @click="clearImage">
               <i class="el-icon-delete"></i>
-              <span>清除图片</span>
+              <span>清除</span>
             </button>
           </div>
         </div>
       </div>
-
-      <router-view></router-view>
     </div>
+    <router-view></router-view>
   </div>
 </template>
 
@@ -138,6 +104,8 @@ export default {
       // 原 ClickShowImg 状态
       imageUrl: "",
       resizeObserver: null,
+      // 拖拽状态
+      isDragging: false,
     };
   },
   mounted() {
@@ -405,16 +373,26 @@ export default {
       const wrap = this.$el.querySelector('.canvas-wrap');
       const img = this.$refs.img;
       if (!wrap || !img) return null;
-      const wrapW = wrap.clientWidth;
-      const wrapH = wrap.clientHeight;
+      
+      // 获取容器尺寸
+      const wrapRect = wrap.getBoundingClientRect();
+      const wrapW = wrapRect.width;
+      const wrapH = wrapRect.height;
+      
+      // 获取图片原始尺寸
       const naturalW = img.naturalWidth || previewStore.inferenceResult?.image_width;
       const naturalH = img.naturalHeight || previewStore.inferenceResult?.image_height;
       if (!naturalW || !naturalH) return null;
-      const scale = Math.min(wrapW / naturalW, wrapH / naturalH);
-      const drawW = naturalW * scale;
-      const drawH = naturalH * scale;
-      const offsetX = (wrapW - drawW) / 2;
-      const offsetY = (wrapH - drawH) / 2;
+      
+      // 获取图片实际渲染尺寸和位置
+      const imgRect = img.getBoundingClientRect();
+      
+      // 计算图片相对于容器的偏移
+      const offsetX = imgRect.left - wrapRect.left;
+      const offsetY = imgRect.top - wrapRect.top;
+      const drawW = imgRect.width;
+      const drawH = imgRect.height;
+      
       return { offsetX, offsetY, drawW, drawH };
     },
     redraw() {
@@ -538,6 +516,39 @@ export default {
       this.imageUrl = '';
       previewStore.clear();
       this.$nextTick(() => this.redraw());
+    },
+    // 拖拽上传相关方法
+    onDragEnter(e) {
+      this.isDragging = true;
+    },
+    onDragOver(e) {
+      this.isDragging = true;
+    },
+    onDragLeave(e) {
+      this.isDragging = false;
+    },
+    onDrop(e) {
+      this.isDragging = false;
+      const files = e.dataTransfer?.files;
+      if (files && files.length > 0) {
+        const file = files[0];
+        if (file.type.startsWith('image/')) {
+          this.handleDroppedFile(file);
+        } else {
+          this.$message && this.$message.error('请上传图片格式的文件!');
+        }
+      }
+    },
+    handleDroppedFile(file) {
+      try {
+        if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
+          URL.revokeObjectURL(this.imageUrl);
+        }
+      } catch (e) {}
+      this.imageUrl = URL.createObjectURL(file);
+      previewStore.set(file, this.imageUrl);
+      previewStore.setInferenceResult(null);
+      this.$nextTick(() => { this.fitCanvasToImage(); this.redraw(); });
     }
   },
 };
@@ -545,168 +556,139 @@ export default {
 
 <style scoped>
 .PreviewPart {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+.preview-container {
+  display: flex;
+  gap: 16px;
+  align-items: stretch;
+  height: 100%;
+}
+
+/* 左侧控制栏 - 纵向布局 */
+.controls-panel {
+  flex: 0 0 180px;
   display: flex;
   flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  background: #fff;
+  border-radius: 12px;
+  border: 1px solid #e5e7eb;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  flex: 1;
+}
+
+.control-item {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-item label {
+  font-size: 13px;
+  font-weight: 600;
   color: #111f68;
-  margin-left: 20px;
 }
-.title {
-  font-size: 20px;
-  margin-bottom: 10px;
-}
-.message {
-  font-size: 15px;
-  margin-bottom: 25px;
-}
-.leftPart > span {
-  font-size: 15px;
-}
-.firstLine {
-  margin-top: 15px;
-  font-size: 15px;
-  margin-left: 10px;
+
+.slider-row {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  gap: 8px;
 }
-.firstLine span {
-  /* 缩小标题与按钮的间距，让按钮左移 */
-  margin-right: 330px;
-  margin-bottom: 20px;
+
+.compact-slider {
+  width: 100%;
 }
-.firstLine button {
-  width: 60px;
-  height: 40px;
-  border-radius: 15px;
-  margin: 0 5px;
-  transition: all 0.3s;
-  border: 1px solid #111f68;
-  background-color: white;
-  color: #111f68;
-  margin-bottom: 20px;
-}
-.firstLine button.active {
-  background-color: #111f68;
-  color: white;
-}
-.dataPart {
-  margin-left: 10px;
-  font-size: 15px;
-  display: flex; /* 横向两列布局 */
-  flex-direction: row;
-  align-items: flex-start;
-  gap: 24px; /* 两项之间的间距 */
-  flex-wrap: wrap; /* 根据空间决定是否换行 */
-}
-.data-item {
-  display: flex;
-  align-items: center;
-  flex: 1 1 calc(50% - 12px); /* 两列等分，扣除间距的一半 */
-  min-width: 300px; /* 单项最小宽度更大，滑轨更长 */
-  margin: 0; /* 间距由 gap 控制 */
-}
-.data-item span {
-  width: 80px; /* 缩小左侧标签宽度，为滑轨腾出更多空间 */
-  margin-right: 20px;
-  white-space: nowrap; /* 防止中文标签被挤压成竖排 */
-}
-.slider-container {
-  width: 100%; /* 自适应伸展，替代固定宽度 */
-  position: relative;
-}
-.postImg {
-  margin-left: 8px;
-  padding: 6px 12px;
-  font-size: 16px;
-  line-height: 1;
-  background: #111f68;
-  color: #fff;
-  border: 1px solid #111f68;
-  border-radius: 14px;
-  cursor: pointer;
-  position: absolute;
-  top: 0px;
-  right: -250px;
-}
-.postImg:hover {
-  background: #1e2d7d;
-}
-/* 修改Element UI滑块的颜色 */
-::v-deep .el-slider__bar {
-  background-color: #111f68 !important;
-}
-/* 稍微加粗滑轨和拖拽圆点，提升观感 */
-::v-deep .el-slider__runway {
-  height: 6px;
-}
-::v-deep .el-slider__bar {
-  height: 6px;
-}
-::v-deep .el-slider__button {
-  width: 14px;
-  height: 14px;
-}
-::v-deep .el-slider__button {
-  border-color: #111f68 !important;
-}
-::v-deep .el-slider__button:hover {
-  border-color: #111f68 !important;
-}
-::v-deep .el-slider__button:active {
-  box-shadow: 0 0 0 2px rgba(17, 31, 104, 0.2) !important;
-}
-.clickChangePart {
-  margin-top: 25px;
-  margin-left: 20px;
-  display: flex;
-}
-.clickChangePart div {
-  width: 70px;
-  height: 40px;
+
+.slider-value {
+  font-size: 14px;
+  font-weight: 700;
   color: #111f68;
   text-align: center;
-  line-height: 40px;
-  font-size: 16px;
-  margin: 0 5px;
-  cursor: pointer;
-  border-bottom: 2px solid transparent;
-}
-.clickChangePart div.active {
-  border-bottom: 2px solid #111f68;
-  font-weight: bold;
-}
-.PartWrap {
-  display: flex;
+  background: #f3f4f6;
+  padding: 6px 12px;
+  border-radius: 6px;
 }
 
-.rightPart {
-  margin-left: 10px;
-  flex: 1 1 auto; /* 右侧区域自适应扩展 */
-}
-/* 固定左侧设置栏的宽度，避免因上方按钮布局改变而影响进度条长度 */
-.leftPart {
-  flex: 0 0 900px; /* 进一步加宽，拉长滑轨 */
-  max-width: 900px;
-}
-
-/* ---- 以下为原 ClickShowImg 样式 ---- */
-.ClickShowImg {
+.predict-btn {
   width: 100%;
-  height: auto;
-}
-.upload-area {
-  margin-top: 10px;
-  width: 70%;
-  height: 55vh;
-  background: #fff;
-  position: relative;
-  overflow: hidden;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  background: #111f68;
+  color: #fff;
+  border: none;
   border-radius: 8px;
-  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: auto;
 }
+
+.predict-btn:hover {
+  background: #1a2d8a;
+}
+
+/* 右侧预览区域 */
+.preview-panel {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tab-bar {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.tab-item {
+  padding: 6px 16px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #6b7280;
+  background: #f3f4f6;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.tab-item.active {
+  color: #111f68;
+  background: #e0e7ff;
+  font-weight: 600;
+}
+
+.image-preview-area {
+  position: relative;
+  width: 100%;
+  flex: 1;
+  min-height: 300px;
+  background: #fff;
+  border-radius: 12px;
+  border: 2px dashed #e5e7eb;
+  overflow: hidden;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+/* 拖拽时的视觉反馈 */
+.image-preview-area.drag-over {
+  border-color: #111f68;
+  background: #f0f3f9;
+  box-shadow: 0 0 0 4px rgba(17, 31, 104, 0.1);
+}
+
 .canvas-wrap {
   position: relative;
   width: 100%;
@@ -715,59 +697,29 @@ export default {
   align-items: center;
   justify-content: center;
 }
-.bottom-actions {
-  position: absolute;
-  left: 50%;
-  bottom: 16px;
-  transform: translateX(-50%);
-  display: inline-flex;
-  align-items: center;
-  gap: 12px;
-  z-index: 2;
-}
-.upload-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #111f68;
-  font-size: 14px;
-  padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(17, 31, 104, 0.15);
-  border-radius: 16px;
-  cursor: pointer;
-}
-.clear-trigger {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  color: #a94442;
-  font-size: 14px;
-  padding: 6px 12px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid rgba(169, 68, 66, 0.3);
-  border-radius: 16px;
-}
-.clear-trigger:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-.upload-trigger ::v-deep .el-upload,
-.upload-trigger ::v-deep .el-upload-dragger {
-  border: none;
-  background: transparent;
-  padding: 0;
-}
-.placeholder {
-  width: 100%;
-  height: 100%;
-}
+
 .preview-img {
-  width: 100%;
-  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-  display: block;
 }
+
+.placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  color: #9ca3af;
+}
+
+.placeholder i {
+  font-size: 48px;
+}
+
+.placeholder span {
+  font-size: 14px;
+}
+
 .overlay-canvas {
   position: absolute;
   inset: 0;
@@ -775,30 +727,93 @@ export default {
   height: 100%;
   pointer-events: none;
 }
-.upload-trigger i {
-  font-size: 16px;
+
+.action-bar {
+  position: absolute;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 10px;
+  z-index: 2;
 }
 
-/* 窄屏下改为纵向堆叠，防止拥挤 */
+.upload-btn, .clear-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.95);
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.upload-btn:hover, .clear-btn:hover {
+  background: #fff;
+  border-color: #d1d5db;
+}
+
+.clear-btn {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.3);
+}
+
+.upload-btn ::v-deep .el-upload {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.upload-btn ::v-deep .el-upload,
+.upload-btn ::v-deep .el-upload-dragger {
+  border: none;
+  background: transparent;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Element UI 滑块样式覆盖 */
+::v-deep .el-slider__runway {
+  height: 4px;
+  background: #e5e7eb;
+}
+
+::v-deep .el-slider__bar {
+  height: 4px;
+  background: #111f68;
+}
+
+::v-deep .el-slider__button-wrapper {
+  top: -15px;
+}
+
+::v-deep .el-slider__button {
+  width: 14px;
+  height: 14px;
+  border-color: #111f68;
+}
+
+::v-deep .el-slider__button:hover {
+  border-color: #111f68;
+}
+
+/* 响应式布局 */
 @media (max-width: 900px) {
-  .PartWrap {
+  .preview-container {
     flex-direction: column;
   }
-  .leftPart {
-    flex: 1 1 auto;
-    max-width: none;
+  
+  .controls-panel {
     width: 100%;
+    flex-wrap: wrap;
   }
-  .dataPart {
-    flex-direction: column; /* 小屏改为纵向 */
-    gap: 16px;
-    flex-wrap: nowrap;
-  }
-  .data-item {
-    min-width: 0;
-  }
-  .rightPart {
-    margin-left: 0;
+  
+  .control-group {
+    flex: 1;
+    flex-wrap: wrap;
   }
 }
 </style>

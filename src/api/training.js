@@ -277,6 +277,25 @@ export async function startTrainingJob(jobId) {
   }
 }
 
+// uploadPretrainedWeights 上传预训练权重文件（用于微调）
+export async function uploadPretrainedWeights(file) {
+  try {
+    if (!file) throw new Error("Missing file");
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch(`${API_BASE}/api/v2/pretrain-models/upload`, {
+      method: "POST",
+      body: formData,
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return data;
+  } catch (error) {
+    console.error("上传预训练权重失败:", error);
+    throw error;
+  }
+}
+
 // fetchTrainingJobs 获取训练任务列表接口（v2: Page{items}）
 export async function fetchTrainingJobs(page = 1, pageSize = 500) {
   try {
