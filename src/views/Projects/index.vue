@@ -125,6 +125,19 @@
                 </el-option>
               </el-select>
             </el-form-item>
+            <el-form-item label="分割数据集" v-if="form.dataset">
+              <div style="display: flex; flex-direction: column; gap: 10px;">
+                <el-input v-model="form.trainSplit" placeholder="">
+                  <template slot="prepend">训练</template>
+                </el-input>
+                <el-input v-model="form.valSplit" placeholder="">
+                  <template slot="prepend">验证</template>
+                </el-input>
+                <el-input v-model="form.testSplit" placeholder="">
+                  <template slot="prepend">测试</template>
+                </el-input>
+              </div>
+            </el-form-item>
           </el-form>
         </div>
       </div>
@@ -147,7 +160,7 @@ export default {
     return {
       searchQuery: "",
       dialogFormVisible: false,
-      form: { name: "", description: "", dataset: "" , user: "" },
+      form: { name: "", description: "", dataset: "" , user: "", trainSplit: "", valSplit: "", testSplit: "" },
       projects: [],
       datasetList: [],
       rules: {
@@ -560,6 +573,8 @@ export default {
 .dialog-main {
     flex: 1;
     padding: 30px 40px;
+    max-height: 50vh;
+    overflow-y: auto;
 }
 
 .text-danger {
