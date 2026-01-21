@@ -118,10 +118,18 @@
                         </el-option>
                       </el-select>
                       <div class="action-divider"></div>
-                      <div class="card-btn" @click="handleAddImage">
-                        <i class="el-icon-plus"></i> 添加
+                      <div class="card-btn" :class="{ 'is-loading': isUploading }" @click="handleAddImage">
+                        <i :class="isUploading ? 'el-icon-loading' : 'el-icon-plus'"></i> {{ isUploading ? '上传中' : '添加' }}
                       </div>
                   </div>
+                  <input
+                    ref="imageFileInput"
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    style="display: none;"
+                    @change="handleFilesSelected"
+                  />
               </div>
             </div>
             
@@ -180,11 +188,111 @@
         </div>
       </div>
     </div>
+
+    <!-- Upload Dialog -->
+    <el-dialog
+      title="添加图片和标注"
+      :visible.sync="showUploadDialog"
+      width="500px"
+      :close-on-click-modal="false"
+      :append-to-body="true"
+      class="upload-dialog"
+    >
+      <div class="upload-sections">
+        <!-- Images Section -->
+        <div class="upload-section">
+          <div class="section-header">
+            <span class="section-title">图片文件</span>
+            <span class="section-count" v-if="pendingImages.length">{{ pendingImages.length }} 个文件</span>
+          </div>
+          <div 
+            class="file-drop-area" 
+            :class="{ 'drag-over': imageDragOver }"
+            @click="$refs.dialogImageInput.click()"
+            @dragover.prevent="imageDragOver = true"
+            @dragleave.prevent="imageDragOver = false"
+            @drop.prevent="onImagesDrop"
+          >
+            <i class="el-icon-picture-outline"></i>
+            <span>点击或拖拽图片文件到此处</span>
+            <span class="hint">支持 jpg, png, webp 等格式</span>
+          </div>
+          <div class="file-list" v-if="pendingImages.length">
+            <div class="file-item" v-for="(file, idx) in pendingImages.slice(0, 5)" :key="'img-' + idx">
+              <i class="el-icon-picture"></i>
+              <span class="file-name">{{ file.name }}</span>
+              <i class="el-icon-close remove-btn" @click.stop="removeImage(idx)"></i>
+            </div>
+            <div class="file-item more" v-if="pendingImages.length > 5">
+              <span>... 还有 {{ pendingImages.length - 5 }} 个文件</span>
+            </div>
+          </div>
+          <input
+            ref="dialogImageInput"
+            type="file"
+            accept="image/*"
+            multiple
+            style="display: none;"
+            @change="onDialogImagesSelected"
+          />
+        </div>
+
+        <!-- Labels Section -->
+        <div class="upload-section">
+          <div class="section-header">
+            <span class="section-title">标注文件</span>
+            <span class="section-count" v-if="pendingLabels.length">{{ pendingLabels.length }} 个文件</span>
+          </div>
+          <div 
+            class="file-drop-area" 
+            :class="{ 'drag-over': labelDragOver }"
+            @click="$refs.dialogLabelInput.click()"
+            @dragover.prevent="labelDragOver = true"
+            @dragleave.prevent="labelDragOver = false"
+            @drop.prevent="onLabelsDrop"
+          >
+            <i class="el-icon-document"></i>
+            <span>点击或拖拽标注文件到此处</span>
+            <span class="hint">支持 txt, xml, json 等格式</span>
+          </div>
+          <div class="file-list" v-if="pendingLabels.length">
+            <div class="file-item" v-for="(file, idx) in pendingLabels.slice(0, 5)" :key="'lbl-' + idx">
+              <i class="el-icon-document"></i>
+              <span class="file-name">{{ file.name }}</span>
+              <i class="el-icon-close remove-btn" @click.stop="removeLabel(idx)"></i>
+            </div>
+            <div class="file-item more" v-if="pendingLabels.length > 5">
+              <span>... 还有 {{ pendingLabels.length - 5 }} 个文件</span>
+            </div>
+          </div>
+          <input
+            ref="dialogLabelInput"
+            type="file"
+            accept=".txt,.xml,.json"
+            multiple
+            style="display: none;"
+            @change="onDialogLabelsSelected"
+          />
+        </div>
+      </div>
+
+      <div slot="footer" class="dialog-footer">
+        <el-button @click="closeUploadDialog">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="isUploading"
+          :disabled="pendingImages.length === 0"
+          @click="submitUpload"
+        >
+          上传
+        </el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { FetchDatasetDetail } from '@/api/datasets';
+import { FetchDatasetDetail, uploadDatasetImages } from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
 export default {
     name: 'DataDetail',
@@ -208,6 +316,12 @@ export default {
             debouncedSearch: null,
             contextValue: '',
             contextOptions: [],
+            isUploading: false,
+            showUploadDialog: false,
+            pendingImages: [],
+            pendingLabels: [],
+            imageDragOver: false,
+            labelDragOver: false,
         }
     },
     created() {
@@ -401,7 +515,102 @@ export default {
             }
         },
         handleAddImage() {
-            this.$message.info(`Ready to add images to context: ${this.contextValue}`);
+            // Open dialog instead of direct file selection
+            this.showUploadDialog = true;
+            this.pendingImages = [];
+            this.pendingLabels = [];
+        },
+        onDialogImagesSelected(event) {
+            const files = Array.from(event.target.files || []);
+            this.pendingImages = [...this.pendingImages, ...files];
+            event.target.value = '';
+        },
+        onDialogLabelsSelected(event) {
+            const files = Array.from(event.target.files || []);
+            this.pendingLabels = [...this.pendingLabels, ...files];
+            event.target.value = '';
+        },
+        onImagesDrop(event) {
+            this.imageDragOver = false;
+            const files = Array.from(event.dataTransfer.files || []);
+            const imageFiles = files.filter(f => f.type.startsWith('image/'));
+            if (imageFiles.length) {
+                this.pendingImages = [...this.pendingImages, ...imageFiles];
+            }
+        },
+        onLabelsDrop(event) {
+            this.labelDragOver = false;
+            const files = Array.from(event.dataTransfer.files || []);
+            const labelExts = ['.txt', '.xml', '.json'];
+            const labelFiles = files.filter(f => {
+                const name = f.name.toLowerCase();
+                return labelExts.some(ext => name.endsWith(ext));
+            });
+            if (labelFiles.length) {
+                this.pendingLabels = [...this.pendingLabels, ...labelFiles];
+            }
+        },
+        removeImage(idx) {
+            this.pendingImages.splice(idx, 1);
+        },
+        removeLabel(idx) {
+            this.pendingLabels.splice(idx, 1);
+        },
+        closeUploadDialog() {
+            this.showUploadDialog = false;
+            this.pendingImages = [];
+            this.pendingLabels = [];
+        },
+        async submitUpload() {
+            if (!this.pendingImages.length) {
+                this.$message.warning('请至少选择一张图片');
+                return;
+            }
+
+            this.isUploading = true;
+            try {
+                const result = await uploadDatasetImages(this.datasetId, this.pendingImages, {
+                    relativeDir: 'images',
+                    labels: this.pendingLabels,
+                    labelsRelativeDir: this.pendingLabels.length ? 'labels' : null,
+                    requireLabels: false,
+                    message: this.contextValue || null,
+                    createVersion: true,
+                    activate: true,
+                });
+                this.$message.success(`成功上传 ${result.saved_count || this.pendingImages.length} 张图片`);
+                this.closeUploadDialog();
+                // Refresh the dataset detail
+                this.fetchDatasetDetail();
+            } catch (error) {
+                this.$message.error(`上传失败: ${error.message}`);
+            } finally {
+                this.isUploading = false;
+            }
+        },
+        async handleFilesSelected(event) {
+            const files = Array.from(event.target.files || []);
+            if (!files.length) return;
+
+            this.isUploading = true;
+            try {
+                const result = await uploadDatasetImages(this.datasetId, files, {
+                    relativeDir: 'images',
+                    requireLabels: false,
+                    message: this.contextValue || null,
+                    createVersion: true,
+                    activate: true,
+                });
+                this.$message.success(`成功上传 ${result.saved_count || files.length} 张图片`);
+                // Refresh the dataset detail
+                this.fetchDatasetDetail();
+            } catch (error) {
+                this.$message.error(`上传失败: ${error.message}`);
+            } finally {
+                this.isUploading = false;
+                // Reset file input
+                event.target.value = '';
+            }
         }
     }
 }
@@ -697,6 +906,11 @@ export default {
   background: #4f46e5;
 }
 
+.card-btn.is-loading {
+  background: #818cf8;
+  cursor: not-allowed;
+}
+
 .count-badge { background: var(--bg-body); padding: 0.1rem 0.4rem; border-radius: var(--radius-full); font-size: 0.75rem; color: var(--text-secondary); margin-left: 0.5rem; }
 
 .image-grid {
@@ -810,4 +1024,137 @@ export default {
 .modal-meta-row { display: flex; gap: 0.5rem; font-size: 0.9rem; }
 .modal-meta-row .label { color: var(--text-secondary); }
 .modal-meta-row .value { color: var(--text-main); font-weight: 500; }
+
+/* Upload Dialog */
+.upload-dialog ::v-deep .el-dialog__header {
+  border-bottom: 1px solid #e5e7eb;
+  padding-bottom: 1rem;
+}
+
+.upload-dialog ::v-deep .el-dialog__body {
+  padding: 1.5rem;
+}
+
+.upload-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-title {
+  font-weight: 600;
+  font-size: 0.95rem;
+  color: var(--text-main);
+}
+
+.section-count {
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  background: rgba(99, 102, 241, 0.1);
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+}
+
+.file-drop-area {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1.5rem;
+  border: 2px dashed #e2e8f0;
+  border-radius: var(--radius-md);
+  background: #f8fafc;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.file-drop-area:hover {
+  border-color: var(--color-primary);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.file-drop-area.drag-over {
+  border-color: var(--color-primary);
+  background: rgba(99, 102, 241, 0.1);
+  border-style: solid;
+}
+
+.file-drop-area i {
+  font-size: 2rem;
+  color: #94a3b8;
+}
+
+.file-drop-area span {
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.file-drop-area .hint {
+  font-size: 0.75rem;
+  color: #94a3b8;
+}
+
+.file-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 0.75rem;
+  background: #f1f5f9;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+}
+
+.file-item i {
+  color: #64748b;
+}
+
+.file-item .file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-main);
+}
+
+.file-item .remove-btn {
+  cursor: pointer;
+  color: #94a3b8;
+  transition: color 0.2s;
+}
+
+.file-item .remove-btn:hover {
+  color: #ef4444;
+}
+
+.file-item.more {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
 </style>

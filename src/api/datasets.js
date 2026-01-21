@@ -329,6 +329,55 @@ export async function deleteDataset(datasetId, { deleteFiles = false, force = fa
     }
 }
 
+// uploadDatasetImages 向已有数据集添加图片
+export async function uploadDatasetImages(datasetId, files, {
+    relativeDir = 'images',
+    labels = [],
+    labelsRelativeDir = null,
+    requireLabels = true,
+    message = null,
+    createdBy = null,
+    createVersion = true,
+    createSnapshot = false,
+    activate = true,
+} = {}) {
+    try {
+        if (!datasetId) throw new Error('缺少 datasetId');
+        if (!files || !files.length) throw new Error('请选择要上传的图片');
+
+        const formData = new FormData();
+        files.forEach(f => formData.append('files', f));
+        formData.append('relative_dir', relativeDir);
+        formData.append('require_labels', String(requireLabels));
+        formData.append('create_version', String(createVersion));
+        formData.append('create_snapshot', String(createSnapshot));
+        formData.append('activate', String(activate));
+
+        // Only append labels if there are any - backend expects list format
+        if (labels && labels.length > 0) {
+            labels.forEach(l => formData.append('labels', l));
+            if (labelsRelativeDir) formData.append('labels_relative_dir', labelsRelativeDir);
+        }
+
+        if (message) formData.append('message', message);
+        if (createdBy) formData.append('created_by', createdBy);
+
+        const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/uploads/images`, {
+            method: 'POST',
+            body: formData
+        });
+        const result = await safeJson(response);
+        if (!response.ok) {
+            throw new Error(pickErrorMessage(result, response));
+        }
+        return result;
+    } catch (error) {
+        console.error('上传图片失败:', error);
+        throw error;
+    }
+}
+
+
 // FetchDatasetStatistics 获取数据集统计信息接口（后端返回：total_images/total_size_mb...）
 export async function FetchDatasetStatistics(datasetId) {
     try {
@@ -460,7 +509,7 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500 } = {}) {
             const counts = new Array(classes.length).fill(0);
             const queue = [...images];
             const worker = async () => {
-                for (;;) {
+                for (; ;) {
                     const img = queue.shift();
                     if (!img) return;
                     const rel = String(img.image_path || '').replace(/\\/g, '/');
