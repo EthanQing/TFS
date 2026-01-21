@@ -169,14 +169,14 @@ function parseYamlNames(yamlText) {
     return null;
 }
 
-async function fetchDatasetYamlNames(storagePathOrName) {
+async function fetchDatasetYamlNames(storagePathOrName, useCache = true) {
     const ds = normalizeDatasetToken(storagePathOrName);
     if (!ds) return null;
 
     // Simple in-memory cache to avoid re-fetching the same yaml many times.
     if (!fetchDatasetYamlNames._cache) fetchDatasetYamlNames._cache = new Map();
     const cache = fetchDatasetYamlNames._cache;
-    if (cache.has(ds)) return cache.get(ds);
+    if (useCache && cache.has(ds)) return cache.get(ds);
 
     const candidates = ['data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml'];
     for (const fname of candidates) {
@@ -481,7 +481,7 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500 } = {}) {
         });
 
         const datasetToken = ds?.storage_path || ds?.name || '';
-        const yamlNames = await fetchDatasetYamlNames(datasetToken);
+        const yamlNames = await fetchDatasetYamlNames(datasetToken, false);
 
         // 优先走 YOLO 数据集（data.yaml + labels/*.txt），返回真实类别列表，并支持按类别筛选图片。
         let classes = [];
