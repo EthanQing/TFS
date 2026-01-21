@@ -11,6 +11,7 @@
           @dragover="handleDragOver"
           @dragleave="handleDragLeave"
           @drop="handleDrop"
+          @click="$refs.fileInput.click()"
         >
           <input
             type="file"
@@ -19,15 +20,16 @@
             accept=".zip"
             @change="handleFileSelect"
             class="hidden"
+            @click.stop
           />
 
-          <label for="fileInput" class="upload-label cursor-pointer">
+          <div class="upload-label">
             <i class="fa fa-cloud-upload text-4xl mb-2 text-primary"></i>
             <p v-if="!selectedFile">Click or drag a file here</p>
             <p v-else class="selected-file-name truncate">
               {{ selectedFile.name }}
             </p>
-          </label>
+          </div>
         </div>
 
         <!-- 上传按钮 -->
