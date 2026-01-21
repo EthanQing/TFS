@@ -1,22 +1,25 @@
 import axios from 'axios';
 
-// 统一后端基础地址，便于 WebSocket/HTTP 共用
-export const API_BASE = window.__API_BASE__ || 'http://localhost:18001';
+// Backend base URL (shared by HTTP/WebSocket). Default to current host + :18001.
+const _defaultScheme = window.location.protocol === 'https:' ? 'https' : 'http';
+const _defaultHost = window.location.hostname || 'localhost';
+const _defaultApiBase = `${_defaultScheme}://${_defaultHost}:18001`;
+export const API_BASE = window.__API_BASE__ || _defaultApiBase;
 const __IS_HTTPS__ = API_BASE.startsWith('https://');
 export const WS_BASE = window.__WS_BASE__ || (
   __IS_HTTPS__ ? API_BASE.replace('https://', 'wss://') : API_BASE.replace('http://', 'ws://')
 );
 
-// 创建 axios 实例
+// Create axios instance.
 const service = axios.create({
   baseURL: API_BASE,
-  timeout: 10000 // 请求超时时间
+  timeout: 10000 // Request timeout (ms)
 });
 
-// request 拦截器
+// Request interceptor.
 service.interceptors.request.use(
   config => {
-    // 在这里可以添加 token 等
+    // Attach auth token here if needed.
     return config;
   },
   error => {
@@ -25,7 +28,7 @@ service.interceptors.request.use(
   }
 );
 
-// response 拦截器
+// Response interceptor.
 service.interceptors.response.use(
   response => {
     return response.data;
