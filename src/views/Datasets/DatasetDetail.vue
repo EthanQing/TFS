@@ -108,7 +108,20 @@
             <div class="panel-head">
               <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
               <div class="panel-actions">
-                  <!-- Optional actions like sort could go here -->
+                  <div class="action-card">
+                      <el-select v-model="contextValue" placeholder="Select" class="card-select" size="small">
+                        <el-option
+                          v-for="item in contextOptions"
+                          :key="item.value"
+                          :label="item.label"
+                          :value="item.value">
+                        </el-option>
+                      </el-select>
+                      <div class="action-divider"></div>
+                      <div class="card-btn" @click="handleAddImage">
+                        <i class="el-icon-plus"></i> 添加
+                      </div>
+                  </div>
               </div>
             </div>
             
@@ -193,6 +206,8 @@ export default {
             previewImage: null,
             searchTimeout: null,
             debouncedSearch: null,
+            contextValue: '',
+            contextOptions: [],
         }
     },
     created() {
@@ -384,6 +399,9 @@ export default {
             } finally {
                 this.detailLoading = false;
             }
+        },
+        handleAddImage() {
+            this.$message.info(`Ready to add images to context: ${this.contextValue}`);
         }
     }
 }
@@ -611,7 +629,74 @@ export default {
   min-width: 0;
 }
 
-.panel-actions { display: flex; gap: 0.5rem; }
+
+.panel-actions { 
+  display: flex; 
+  align-items: center;
+}
+
+.images-panel .panel-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-card {
+  display: flex;
+  align-items: center;
+  background: white;
+  border: 1px solid #e2e8f0;
+  border-radius: var(--radius-md);
+  padding: 2px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+.card-select {
+  width: 100px;
+}
+
+.card-select ::v-deep .el-input__inner {
+  border: none;
+  background: transparent;
+  padding: 0 25px 0 10px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #475569;
+  height: 28px;
+  line-height: 28px;
+}
+
+.card-select ::v-deep .el-input__icon {
+  line-height: 28px;
+}
+
+.action-divider {
+  width: 1px;
+  height: 20px;
+  background: #e2e8f0;
+  margin: 0 8px;
+}
+
+.card-btn {
+  background: #6366f1; /* Indigo-500 equivalent */
+  color: white;
+  border-radius: var(--radius-sm);
+  padding: 4px 12px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: background 0.2s;
+  height: 28px;
+  box-sizing: border-box;
+}
+
+.card-btn:hover {
+  background: #4f46e5;
+}
+
 .count-badge { background: var(--bg-body); padding: 0.1rem 0.4rem; border-radius: var(--radius-full); font-size: 0.75rem; color: var(--text-secondary); margin-left: 0.5rem; }
 
 .image-grid {
