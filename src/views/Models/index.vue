@@ -217,12 +217,35 @@ export default {
           cancelButtonText: "Cancel",
           type: "warning",
         });
-        await DeleteTrainingJob(jobId);
+        await DeleteTrainingJob(jobId, { force: false });
         this.$message.success("Deleted successfully");
         this.loadTrainingJobs();
       } catch (e) {
-         if(e !== 'cancel') this.$message.error("Delete failed: " + (e.message || e));
+        if (e === 'cancel' || e === 'close') return;
+        if (this.isDeleteConflict(e)) {
+          try {
+            await this.$confirm(
+              "This training task has related model versions/deployments. Force cascade delete?",
+              "Force Delete",
+              { confirmButtonText: "Force Delete", cancelButtonText: "Cancel", type: "warning" }
+            );
+            await DeleteTrainingJob(jobId, { force: true });
+            this.$message.success("Deleted successfully");
+            this.loadTrainingJobs();
+          } catch (forceError) {
+            if (forceError !== 'cancel' && forceError !== 'close') {
+              this.$message.error("Delete failed: " + (forceError.message || forceError));
+            }
+          }
+          return;
+        }
+        this.$message.error("Delete failed: " + (e.message || e));
       }
+    },
+    isDeleteConflict(error) {
+      if (error && error.status === 409) return true;
+      const msg = String((error && error.message) || '').toLowerCase();
+      return msg.includes('cannot delete') || msg.includes('still reference');
     },
     async loadTrainingJobs() {
       try {

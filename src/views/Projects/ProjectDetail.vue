@@ -372,11 +372,33 @@ export default {
     async deletePDJob(jobId) {
       try {
         await this.$confirm('确定要删除此训练任务吗？', '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
-        await DeleteTrainingJob(jobId);
+        await DeleteTrainingJob(jobId, { force: false });
         this.$message.success('删除成功。');
         const pid = this.projectInfo?.project_id || this.$route.query.projectId;
         if (pid) this.loadProjectDetails(pid);
-      } catch (e) {}
+      } catch (e) {
+        if (e === 'cancel' || e === 'close') return;
+        if (this.isDeleteConflict(e)) {
+          try {
+            await this.$confirm('该训练任务有关联模型版本/部署，是否强制链式删除？', '确认强制删除', { type: 'warning', confirmButtonText: '强制删除', cancelButtonText: '取消' });
+            await DeleteTrainingJob(jobId, { force: true });
+            this.$message.success('删除成功。');
+            const pid = this.projectInfo?.project_id || this.$route.query.projectId;
+            if (pid) this.loadProjectDetails(pid);
+          } catch (forceError) {
+            if (forceError !== 'cancel' && forceError !== 'close') {
+              this.$message.error('删除失败: ' + (forceError.message || forceError));
+            }
+          }
+          return;
+        }
+        this.$message.error('删除失败: ' + (e.message || e));
+      }
+    },
+    isDeleteConflict(error) {
+      if (error && error.status === 409) return true;
+      const msg = String((error && error.message) || '').toLowerCase();
+      return msg.includes('cannot delete') || msg.includes('still reference');
     },
     goProjectsCharts(model) {
       this.$router.push({ path: '/projectscharts/trainpart', query: { jobId: model.job_id } });

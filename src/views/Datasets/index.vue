@@ -356,13 +356,36 @@ export default {
     },
     async handleDelete(id) {
       try {
-        await deleteDataset(id, { force: true, deleteFiles: true });
+        await deleteDataset(id, { force: false, deleteFiles: true });
         this.showPopup = false;
         this.fetchDatasetsList();
         this.$message.success('Dataset deleted');
       } catch (error) {
+        if (this.isDeleteConflict(error)) {
+          this.showPopup = false;
+          try {
+            await this.$confirm(
+              '该数据集有关联项目/训练任务，是否强制链式删除？',
+              '确认强制删除',
+              { type: 'warning', confirmButtonText: '强制删除', cancelButtonText: '取消' }
+            );
+            await deleteDataset(id, { force: true, deleteFiles: true });
+            this.fetchDatasetsList();
+            this.$message.success('Dataset deleted');
+          } catch (forceError) {
+            if (forceError !== 'cancel' && forceError !== 'close') {
+              this.$message.error(`Delete failed: ${forceError.message || forceError}`);
+            }
+          }
+          return;
+        }
         this.$message.error(`Delete failed: ${error.message}`);
       }
+    },
+    isDeleteConflict(error) {
+      if (error && error.status === 409) return true;
+      const msg = String((error && error.message) || '').toLowerCase();
+      return msg.includes('cannot delete') || msg.includes('still reference');
     },
     handleShowDeletePopup(datasetId) {
       this.currentDatasetId = datasetId;

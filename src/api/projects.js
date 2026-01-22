@@ -46,7 +46,7 @@ export async function fetchProjects(page = 1, pageSize = 500) {
         const response = await fetch(url);
         const data = await safeJson(response);
         if (!response.ok) {
-            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            const msg = (data && (data.detail || data.message)) || `????: ${response.status}`;
             throw new Error(msg);
         }
         return pickPageItems(data).map(mapProjectOut);
@@ -117,8 +117,11 @@ export async function deleteProject(projectId, { force = false } = {}) {
         });
         const data = await safeJson(response);
         if (!response.ok) {
-            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
-            throw new Error(msg);
+            const msg = (data && (data.detail || data.message)) || `????: ${response.status}`;
+            const err = new Error(msg);
+            err.status = response.status;
+            err.data = data;
+            throw err;
         }
         return data;
     } catch (error) {

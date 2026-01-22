@@ -25,6 +25,15 @@ async function safeText(res) {
     }
 }
 
+function normalizeFileArray(input) {
+    if (!input) return [];
+    if (Array.isArray(input)) return input.filter(Boolean);
+    if (typeof File !== 'undefined' && input instanceof File) return [input];
+    if (typeof FileList !== 'undefined' && input instanceof FileList) return Array.from(input).filter(Boolean);
+    if (typeof input.length === 'number') return Array.from(input).filter(Boolean);
+    return [input];
+}
+
 function toAbsUrl(url) {
     if (!url) return '';
     if (/^https?:\/\//i.test(url)) return url;
@@ -320,7 +329,10 @@ export async function deleteDataset(datasetId, { deleteFiles = false, force = fa
         const result = await safeJson(response);
 
         if (!response.ok) {
-            throw new Error(pickErrorMessage(result, response));
+            const err = new Error(pickErrorMessage(result, response));
+            err.status = response.status;
+            err.data = result;
+            throw err;
         }
         return true;
     } catch (error) {
@@ -343,10 +355,12 @@ export async function uploadDatasetImages(datasetId, files, {
 } = {}) {
     try {
         if (!datasetId) throw new Error('缺少 datasetId');
-        if (!files || !files.length) throw new Error('请选择要上传的图片');
+        const imageFiles = normalizeFileArray(files);
+        const labelFiles = normalizeFileArray(labels);
+        if (!imageFiles.length) throw new Error('请选择要上传的图片');
 
         const formData = new FormData();
-        files.forEach(f => formData.append('files', f));
+        imageFiles.forEach(f => formData.append('files', f));
         formData.append('relative_dir', relativeDir);
         formData.append('require_labels', String(requireLabels));
         formData.append('create_version', String(createVersion));
@@ -354,8 +368,8 @@ export async function uploadDatasetImages(datasetId, files, {
         formData.append('activate', String(activate));
 
         // Only append labels if there are any - backend expects list format
-        if (labels && labels.length > 0) {
-            labels.forEach(l => formData.append('labels', l));
+        if (labelFiles.length > 0) {
+            labelFiles.forEach(l => formData.append('labels', l));
             if (labelsRelativeDir) formData.append('labels_relative_dir', labelsRelativeDir);
         }
 

@@ -381,14 +381,20 @@ export async function FetchTrainingJobsMetrics_detailed(jobId) {
 }
 
 // DeleteTrainingJob 删除训练任务接口（v2: request_delete -> DELETE run）
-export async function DeleteTrainingJob(jobId) {
+export async function DeleteTrainingJob(jobId, { force = false } = {}) {
   try {
     const id = normStr(jobId);
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}`, {
+    const url = `${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}?force=${force ? "1" : "0"}`;
+    const res = await fetch(url, {
       method: "DELETE",
     });
     const data = await safeJson(res);
-    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    if (!res.ok) {
+      const err = new Error(toErrorMessage(data, res));
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
     return await mapTrainingRunToJob(data);
   } catch (error) {
     console.error("删除训练任务失败:", error);

@@ -204,12 +204,35 @@ export default {
           'Confirm Delete',
           { confirmButtonText: 'Delete', cancelButtonText: 'Cancel', type: 'warning' }
         );
-        await deleteProject(pid, { force: true });
+        await deleteProject(pid, { force: false });
         this.projects = this.projects.filter(p => Number(p.project_id) !== Number(pid));
         this.$message.success('Project deleted');
       } catch (e) {
-        if (e !== 'cancel') this.$message.error('Delete failed: ' + (e.message || e));
+        if (e === 'cancel' || e === 'close') return;
+        if (this.isDeleteConflict(e)) {
+          try {
+            await this.$confirm(
+              '该项目包含训练任务/模型版本，是否强制链式删除？',
+              '确认强制删除',
+              { confirmButtonText: '强制删除', cancelButtonText: '取消', type: 'warning' }
+            );
+            await deleteProject(pid, { force: true });
+            this.projects = this.projects.filter(p => Number(p.project_id) !== Number(pid));
+            this.$message.success('Project deleted');
+          } catch (forceError) {
+            if (forceError !== 'cancel' && forceError !== 'close') {
+              this.$message.error('Delete failed: ' + (forceError.message || forceError));
+            }
+          }
+          return;
+        }
+        this.$message.error('Delete failed: ' + (e.message || e));
       }
+    },
+    isDeleteConflict(error) {
+      if (error && error.status === 409) return true;
+      const msg = String((error && error.message) || '').toLowerCase();
+      return msg.includes('cannot delete') || msg.includes('still reference');
     },
     hydrateProjectsWithDatasets() {
       if (!this.projects.length || !this.datasetList.length) return;
