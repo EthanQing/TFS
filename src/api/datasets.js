@@ -293,6 +293,30 @@ export async function uploadDatasetToExisting(datasetId, file, { message = null,
     }
 }
 
+// appendDatasetArchive 向已有数据集追加ZIP内容（支持非空数据集）
+export async function appendDatasetArchive(datasetId, file, { message = null, created_by = null } = {}) {
+    try {
+        if (!datasetId) throw new Error('缺少 datasetId');
+        const formData = new FormData();
+        formData.append('file', file);
+        if (message) formData.append('message', message);
+        if (created_by) formData.append('created_by', created_by);
+
+        const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/append`, {
+            method: 'POST',
+            body: formData
+        });
+        const result = await safeJson(response);
+        if (!response.ok) {
+            throw new Error(pickErrorMessage(result, response));
+        }
+        return result;
+    } catch (error) {
+        console.error('追加上传失败:', error);
+        throw error;
+    }
+}
+
 // uploadDataset 上传ZIP并创建数据集
 export async function uploadDataset(file, datasetName, datasetType, description = null) {
     try {

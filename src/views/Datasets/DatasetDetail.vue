@@ -109,9 +109,17 @@
               <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
               <div class="panel-actions">
                   <div class="action-card">
-                      <el-select v-model="contextValue" placeholder="Select" class="card-select" size="small">
+                      <el-select
+                        v-model="selectedVersionId"
+                        placeholder="版本"
+                        class="card-select"
+                        size="small"
+                        :loading="versionLoading"
+                        :disabled="versionOptions.length === 0"
+                        @change="handleVersionChange"
+                      >
                         <el-option
-                          v-for="item in contextOptions"
+                          v-for="item in versionOptions"
                           :key="item.value"
                           :label="item.label"
                           :value="item.value">
@@ -193,12 +201,21 @@
     <el-dialog
       title="添加图片和标注"
       :visible.sync="showUploadDialog"
-      width="500px"
+      width="520px"
       :close-on-click-modal="false"
       :append-to-body="true"
       class="upload-dialog"
     >
-      <div class="upload-sections">
+      <!-- Upload Mode Switcher -->
+      <div class="upload-mode-switcher">
+        <el-radio-group v-model="uploadMode" size="small">
+          <el-radio-button label="files">单文件上传</el-radio-button>
+          <el-radio-button label="zip">ZIP包上传</el-radio-button>
+        </el-radio-group>
+      </div>
+
+      <!-- Files Upload Mode -->
+      <div class="upload-sections" v-if="uploadMode === 'files'">
         <!-- Images Section -->
         <div class="upload-section">
           <div class="section-header">
@@ -276,13 +293,60 @@
         </div>
       </div>
 
+      <!-- ZIP Upload Mode -->
+      <div class="upload-sections" v-else>
+        <div class="upload-section zip-section">
+          <div class="section-header">
+            <span class="section-title">ZIP压缩包</span>
+            <span class="section-count" v-if="pendingZipFile">已选择</span>
+          </div>
+          <div 
+            class="file-drop-area zip-drop-area" 
+            :class="{ 'drag-over': zipDragOver, 'has-file': pendingZipFile }"
+            @click="$refs.dialogZipInput.click()"
+            @dragover.prevent="zipDragOver = true"
+            @dragleave.prevent="zipDragOver = false"
+            @drop.prevent="onZipDrop"
+          >
+            <template v-if="!pendingZipFile">
+              <i class="el-icon-folder-opened"></i>
+              <span>点击或拖拽ZIP文件到此处</span>
+              <span class="hint">压缩包应包含 images、labels 文件夹</span>
+            </template>
+            <template v-else>
+              <i class="el-icon-document-checked"></i>
+              <span class="zip-file-name">{{ pendingZipFile.name }}</span>
+              <span class="zip-file-size">{{ formatFileSize(pendingZipFile.size) }}</span>
+              <i class="el-icon-close remove-zip-btn" @click.stop="removeZipFile"></i>
+            </template>
+          </div>
+          <div class="zip-structure-hint">
+            <div class="hint-title">推荐的压缩包结构：</div>
+            <pre class="hint-tree">├── images/
+│   ├── image1.jpg
+│   └── image2.jpg
+├── labels/
+│   ├── image1.txt
+│   └── image2.txt
+└── classnames.txt (可选)</pre>
+          </div>
+          <input
+            ref="dialogZipInput"
+            type="file"
+            accept=".zip"
+            style="display: none;"
+            @change="onDialogZipSelected"
+          />
+        </div>
+      </div>
+
       <div slot="footer" class="dialog-footer">
         <el-button @click="closeUploadDialog">取消</el-button>
         <el-button
           type="primary"
           :loading="isUploading"
-          :disabled="pendingImages.length === 0"
-          @click="submitUpload"
+          :disabled="uploadMode === 'files' ? pendingImages.length === 0 : !pendingZipFile"
+          @click="uploadMode === 'files' ? submitUpload() : submitZipUpload()"
         >
           上传
         </el-button>
@@ -292,7 +356,7 @@
 </template>
 
 <script>
-import { FetchDatasetDetail, uploadDatasetImages } from '@/api/datasets';
+import { FetchDatasetDetail, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive } from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
 export default {
     name: 'DataDetail',
@@ -314,14 +378,19 @@ export default {
             previewImage: null,
             searchTimeout: null,
             debouncedSearch: null,
-            contextValue: '',
-            contextOptions: [],
+            selectedVersionId: null,
+            versionOptions: [],
+            versionLoading: false,
             isUploading: false,
             showUploadDialog: false,
             pendingImages: [],
             pendingLabels: [],
             imageDragOver: false,
             labelDragOver: false,
+            // ZIP上传相关
+            uploadMode: 'files',
+            pendingZipFile: null,
+            zipDragOver: false,
         }
     },
     created() {
@@ -372,24 +441,82 @@ export default {
         datasetDetail: {
             handler(newDetail) {
                 if (newDetail) {
-                    // Default to show all images unique
-                    this.selectedImages = this.imagesList.filter((img, index, self) =>
-                        index === self.findIndex(item => item.image_name === img.image_name)
-                    );
+                    const current = this.selectedClass ? this.classList.find(c => c.class_id === this.selectedClass.class_id) : null;
+                    this.selectClass(current || null);
                 }
             },
             immediate: true
         }
     },
     methods: {
-        loadDataFromRoute() {
+        async loadDataFromRoute() {
             this.datasetId = this.$route.query.datasetId || '';
             this.datasetName = this.$route.query.datasetName || '';
             this.datasetType = this.$route.query.datasetType || '';
             this.numClasses = parseInt(this.$route.query.numClasses) || 0;
             this.numImages = parseInt(this.$route.query.numImages) || 0;
             this.datasetSize = this.$route.query.datasetSize || '0MB';
-            this.fetchDatasetDetail();
+            this.selectedVersionId = null;
+            this.versionOptions = [];
+            await this.refreshVersionsAndDetail({ forceLatest: true });
+        },
+        async refreshVersionsAndDetail({ forceLatest = false } = {}) {
+            if (!this.datasetId) return;
+            await this.loadDatasetVersions({ forceLatest });
+            await this.fetchDatasetDetail();
+        },
+        async loadDatasetVersions({ forceLatest = false } = {}) {
+            if (!this.datasetId) return;
+            this.versionLoading = true;
+            try {
+                const pageSize = 200;
+                let page = 1;
+                let all = [];
+                for (;;) {
+                    const res = await fetchDatasetVersions(this.datasetId, { page, pageSize });
+                    const items = (res && Array.isArray(res.items) && res.items) || [];
+                    const metaTotal = Number(res?.meta?.total ?? 0) || 0;
+                    all = all.concat(items);
+                    if (metaTotal && all.length >= metaTotal) break;
+                    if (!items.length) break;
+                    page += 1;
+                }
+
+                this.versionOptions = all.map(v => ({
+                    value: v.version_id,
+                    label: this.formatVersionLabel(v),
+                    raw: v,
+                }));
+
+                const currentId = this.selectedVersionId;
+                const hasCurrent = currentId && this.versionOptions.some(o => String(o.value) === String(currentId));
+                if (hasCurrent && !forceLatest) return;
+
+                const latest = all[0];
+                this.selectedVersionId = latest ? latest.version_id : null;
+            } catch (error) {
+                console.error('Failed to fetch dataset versions:', error);
+                this.versionOptions = [];
+                if (forceLatest) this.selectedVersionId = null;
+            } finally {
+                this.versionLoading = false;
+            }
+        },
+        formatVersionLabel(version) {
+            if (!version) return '未命名版本';
+            const parts = [];
+            if (version.version !== undefined && version.version !== null) {
+                parts.push(`v${version.version}`);
+            } else if (version.version_id !== undefined && version.version_id !== null) {
+                parts.push(`#${version.version_id}`);
+            }
+            if (version.status) {
+                const statusMap = { created: '已创建', finalized: '已完成', failed: '失败' };
+                parts.push(statusMap[version.status] || version.status);
+            }
+            const message = String(version.message || '').trim();
+            if (message) parts.push(message);
+            return parts.join(' · ') || '版本';
         },
         handleSearchInput() {
             if (this.debouncedSearch) this.debouncedSearch();
@@ -463,7 +590,7 @@ export default {
         },
         handleUploadSuccess() {
             this.$message.success('上传成功，正在刷新数据集。');
-            this.fetchDatasetDetail();
+            this.refreshVersionsAndDetail({ forceLatest: true });
         },
         handleUploadFail(errorMsg) {
             this.$message.error(`上传失败: ${errorMsg}`);
@@ -498,7 +625,10 @@ export default {
 
             this.detailLoading = true;
             try {
-                const detail = await FetchDatasetDetail(this.datasetId);
+                const detail = await FetchDatasetDetail(this.datasetId, {
+                    versionId: this.selectedVersionId,
+                    filesLimit: 500,
+                });
                 this.datasetDetail = detail;
                 
                 if (detail.dataset_name) this.datasetName = detail.dataset_name;
@@ -513,6 +643,9 @@ export default {
             } finally {
                 this.detailLoading = false;
             }
+        },
+        async handleVersionChange() {
+            await this.fetchDatasetDetail();
         },
         handleAddImage() {
             // Open dialog instead of direct file selection
@@ -560,6 +693,55 @@ export default {
             this.showUploadDialog = false;
             this.pendingImages = [];
             this.pendingLabels = [];
+            this.pendingZipFile = null;
+            this.uploadMode = 'files';
+        },
+        // ZIP上传相关方法
+        onDialogZipSelected(event) {
+            const file = event.target.files && event.target.files[0];
+            if (file && file.name.endsWith('.zip')) {
+                this.pendingZipFile = file;
+            }
+            event.target.value = '';
+        },
+        onZipDrop(event) {
+            this.zipDragOver = false;
+            const file = event.dataTransfer.files && event.dataTransfer.files[0];
+            if (file && file.name.endsWith('.zip')) {
+                this.pendingZipFile = file;
+            }
+        },
+        removeZipFile() {
+            this.pendingZipFile = null;
+        },
+        formatFileSize(bytes) {
+            if (!bytes) return '0 B';
+            const units = ['B', 'KB', 'MB', 'GB'];
+            let i = 0;
+            while (bytes >= 1024 && i < units.length - 1) {
+                bytes /= 1024;
+                i++;
+            }
+            return bytes.toFixed(i > 0 ? 1 : 0) + ' ' + units[i];
+        },
+        async submitZipUpload() {
+            if (!this.pendingZipFile) {
+                this.$message.warning('请选择ZIP文件');
+                return;
+            }
+
+            this.isUploading = true;
+            try {
+                await appendDatasetArchive(this.datasetId, this.pendingZipFile);
+                this.$message.success('ZIP上传成功');
+                this.closeUploadDialog();
+                // Refresh the dataset detail
+                await this.refreshVersionsAndDetail({ forceLatest: true });
+            } catch (error) {
+                this.$message.error(`上传失败: ${error.message}`);
+            } finally {
+                this.isUploading = false;
+            }
         },
         async submitUpload() {
             if (!this.pendingImages.length) {
@@ -574,14 +756,13 @@ export default {
                     labels: this.pendingLabels,
                     labelsRelativeDir: this.pendingLabels.length ? 'labels' : null,
                     requireLabels: false,
-                    message: this.contextValue || null,
                     createVersion: true,
                     activate: true,
                 });
                 this.$message.success(`成功上传 ${result.saved_count || this.pendingImages.length} 张图片`);
                 this.closeUploadDialog();
                 // Refresh the dataset detail
-                this.fetchDatasetDetail();
+                await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
                 this.$message.error(`上传失败: ${error.message}`);
             } finally {
@@ -597,13 +778,12 @@ export default {
                 const result = await uploadDatasetImages(this.datasetId, files, {
                     relativeDir: 'images',
                     requireLabels: false,
-                    message: this.contextValue || null,
                     createVersion: true,
                     activate: true,
                 });
                 this.$message.success(`成功上传 ${result.saved_count || files.length} 张图片`);
                 // Refresh the dataset detail
-                this.fetchDatasetDetail();
+                await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
                 this.$message.error(`上传失败: ${error.message}`);
             } finally {
@@ -1156,5 +1336,82 @@ export default {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+}
+
+/* Upload Mode Switcher */
+.upload-mode-switcher {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 1rem;
+}
+
+.upload-mode-switcher .el-radio-group {
+  display: flex;
+}
+
+/* ZIP Upload Styles */
+.zip-section {
+  min-height: 200px;
+}
+
+.zip-drop-area {
+  min-height: 120px;
+  position: relative;
+}
+
+.zip-drop-area.has-file {
+  border-color: var(--color-primary);
+  background: rgba(99, 102, 241, 0.05);
+}
+
+.zip-drop-area .zip-file-name {
+  font-weight: 600;
+  color: var(--text-main);
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zip-drop-area .zip-file-size {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.zip-drop-area .remove-zip-btn {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  font-size: 1rem;
+  color: #94a3b8;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.zip-drop-area .remove-zip-btn:hover {
+  color: #ef4444;
+}
+
+.zip-structure-hint {
+  margin-top: 1rem;
+  padding: 0.75rem;
+  background: #f8fafc;
+  border-radius: var(--radius-sm);
+  border: 1px solid #e2e8f0;
+}
+
+.zip-structure-hint .hint-title {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-bottom: 0.5rem;
+}
+
+.zip-structure-hint .hint-tree {
+  font-family: 'Consolas', 'Monaco', monospace;
+  font-size: 0.75rem;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+  background: transparent;
 }
 </style>
