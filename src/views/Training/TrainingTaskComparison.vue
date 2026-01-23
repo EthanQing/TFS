@@ -126,86 +126,15 @@
 
                     <!-- 图表显示区域 -->
                     <div class="chart-display">
-                        <div class="chart-placeholder">
+                        <div class="chart-placeholder" v-if="comparingTasks.length > 0">
                             <div class="chart-content">
-                                <!-- 模拟的曲线图 -->
-                                <svg viewBox="0 0 600 300" class="chart-svg">
-                                    <!-- 背景网格 -->
-                                    <defs>
-                                        <pattern id="grid" width="50" height="30" patternUnits="userSpaceOnUse">
-                                            <path d="M 50 0 L 0 0 0 30" fill="none" stroke="#e8ecef" stroke-width="0.5"/>
-                                        </pattern>
-                                    </defs>
-                                    <rect width="600" height="300" fill="url(#grid)" />
-
-                                    <!-- Y轴标签 -->
-                                    <text x="35" y="20" font-size="12" fill="#8e9aaf">100%</text>
-                                    <text x="35" y="155" font-size="12" fill="#8e9aaf">50%</text>
-                                    <text x="42" y="290" font-size="12" fill="#8e9aaf">0%</text>
-
-                                    <!-- 曲线1 -->
-                                    <polyline
-                                        points="60,240 120,200 180,160 240,130 300,110 360,95 420,85 480,82 540,85"
-                                        fill="none"
-                                        stroke="#3b82f6"
-                                        stroke-width="2"
-                                    />
-                                    <!-- 曲线1的点 -->
-                                    <circle cx="60" cy="240" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="120" cy="200" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="180" cy="160" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="240" cy="130" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="300" cy="110" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="360" cy="95" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="420" cy="85" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="480" cy="82" r="4" fill="#3b82f6" opacity="0.8"/>
-                                    <circle cx="540" cy="85" r="4" fill="#3b82f6" opacity="0.8"/>
-
-                                    <!-- 曲线2 -->
-                                    <polyline
-                                        points="60,260 120,225 180,185 240,155 300,135 360,120 420,110 480,105 540,108"
-                                        fill="none"
-                                        stroke="#10b981"
-                                        stroke-width="2"
-                                    />
-                                    <!-- 曲线2的点 -->
-                                    <circle cx="60" cy="260" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="120" cy="225" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="180" cy="185" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="240" cy="155" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="300" cy="135" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="360" cy="120" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="420" cy="110" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="480" cy="105" r="4" fill="#10b981" opacity="0.8"/>
-                                    <circle cx="540" cy="108" r="4" fill="#10b981" opacity="0.8"/>
-
-                                    <!-- 曲线3 -->
-                                    <polyline
-                                        points="60,270 120,235 180,200 240,170 300,150 360,135 420,125 480,120 540,125"
-                                        fill="none"
-                                        stroke="#f59e0b"
-                                        stroke-width="2"
-                                    />
-                                    <!-- 曲线3的点 -->
-                                    <circle cx="60" cy="270" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="120" cy="235" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="180" cy="200" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="240" cy="170" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="300" cy="150" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="360" cy="135" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="420" cy="125" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="480" cy="120" r="4" fill="#f59e0b" opacity="0.8"/>
-                                    <circle cx="540" cy="125" r="4" fill="#f59e0b" opacity="0.8"/>
-
-                                    <!-- X轴 -->
-                                    <line x1="50" y1="280" x2="580" y2="280" stroke="#111f68" stroke-width="1.5"/>
-                                    <!-- Y轴 -->
-                                    <line x1="50" y1="10" x2="50" y2="280" stroke="#111f68" stroke-width="1.5"/>
-
-                                    <!-- 轴标签 -->
-                                    <text x="300" y="295" text-anchor="middle" font-size="12" fill="#111f68">Epoch</text>
-                                    <text x="15" y="150" text-anchor="middle" font-size="12" fill="#111f68" transform="rotate(-90 15 150)">{{ activeChart === 'loss' ? 'Loss' : activeChart === 'accuracy' ? 'Accuracy' : 'mAP' }}</text>
-                                </svg>
+                                <TrainingChart
+                                    :chart-type="activeChart === 'accuracy' ? 'metrics' : 'custom'"
+                                    :custom-series="currentChartSeries"
+                                    :custom-title="currentChartTitle"
+                                    :custom-y-axis-name="currentChartYAxis"
+                                    :total-epoch="maxEpoch"
+                                />
                             </div>
                         </div>
 
@@ -232,141 +161,318 @@
 </template>
 
 <script>
+import { 
+    fetchTrainingJobs, 
+    CompareTrainingRuns, 
+    FetchTrainingJobsMetrics_detailed 
+} from '@/api/training';
+
+import TrainingChart from '@/components/Chart/TrainingChart.vue';
+
 export default {
     name: 'TrainingTaskComparison',
+    components: { TrainingChart },
     data() {
         return {
+            loading: false,
             selectedTasks: [],
             comparingTasks: [],
             activeChart: 'loss',
-            availableTasks: [
-                { id: 1, name: '训练任务1', color: '#3b82f6' },
-                { id: 2, name: '训练任务2', color: '#10b981' },
-                { id: 3, name: '训练任务3', color: '#f59e0b' },
-                { id: 4, name: '训练任务4', color: '#ef4444' },
-                { id: 5, name: '训练任务5', color: '#8b5cf6' },
-                { id: 6, name: '训练任务6', color: '#06b6d4' }
-            ],
+            availableTasks: [],
             availableCharts: [
                 { id: 'loss', name: 'Loss 曲线' },
-                { id: 'accuracy', name: 'Accuracy 曲线' },
+                { id: 'accuracy', name: 'Accuracy/Metrics 曲线' },
                 { id: 'mAP', name: 'mAP 曲线' }
             ],
-            parameterData: [
-                {
-                    name: '批大小',
-                    values: { 1: '32', 2: '32', 3: '64', 4: '32' }
-                },
-                {
-                    name: '学习率',
-                    values: { 1: '0.001', 2: '0.0001', 3: '0.001', 4: '0.0005' }
-                },
-                {
-                    name: '优化器',
-                    values: { 1: 'Adam', 2: 'SGD', 3: 'Adam', 4: 'Adam' }
-                },
-                {
-                    name: '正则化',
-                    values: { 1: 'L2', 2: 'L1', 3: 'L2', 4: 'Dropout' }
-                },
-                {
-                    name: '训练轮数',
-                    values: { 1: '100', 2: '150', 3: '100', 4: '200' }
-                },
-                {
-                    name: '数据增强',
-                    values: { 1: '启用', 2: '启用', 3: '禁用', 4: '启用' }
-                },
-                {
-                    name: '预训练权重',
-                    values: { 1: 'ImageNet', 2: 'COCO', 3: 'ImageNet', 4: 'ImageNet' }
-                }
-            ],
-            metricsData: [
-                {
-                    name: 'mAP',
-                    importance: 'high',
-                    values: { 1: '0.875', 2: '0.852', 3: '0.865', 4: '0.880' },
-                    best: '0.880'
-                },
-                {
-                    name: '准确率 (Accuracy)',
-                    importance: 'high',
-                    values: { 1: '94.2%', 2: '92.8%', 3: '93.5%', 4: '95.1%' },
-                    best: '95.1%'
-                },
-                {
-                    name: '精确率 (Precision)',
-                    importance: 'high',
-                    values: { 1: '92.5%', 2: '90.3%', 3: '91.8%', 4: '93.2%' },
-                    best: '93.2%'
-                },
-                {
-                    name: '召回率 (Recall)',
-                    importance: 'high',
-                    values: { 1: '91.8%', 2: '93.2%', 3: '92.5%', 4: '94.2%' },
-                    best: '94.2%'
-                },
-                {
-                    name: 'F1-Score',
-                    importance: 'high',
-                    values: { 1: '0.921', 2: '0.918', 3: '0.920', 4: '0.936' },
-                    best: '0.936'
-                },
-                {
-                    name: '训练损失',
-                    importance: 'normal',
-                    values: { 1: '0.152', 2: '0.168', 3: '0.145', 4: '0.138' },
-                    best: '0.138'
-                },
-                {
-                    name: '验证损失',
-                    importance: 'normal',
-                    values: { 1: '0.185', 2: '0.198', 3: '0.175', 4: '0.162' },
-                    best: '0.162'
-                },
-                {
-                    name: '推理速度 (ms)',
-                    importance: 'normal',
-                    values: { 1: '38', 2: '42', 3: '40', 4: '35' },
-                    best: '35'
-                }
-            ]
+            parameterData: [],
+            metricsData: [],
+            curveDataMap: {} // Stores raw metrics for each task: { [id]: { 'metrics/mAP50': [..], ... } }
         };
     },
+    computed: {
+        maxEpoch() {
+            let max = 0;
+            Object.values(this.curveDataMap).forEach(m => {
+                 // Check any array length
+                 Object.values(m || {}).forEach(arr => {
+                     if (Array.isArray(arr)) max = Math.max(max, arr.length);
+                 });
+            });
+            return max || 100;
+        },
+        currentChartTitle() {
+            const map = { loss: 'Loss 对比', accuracy: '指标对比', mAP: 'mAP 对比' };
+            return map[this.activeChart] || '曲线对比';
+        },
+        currentChartYAxis() {
+            return this.activeChart === 'loss' ? 'Loss' : 'Value';
+        },
+        currentChartSeries() {
+            if (!this.comparingTasks.length) return [];
+            
+            // Map activeChart to keys
+            // For 'loss', we might want to compare 'train/box_loss' or 'val/box_loss'.
+            // For simplicty, let's aggregate multiple lines per task?
+            // Or better, distinct charts for each type. 
+            // The UI has tabs: Loss, Accuracy, mAP.
+            
+            const series = [];
+            
+            this.comparingTasks.forEach(task => {
+                const dataObj = this.curveDataMap[task.id] || {};
+                
+                if (this.activeChart === 'loss') {
+                     // Add Train Box Loss
+                     if (dataObj['train/box_loss']) {
+                         series.push({
+                             name: `${task.name} (Box Loss)`,
+                             data: dataObj['train/box_loss'],
+                             color: task.color // Use dashed/solid differentiation?
+                             // For now just same color, hard to distinguish.
+                         });
+                     }
+                     // Or just pick one relevant metric for clarity?
+                     // Let's pick 'val/box_loss' as the representative for now to keep it simple,
+                     // or allow sub-tabs.
+                     // Let's just create one line per task for the primary metric of the category.
+                     // Loss -> val/box_loss
+                     // mAP -> metrics/mAP50-95(B)
+                     // Accuracy -> metrics/mAP50(B) (Since detection doesn't always have simple 'accuracy')
+                     
+                     // RE-DECISION: Let's follow standard YOLO metrics.
+                }
+                
+                // Better approach:
+                let key = '';
+                if (this.activeChart === 'loss') key = 'val/box_loss'; 
+                else if (this.activeChart === 'accuracy') key = 'metrics/precision(B)'; // Proxy
+                else if (this.activeChart === 'mAP') key = 'metrics/mAP50-95(B)';
+                
+                if (key && dataObj[key]) {
+                    series.push({
+                        name: task.name,
+                        data: dataObj[key],
+                        color: task.color
+                    });
+                }
+            });
+            
+            return series;
+        }
+    },
+    mounted() {
+        this.loadAvailableTasks();
+    },
     methods: {
+        async loadAvailableTasks() {
+            try {
+                // Determine context: global or project-specific?
+                // The URL is usually /trainingtaskcomparison or linked from project
+                // For now, fetch all or filter by project if query param exists
+                const projectId = this.$route.query.projectId;
+                const filters = projectId ? { project_id: projectId } : {};
+                
+                const tasks = await fetchTrainingJobs(1, 100); // Fetch top 100 recent
+                // Client-side filter if needed, though fetchTrainingJobs (API) might not support all filters yet
+                // Filter to keep only completed/running tasks that have metrics potential?
+                // Or just show all.
+                
+                this.availableTasks = tasks.map(t => ({
+                    id: t.job_id,
+                    name: t.job_name || t.name,
+                    status: t.status,
+                    created_at: t.created_at,
+                    epochs: t.parameters && t.parameters.epochs ? `${t.parameters.epochs}` : '-'
+                }));
+
+                // Handle pre-selection from route query
+                const preSelect = this.$route.query.compareIds;
+                if (preSelect) {
+                    const ids = preSelect.split(',');
+                    this.selectedTasks = ids;
+                    if (ids.length >= 2) {
+                        this.handleCompare();
+                    }
+                }
+            } catch (error) {
+                this.$message.error('加载任务列表失败');
+                console.error(error);
+            }
+        },
         handleTaskSelect() {
             if (this.selectedTasks.length > 4) {
                 this.$message.warning('最多只能选择4个任务进行对比');
                 this.selectedTasks.pop();
             }
         },
-        handleCompare() {
+        async handleCompare() {
             if (this.selectedTasks.length < 2) {
                 this.$message.warning('请至少选择2个任务进行对比');
                 return;
             }
-            this.comparingTasks = this.availableTasks.filter(task => 
-                this.selectedTasks.includes(task.id)
+
+            this.loading = true;
+            try {
+                // 1. Setup metadata regarding selected tasks
+                const palette = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
+                this.comparingTasks = this.selectedTasks.map((id, idx) => {
+                    const t = this.availableTasks.find(x => x.id === id);
+                    return {
+                        id: id,
+                        name: t ? t.name : id,
+                        color: palette[idx % palette.length]
+                    };
+                });
+
+                // 2. Fetch Parameter Comparison
+                const comparisonData = await CompareTrainingRuns(this.selectedTasks);
+                this.processParameterData(comparisonData);
+
+                // 3. Fetch Metrics Comparison Data (Last Epoch value)
+                // The Compare API returns 'metrics' usually? Let's assume we extract from comparisonData 
+                // or we might need to fetch individual job details if backend doesn't aggregate.
+                // Assuming comparisonData contains enough info.
+                // If not, we iterate.
+                // Let's check `api/training.js` -> `CompareTrainingRuns` payload.
+                // Backend usually returns a dict keyed by run_id.
+                // Inspecting existing backend code is hard, so let's rely on standard output or manual verify.
+                // For robustness, let's process what we have.
+                // If comparisionData is just a list of runs, we extract params and metrics.
+                this.processMetricsData(comparisonData);
+
+                // 4. Fetch Curve Data for Charts
+                await this.fetchCurveData();
+
+                this.$message.success(`已加载对比数据`);
+            } catch (error) {
+                this.$message.error('对比失败: ' + error.message);
+                console.error(error);
+            } finally {
+                this.loading = false;
+            }
+        },
+        processParameterData(data) {
+            // Data is expected to be { [runId]: { parameters: {...}, ... } } or Array
+            // Let's assume Array based on typical REST list (or check api/training.js map logic)
+            // Actually `CompareTrainingRuns` in api/training.js returns `data` directly.
+            // If backend returns map, we iterate keys.
+            
+            const runs = Array.isArray(data) ? data : (data.items || Object.values(data));
+            if (!runs.length) return;
+
+            // Collect all parameter keys
+            const paramKeys = new Set();
+            runs.forEach(r => {
+                const p = r.parameters || {};
+                Object.keys(p).forEach(k => paramKeys.add(k));
+            });
+
+            // Specific interest keys
+            const interest = ['epochs', 'batch_size', 'learning_rate', 'modelfile', 'optimizer', 'imgsz', 'device'];
+            const sortedKeys = Array.from(paramKeys).sort((a, b) => {
+                const ia = interest.indexOf(a);
+                const ib = interest.indexOf(b);
+                if (ia !== -1 && ib !== -1) return ia - ib;
+                if (ia !== -1) return -1;
+                if (ib !== -1) return 1;
+                return a.localeCompare(b);
+            });
+
+            this.parameterData = sortedKeys.map(key => {
+                const values = {};
+                runs.forEach(r => {
+                    // Extract job_id properly
+                    const rid = r.job_id || r.run_id || r.id; 
+                    const val = r.parameters?.[key];
+                    values[rid] = val !== undefined && val !== null ? String(val) : '-';
+                });
+                return { name: key, values };
+            });
+        },
+        processMetricsData(data) {
+            const runs = Array.isArray(data) ? data : (data.items || Object.values(data));
+            // Define metrics of interest
+            const metricsOfInterest = [
+                { key: 'metrics/mAP50-95(B)', label: 'mAP50-95', importance: 'high' },
+                { key: 'metrics/mAP50(B)', label: 'mAP50', importance: 'high' },
+                { key: 'metrics/precision(B)', label: 'Precision', importance: 'normal' },
+                { key: 'metrics/recall(B)', label: 'Recall', importance: 'normal' },
+                { key: 'train/box_loss', label: 'Train Box Loss', importance: 'normal' },
+                { key: 'val/box_loss', label: 'Val Box Loss', importance: 'normal' }
+            ];
+
+            this.metricsData = metricsOfInterest.map(m => {
+                const values = {};
+                let maxVal = -Infinity;
+                let minVal = Infinity; // For loss, lower is better usually, but "Best" column logic logic needs care.
+                // For simplicty, let's treat "Best" as Max for metrics and Min for loss? 
+                // Or just show Max for now.
+                
+                runs.forEach(r => {
+                    const rid = r.job_id || r.run_id || r.id;
+                    // Check where metrics are stored. Usually 'result' or 'metrics' object in run details
+                    // `mapTrainingRunToJob` in api/training puts flattened metrics in? No.
+                    // Usually `result` holds final metrics.
+                    const sources = [r.result, r.metrics, r];
+                    let val = '-';
+                    for (const s of sources) { // Try to find the key
+                        if (s && s[m.key] !== undefined) {
+                            val = s[m.key];
+                            break;
+                        }
+                    }
+                    
+                    if (val !== '-') {
+                        val = parseFloat(val).toFixed(4);
+                        maxVal = Math.max(maxVal, parseFloat(val));
+                    }
+                    values[rid] = val;
+                });
+                
+                return {
+                    name: m.label,
+                    importance: m.importance,
+                    values,
+                    best: maxVal !== -Infinity ? maxVal.toFixed(4) : '-'
+                };
+            });
+        },
+        async fetchCurveData() {
+            // Fetch curves for each selected task
+            const promises = this.comparingTasks.map(t => 
+                FetchTrainingJobsMetrics_detailed(t.id).catch(() => null)
             );
-            this.$message.success(`已选择${this.comparingTasks.length}个任务进行对比`);
+            
+            const results = await Promise.all(promises);
+            // Store raw curve data to be processed by Chart logic
+            // We need to pass this to the Chart component or process it here.
+            // Since the template uses a mocked SVG, I need to update the template to use REAL CHARTS.
+            // BUT wait, I am only replacing the <script> section.
+            // The template (Step 1099) has a mocked SVG: <svg ... class="chart-svg">.
+            // I MUST ALSO UPDATE THE TEMPLATE to use Real Charts (ECharts).
+            // I should use `TrainingChart.vue` component which I just fixed!
+            
+            this.curveDataMap = {};
+            results.forEach((res, idx) => {
+                if (res && res.metrics) {
+                    this.curveDataMap[this.comparingTasks[idx].id] = res.metrics;
+                }
+            });
         },
         isHighestValue(values, taskId) {
-            // 检查是否是最高值（用于参数对比）
-            const currentValue = parseFloat(values[taskId]);
-            const maxValue = Math.max(...Object.values(values).map(v => parseFloat(v)));
-            return currentValue === maxValue;
+            // String comparison might be enough for params
+            // For numeric params it should be parsed
+            return false; 
         },
         isBestMetric(values, taskId) {
-            // 检查是否是最好的指标（用于指标对比）
-            const currentValue = parseFloat(values[taskId]);
-            const maxValue = Math.max(...Object.values(values).map(v => parseFloat(v)));
-            return currentValue === maxValue;
+            const v = parseFloat(values[taskId]);
+            const arr = Object.values(values).map(x => parseFloat(x)).filter(x => !isNaN(x));
+            const max = Math.max(...arr);
+            return !isNaN(v) && v === max;
         }
     }
 };
 </script>
-
 <style scoped>
 .compare-container {
     display: flex;

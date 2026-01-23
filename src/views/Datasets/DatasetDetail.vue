@@ -154,7 +154,7 @@
                 >
                 <div class="image-wrapper">
                     <img
-                    :src="image.image_url"
+                    :src="image.thumbnail_url || image.image_url"
                     :alt="image.image_name"
                     loading="lazy"
                     @error="handleImageError"
@@ -203,6 +203,8 @@
       :visible.sync="showUploadDialog"
       width="520px"
       :close-on-click-modal="false"
+      :close-on-press-escape="!isUploading"
+      :show-close="!isUploading"
       :append-to-body="true"
       class="upload-dialog"
     >
@@ -340,11 +342,25 @@
         </div>
       </div>
 
+      <div v-if="isUploading" class="upload-progress">
+        <el-progress :percentage="uploadPercent" :stroke-width="8"></el-progress>
+        <div class="upload-progress-meta">
+          <span class="stage">{{ uploadStage === 'processing' ? '服务器处理中...' : '上传中...' }}</span>
+          <span class="bytes" v-if="uploadTotal">{{ formatFileSize(uploadLoaded) }} / {{ formatFileSize(uploadTotal) }}</span>
+          <span class="files">
+            {{ uploadMode === 'files'
+              ? `文件: ${pendingImages.length + pendingLabels.length}`
+              : '文件: 1' }}
+          </span>
+        </div>
+      </div>
+
       <div slot="footer" class="dialog-footer">
-        <el-button @click="closeUploadDialog">取消</el-button>
+        <el-button :disabled="isUploading" @click="closeUploadDialog">取消</el-button>
+        <el-button v-if="isUploading" type="danger" plain @click="cancelUpload">取消上传</el-button>
         <el-button
+          v-else
           type="primary"
-          :loading="isUploading"
           :disabled="uploadMode === 'files' ? pendingImages.length === 0 : !pendingZipFile"
           @click="uploadMode === 'files' ? submitUpload() : submitZipUpload()"
         >
@@ -382,6 +398,11 @@ export default {
             versionOptions: [],
             versionLoading: false,
             isUploading: false,
+            uploadPercent: 0,
+            uploadLoaded: 0,
+            uploadTotal: 0,
+            uploadStage: 'idle', // idle | uploading | processing
+            cancelUploadRequest: null,
             showUploadDialog: false,
             pendingImages: [],
             pendingLabels: [],
@@ -652,6 +673,9 @@ export default {
             this.showUploadDialog = true;
             this.pendingImages = [];
             this.pendingLabels = [];
+            this.pendingZipFile = null;
+            this.uploadMode = 'files';
+            this.resetUploadProgress();
         },
         onDialogImagesSelected(event) {
             const files = Array.from(event.target.files || []);
@@ -689,12 +713,25 @@ export default {
         removeLabel(idx) {
             this.pendingLabels.splice(idx, 1);
         },
+        resetUploadProgress() {
+            this.uploadPercent = 0;
+            this.uploadLoaded = 0;
+            this.uploadTotal = 0;
+            this.uploadStage = 'idle';
+            this.cancelUploadRequest = null;
+        },
         closeUploadDialog() {
             this.showUploadDialog = false;
             this.pendingImages = [];
             this.pendingLabels = [];
             this.pendingZipFile = null;
             this.uploadMode = 'files';
+            this.resetUploadProgress();
+        },
+        cancelUpload() {
+            if (typeof this.cancelUploadRequest === 'function') {
+                this.cancelUploadRequest();
+            }
         },
         // ZIP上传相关方法
         onDialogZipSelected(event) {
@@ -731,16 +768,45 @@ export default {
             }
 
             this.isUploading = true;
+            this.uploadStage = 'uploading';
+            this.uploadPercent = 0;
+            this.uploadLoaded = 0;
+            this.uploadTotal = Number(this.pendingZipFile.size) || 0;
             try {
-                await appendDatasetArchive(this.datasetId, this.pendingZipFile);
+                const req = appendDatasetArchive(this.datasetId, this.pendingZipFile, {
+                    onProgress: ({ loaded, total, percent }) => {
+                        const l = Number(loaded) || 0;
+                        const t = Number(total) || 0;
+                        this.uploadLoaded = l;
+                        if (t > 0) this.uploadTotal = t;
+                        const pct = percent !== null && percent !== undefined
+                            ? Number(percent) || 0
+                            : (this.uploadTotal ? Math.round((this.uploadLoaded / this.uploadTotal) * 100) : 0);
+                        this.uploadPercent = Math.max(0, Math.min(100, pct));
+                    },
+                    onUploadDone: () => {
+                        this.uploadStage = 'processing';
+                        this.uploadPercent = Math.max(this.uploadPercent, 100);
+                    },
+                });
+                this.cancelUploadRequest = req.cancel;
+
+                await req.promise;
                 this.$message.success('ZIP上传成功');
                 this.closeUploadDialog();
                 // Refresh the dataset detail
                 await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
-                this.$message.error(`上传失败: ${error.message}`);
+                const msg = (error && error.message) ? String(error.message) : '上传失败';
+                if (msg.toLowerCase().includes('cancel')) {
+                    this.$message.info('已取消上传');
+                } else {
+                    this.$message.error(`上传失败: ${msg}`);
+                }
             } finally {
                 this.isUploading = false;
+                this.cancelUploadRequest = null;
+                this.uploadStage = 'idle';
             }
         },
         async submitUpload() {
@@ -750,23 +816,51 @@ export default {
             }
 
             this.isUploading = true;
+            this.uploadStage = 'uploading';
+            this.uploadPercent = 0;
+            this.uploadLoaded = 0;
+            this.uploadTotal = 0;
             try {
-                const result = await uploadDatasetImages(this.datasetId, this.pendingImages, {
+                const req = uploadDatasetImages(this.datasetId, this.pendingImages, {
                     relativeDir: 'images',
                     labels: this.pendingLabels,
                     labelsRelativeDir: this.pendingLabels.length ? 'labels' : null,
                     requireLabels: false,
                     createVersion: true,
                     activate: true,
+                    onProgress: ({ loaded, total, percent }) => {
+                        const l = Number(loaded) || 0;
+                        const t = Number(total) || 0;
+                        this.uploadLoaded = l;
+                        if (t > 0) this.uploadTotal = t;
+                        const pct = percent !== null && percent !== undefined
+                            ? Number(percent) || 0
+                            : (this.uploadTotal ? Math.round((this.uploadLoaded / this.uploadTotal) * 100) : 0);
+                        this.uploadPercent = Math.max(0, Math.min(100, pct));
+                    },
+                    onUploadDone: () => {
+                        this.uploadStage = 'processing';
+                        this.uploadPercent = Math.max(this.uploadPercent, 100);
+                    },
                 });
+                this.cancelUploadRequest = req.cancel;
+
+                const result = await req.promise;
                 this.$message.success(`成功上传 ${result.saved_count || this.pendingImages.length} 张图片`);
                 this.closeUploadDialog();
                 // Refresh the dataset detail
                 await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
-                this.$message.error(`上传失败: ${error.message}`);
+                const msg = (error && error.message) ? String(error.message) : '上传失败';
+                if (msg.toLowerCase().includes('cancel')) {
+                    this.$message.info('已取消上传');
+                } else {
+                    this.$message.error(`上传失败: ${msg}`);
+                }
             } finally {
                 this.isUploading = false;
+                this.cancelUploadRequest = null;
+                this.uploadStage = 'idle';
             }
         },
         async handleFilesSelected(event) {
@@ -775,17 +869,19 @@ export default {
 
             this.isUploading = true;
             try {
-                const result = await uploadDatasetImages(this.datasetId, files, {
+                const req = uploadDatasetImages(this.datasetId, files, {
                     relativeDir: 'images',
                     requireLabels: false,
                     createVersion: true,
                     activate: true,
                 });
+                const result = await req.promise;
                 this.$message.success(`成功上传 ${result.saved_count || files.length} 张图片`);
                 // Refresh the dataset detail
                 await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
-                this.$message.error(`上传失败: ${error.message}`);
+                const msg = (error && error.message) ? String(error.message) : '上传失败';
+                this.$message.error(`上传失败: ${msg}`);
             } finally {
                 this.isUploading = false;
                 // Reset file input
@@ -1336,6 +1432,26 @@ export default {
   display: flex;
   justify-content: flex-end;
   gap: 0.5rem;
+}
+
+.upload-progress {
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.upload-progress-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.upload-progress-meta .stage {
+  color: var(--text-main);
+  font-weight: 600;
 }
 
 /* Upload Mode Switcher */

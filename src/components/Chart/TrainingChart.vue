@@ -165,12 +165,18 @@ export default {
             data: this._toXYData((item && item.data) || []),
             symbol: "circle",
             symbolSize: 4,
-            showSymbol: false,
+            showSymbol: true, // Always show symbols for visibility
+            connectNulls: true, // Connect lines across null values
             itemStyle: { color },
             lineStyle: { color }
           };
         });
       } else {
+        const commonStyle = {
+            showSymbol: true,
+            symbolSize: 6,
+            connectNulls: true
+        };
         switch (this.chartType) {
           case "metrics":
             title = "模型指标";
@@ -181,36 +187,32 @@ export default {
                 type: "line",
                 data: this._toXYData(data["metrics/precision(B)"] || []),
                 symbol: "circle",
-                symbolSize: 6,
-                showSymbol: false,
-                itemStyle: { color: "#f43f5e" } // Rose 500
+                itemStyle: { color: "#f43f5e" }, // Rose 500
+                ...commonStyle
               },
               {
                 name: "召回率",
                 type: "line",
                 data: this._toXYData(data["metrics/recall(B)"] || []),
                 symbol: "rect",
-                symbolSize: 6,
-                showSymbol: false,
-                itemStyle: { color: "#14b8a6" } // Teal 500
+                itemStyle: { color: "#14b8a6" }, // Teal 500
+                ...commonStyle
               },
               {
                 name: "mAP50",
                 type: "line",
                 data: this._toXYData(data["metrics/mAP50(B)"] || []),
                 symbol: "triangle",
-                symbolSize: 6,
-                showSymbol: false,
-                itemStyle: { color: "#f59e0b" } // Amber 500
+                itemStyle: { color: "#f59e0b" }, // Amber 500
+                ...commonStyle
               },
               {
                 name: "mAP50-95",
                 type: "line",
                 data: this._toXYData(data["metrics/mAP50-95(B)"] || []),
                 symbol: "diamond",
-                symbolSize: 6,
-                showSymbol: false,
-                itemStyle: { color: "#3b82f6" } // Blue 500
+                itemStyle: { color: "#3b82f6" }, // Blue 500
+                ...commonStyle
               }
             ];
             break;
@@ -223,18 +225,16 @@ export default {
                 type: "line",
                 data: this._toXYData(data["train/box_loss"] || []),
                 symbol: "circle",
-                symbolSize: 4,
-                showSymbol: false,
-                itemStyle: { color: "#3b82f6" }
+                itemStyle: { color: "#3b82f6" },
+                ...commonStyle
               },
               {
                 name: "验证集",
                 type: "line",
                 data: this._toXYData(data["val/box_loss"] || []),
                 symbol: "circle",
-                symbolSize: 4,
-                showSymbol: false,
-                itemStyle: { color: "#f43f5e" }
+                itemStyle: { color: "#f43f5e" },
+                ...commonStyle
               }
             ];
             break;
@@ -247,18 +247,16 @@ export default {
                 type: "line",
                 data: this._toXYData(data["train/cls_loss"] || []),
                 symbol: "circle",
-                symbolSize: 4,
-                showSymbol: false,
-                itemStyle: { color: "#3b82f6" }
+                itemStyle: { color: "#3b82f6" },
+                ...commonStyle
               },
               {
                 name: "验证集",
                 type: "line",
                 data: this._toXYData(data["val/cls_loss"] || []),
                 symbol: "circle",
-                symbolSize: 4,
-                showSymbol: false,
-                itemStyle: { color: "#f43f5e" }
+                itemStyle: { color: "#f43f5e" },
+                ...commonStyle
               }
             ];
             break;
@@ -271,18 +269,16 @@ export default {
                 type: "line",
                 data: this._toXYData(data["train/dfl_loss"] || []),
                 symbol: "circle",
-                symbolSize: 4,
-                showSymbol: false,
-                itemStyle: { color: "#3b82f6" }
+                itemStyle: { color: "#3b82f6" },
+                ...commonStyle
               },
               {
                 name: "验证集",
                 type: "line",
                 data: this._toXYData(data["val/dfl_loss"] || []),
                 symbol: "circle",
-                symbolSize: 4,
-                showSymbol: false,
-                itemStyle: { color: "#f43f5e" }
+                itemStyle: { color: "#f43f5e" },
+                ...commonStyle
               }
             ];
             break;
@@ -295,6 +291,11 @@ export default {
         this.totalEpoch ||
         (useCustom ? this._inferMaxLenFromSeries(series) : this._inferMaxLen(data)) ||
         100;
+
+      // Calculate dynamic interval to avoid crowding or sparseness
+      // Aim for about 10-20 ticks
+      let interval = Math.ceil(maxLen / 10);
+      if (interval < 1) interval = 1;
 
       return {
         title: {
@@ -354,7 +355,7 @@ export default {
           type: "value",
           min: 0,
           max: maxLen,
-          interval: 5,
+          interval: interval,
           name: "轮次",
           nameLocation: "middle",
           nameGap: 25,

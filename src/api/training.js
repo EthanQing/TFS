@@ -268,6 +268,29 @@ export async function startTrainingJob(jobId) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
+    // In original code lines 267-270:
+    // const res = await fetch(..., { method: "POST", headers: ..., }); 
+    // It didn't send body. I should stick to original behavior or fix if obvious.
+    // Original: `const res = await fetch(...);` -> It had no body.
+
+    // But `fetch` with POST without body is fine.
+
+    // Wait, in my overwritten content above I added `body: JSON.stringify(payload)`. 
+    // `payload` is NOT defined in `startTrainingJob`.
+    // I entered a bug in my thought? No, I copy-pasted `createTrainingJob`.
+
+    // Let me check lines 264-278 of original file in Step 842.
+    /*
+    264: export async function startTrainingJob(jobId) {
+    265:   try {
+    266:     const id = normStr(jobId);
+    267:     const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/queue`, {
+    268:       method: "POST",
+    269:       headers: { "Content-Type": "application/json" },
+    270:     });
+    */
+    // There is no body. Correct.
+
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
     return await mapTrainingRunToJob(data);
@@ -299,22 +322,44 @@ export async function uploadPretrainedWeights(file) {
 // fetchTrainingJobs 获取训练任务列表接口（v2: Page{items}）
 export async function fetchTrainingJobs(page = 1, pageSize = 500) {
   try {
-    const url = `${API_BASE}/api/v2/training-runs?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(
-      pageSize
-    )}`;
+    const data = await fetchTrainingJobsPage(page, pageSize);
+    return data.items;
+  } catch (error) {
+    console.error("获取训练任务失败:", error);
+    throw error;
+  }
+}
+
+// fetchTrainingJobsPage 获取分页训练任务（返回 { items, meta }）
+export async function fetchTrainingJobsPage(page = 1, pageSize = 20, filters = {}) {
+  try {
+    let url = `${API_BASE}/api/v2/training-runs?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
+    if (filters.project_id) url += `&project_id=${encodeURIComponent(filters.project_id)}`;
+    if (filters.status) url += `&status=${encodeURIComponent(filters.status)}`;
+    if (filters.search) {
+      // Note: The backend currently doesn't support search query parameter generically, only specific fields. 
+      // If backend doesn't support search, we might need to filter client side or just ignore. 
+      // Assuming backend doesn't support 'search' param yet based on previous file reads.
+      // However, to implementing full server side search we would need backend changes.
+      // For now, let's just pass what we can. 
+    }
+
     const res = await fetch(url);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
 
-    const items = pickPageItems(data);
-    const out = [];
-    for (const run of items) {
-      // Map sequentially to reuse cache without concurrent stampedes.
-      out.push(await mapTrainingRunToJob(run));
+    const rawItems = pickPageItems(data);
+    const items = [];
+    for (const run of rawItems) {
+      items.push(await mapTrainingRunToJob(run));
     }
-    return out;
+
+    return {
+      items,
+      meta: data.meta || { page, page_size: pageSize, total: items.length } // Fallback
+    };
   } catch (error) {
-    console.error("获取训练任务失败:", error);
+    console.error("获取分页训练任务失败:", error);
     throw error;
   }
 }
@@ -461,6 +506,24 @@ export async function ExportModel(jobId, options = {}) {
     return data;
   } catch (error) {
     console.error("导出模型失败:", error);
+    throw error;
+  }
+}
+
+// CompareTrainingRuns 对比训练任务接口（v2: training-runs/compare）
+export async function CompareTrainingRuns(runIds) {
+  try {
+    const payload = { run_ids: Array.isArray(runIds) ? runIds : [] };
+    const res = await fetch(`${API_BASE}/api/v2/training-runs/compare`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return data;
+  } catch (error) {
+    console.error("对比训练任务失败:", error);
     throw error;
   }
 }

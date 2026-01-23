@@ -8,6 +8,56 @@ async function safeJson(res) {
     }
 }
 
+function xhrUploadJson(url, formData, { onProgress = null, onUploadDone = null } = {}) {
+    const xhr = new XMLHttpRequest();
+
+    const promise = new Promise((resolve, reject) => {
+        xhr.open('POST', url, true);
+        xhr.responseType = 'text';
+
+        if (xhr.upload) {
+            xhr.upload.onprogress = (evt) => {
+                if (typeof onProgress !== 'function') return;
+                const loaded = Number(evt && evt.loaded) || 0;
+                const total = Number(evt && evt.total) || 0;
+                const percent = evt && evt.lengthComputable && total > 0 ? Math.round((loaded / total) * 100) : null;
+                onProgress({ loaded, total, percent });
+            };
+            xhr.upload.onload = () => {
+                if (typeof onUploadDone === 'function') onUploadDone();
+            };
+        }
+
+        xhr.onload = () => {
+            const status = Number(xhr.status) || 0;
+            let data = null;
+            try {
+                data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
+            } catch (_) {
+                data = null;
+            }
+
+            if (status >= 200 && status < 300) {
+                resolve(data);
+                return;
+            }
+            reject(new Error(pickErrorMessage(data, { status })));
+        };
+
+        xhr.onerror = () => reject(new Error('Network error'));
+        xhr.onabort = () => reject(new Error('Upload cancelled'));
+
+        xhr.send(formData);
+    });
+
+    return {
+        promise,
+        cancel: () => {
+            try { xhr.abort(); } catch (_) { /* ignore */ }
+        },
+    };
+}
+
 function pickErrorMessage(data, res) {
     if (data) {
         const msg = data.detail || data.message;
@@ -38,6 +88,11 @@ function toAbsUrl(url) {
     if (!url) return '';
     if (/^https?:\/\//i.test(url)) return url;
     return `${API_BASE}${url}`;
+}
+
+function encodePathSegments(p) {
+    const s = String(p || '').replace(/\\/g, '/');
+    return s.split('/').map(seg => encodeURIComponent(seg)).join('/');
 }
 
 function normalizeDatasetToken(storagePathOrName) {
@@ -270,7 +325,11 @@ export async function createDataset({ name, dataset_type, description = null, st
 }
 
 // uploadDatasetToExisting ??ZIP??????
-export async function uploadDatasetToExisting(datasetId, file, { message = null, created_by = null } = {}) {
+export function uploadDatasetToExisting(
+    datasetId,
+    file,
+    { message = null, created_by = null, onProgress = null, onUploadDone = null } = {}
+) {
     try {
         if (!datasetId) throw new Error('?? datasetId');
         const formData = new FormData();
@@ -278,23 +337,23 @@ export async function uploadDatasetToExisting(datasetId, file, { message = null,
         if (message) formData.append('message', message);
         if (created_by) formData.append('created_by', created_by);
 
-        const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload`, {
-            method: 'POST',
-            body: formData
-        });
-        const result = await safeJson(response);
-        if (!response.ok) {
-            throw new Error(pickErrorMessage(result, response));
-        }
-        return result;
+        return xhrUploadJson(
+            `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload`,
+            formData,
+            { onProgress, onUploadDone }
+        );
     } catch (error) {
         console.error('???????:', error);
-        throw error;
+        return { promise: Promise.reject(error), cancel: () => { } };
     }
 }
 
 // appendDatasetArchive 向已有数据集追加ZIP内容（支持非空数据集）
-export async function appendDatasetArchive(datasetId, file, { message = null, created_by = null } = {}) {
+export function appendDatasetArchive(
+    datasetId,
+    file,
+    { message = null, created_by = null, onProgress = null, onUploadDone = null } = {}
+) {
     try {
         if (!datasetId) throw new Error('缺少 datasetId');
         const formData = new FormData();
@@ -302,23 +361,25 @@ export async function appendDatasetArchive(datasetId, file, { message = null, cr
         if (message) formData.append('message', message);
         if (created_by) formData.append('created_by', created_by);
 
-        const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/append`, {
-            method: 'POST',
-            body: formData
-        });
-        const result = await safeJson(response);
-        if (!response.ok) {
-            throw new Error(pickErrorMessage(result, response));
-        }
-        return result;
+        return xhrUploadJson(
+            `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/append`,
+            formData,
+            { onProgress, onUploadDone }
+        );
     } catch (error) {
         console.error('追加上传失败:', error);
-        throw error;
+        return { promise: Promise.reject(error), cancel: () => { } };
     }
 }
 
 // uploadDataset 上传ZIP并创建数据集
-export async function uploadDataset(file, datasetName, datasetType, description = null) {
+export function uploadDataset(
+    file,
+    datasetName,
+    datasetType,
+    description = null,
+    { onProgress = null, onUploadDone = null } = {}
+) {
     try {
         const formData = new FormData();
         formData.append('file', file);
@@ -326,22 +387,14 @@ export async function uploadDataset(file, datasetName, datasetType, description 
         formData.append('dataset_type', datasetType);
         if (description) formData.append('description', description);
 
-        const response = await fetch(`${API_BASE}/api/v2/datasets/upload`, {
-            method: 'POST',
-            body: formData
-        });
-
-        const result = await safeJson(response);
-
-        if (!response.ok) {
-            throw new Error(pickErrorMessage(result, response));
-        }
-
-        // 兼容前端旧调用：Upload 组件期望 { dataset: {...} }
-        return { dataset: result };
+        const req = xhrUploadJson(`${API_BASE}/api/v2/datasets/upload`, formData, { onProgress, onUploadDone });
+        return {
+            promise: req.promise.then((result) => ({ dataset: result })),
+            cancel: req.cancel,
+        };
     } catch (error) {
         console.error('上传错误:', error);
-        throw error;
+        return { promise: Promise.reject(error), cancel: () => { } };
     }
 }
 
@@ -366,7 +419,7 @@ export async function deleteDataset(datasetId, { deleteFiles = false, force = fa
 }
 
 // uploadDatasetImages 向已有数据集添加图片
-export async function uploadDatasetImages(datasetId, files, {
+export function uploadDatasetImages(datasetId, files, {
     relativeDir = 'images',
     labels = [],
     labelsRelativeDir = null,
@@ -376,6 +429,8 @@ export async function uploadDatasetImages(datasetId, files, {
     createVersion = true,
     createSnapshot = false,
     activate = true,
+    onProgress = null,
+    onUploadDone = null,
 } = {}) {
     try {
         if (!datasetId) throw new Error('缺少 datasetId');
@@ -400,18 +455,14 @@ export async function uploadDatasetImages(datasetId, files, {
         if (message) formData.append('message', message);
         if (createdBy) formData.append('created_by', createdBy);
 
-        const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/uploads/images`, {
-            method: 'POST',
-            body: formData
-        });
-        const result = await safeJson(response);
-        if (!response.ok) {
-            throw new Error(pickErrorMessage(result, response));
-        }
-        return result;
+        return xhrUploadJson(
+            `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/uploads/images`,
+            formData,
+            { onProgress, onUploadDone }
+        );
     } catch (error) {
         console.error('上传图片失败:', error);
-        throw error;
+        return { promise: Promise.reject(error), cancel: () => { } };
     }
 }
 
@@ -485,7 +536,7 @@ export async function FetchDatasetClassNames(storagePathOrName) {
 }
 
 // FetchDatasetDetail 获取数据集详细信息接口（组合：/detail + /files，适配旧 UI 需要的 images/classes 字段）
-export async function FetchDatasetDetail(datasetId, { filesLimit = 500 } = {}) {
+export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionId = null } = {}) {
     try {
         const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/detail`);
         const detail = await safeJson(response);
@@ -498,7 +549,7 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500 } = {}) {
         const pageSize = Math.max(1, Math.min(Number(filesLimit) || 200, 500));
         let filesPage = null;
         try {
-            filesPage = await FetchDatasetFiles(datasetId, { page: 1, pageSize, kind: 'image' });
+            filesPage = await FetchDatasetFiles(datasetId, { page: 1, pageSize, kind: 'image', versionId });
         } catch (_) {
             filesPage = { items: [], meta: { page: 1, page_size: pageSize, total: 0 } };
         }
@@ -508,10 +559,13 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500 } = {}) {
         const images = fileItems.map(f => {
             const relPath = String(f?.path || '').replace(/\\/g, '/');
             const url = encodeURI(toAbsUrl(f?.url));
+            const thumbPath = `/api/v2/thumbnails/${encodeURIComponent(datasetId)}/${encodePathSegments(relPath)}`;
+            const thumbnailUrl = toAbsUrl(versionId ? `${thumbPath}?version_id=${encodeURIComponent(versionId)}` : thumbPath);
             return {
                 // 详情页会用 image_name 做去重/展示；用相对路径更稳定（避免同名文件被错误去重）
                 image_name: relPath || basename(f?.path),
                 image_url: url,
+                thumbnail_url: thumbnailUrl,
                 image_path: relPath,
                 objects_count: 0,
                 classes_in_image: [],
@@ -529,7 +583,7 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500 } = {}) {
             // 拉一批 label 文件并建立映射：imageKey -> labelItem
             let labelsPage = null;
             try {
-                labelsPage = await FetchDatasetFiles(datasetId, { page: 1, pageSize, kind: 'label' });
+                labelsPage = await FetchDatasetFiles(datasetId, { page: 1, pageSize, kind: 'label', versionId });
             } catch (_) {
                 labelsPage = { items: [], meta: { page: 1, page_size: pageSize, total: 0 } };
             }
@@ -669,5 +723,19 @@ export async function FetchDatasetType(jobId) {
         console.error('获取数据集类型失败:', error);
         // 默认 detection，避免影响推理/预览页面
         return { dataset_type: 'detection' };
+    }
+}
+
+// fetchDatasetVersions 获取数据集版本列表
+export async function fetchDatasetVersions(datasetId, { page = 1, pageSize = 50 } = {}) {
+    try {
+        const url = `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/versions?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
+        const response = await fetch(url);
+        const data = await safeJson(response);
+        if (!response.ok) throw new Error(pickErrorMessage(data, response));
+        return data || { items: [], meta: { page, page_size: pageSize, total: 0 } };
+    } catch (error) {
+        console.error('获取数据集版本失败:', error);
+        throw error;
     }
 }

@@ -77,6 +77,8 @@ export default {
       errorMessage: "",
       isUploading: false,
       progress: 0,
+      uploadStage: "idle", // idle | uploading | processing
+      cancelUploadRequest: null,
       uploadSuccess: false,
     };
   },
@@ -136,15 +138,29 @@ export default {
 
       this.isUploading = true;
       this.progress = 0;
+      this.uploadStage = "uploading";
+      this.cancelUploadRequest = null;
       this.uploadSuccess = false;
       this.errorMessage = "";
 
       try {
-        // 调用上传接口，传入文件、名称和类型
-        const result = await uploadDatasetToExisting(
-          this.datasetId,
-          this.selectedFile
-        );
+        const req = uploadDatasetToExisting(this.datasetId, this.selectedFile, {
+          onProgress: ({ loaded, total, percent }) => {
+            const l = Number(loaded) || 0;
+            const t = Number(total) || 0;
+            const pct = (percent !== null && percent !== undefined)
+              ? Number(percent) || 0
+              : (t > 0 ? Math.round((l / t) * 100) : 0);
+            this.progress = Math.max(0, Math.min(100, pct));
+          },
+          onUploadDone: () => {
+            this.uploadStage = "processing";
+            this.progress = Math.max(this.progress, 100);
+          },
+        });
+        this.cancelUploadRequest = req.cancel;
+
+        const result = await req.promise;
 
         const payload = result && (result.dataset || result.data || result);
         const returnedId = payload && (payload.dataset_id || payload.id);
@@ -161,9 +177,19 @@ export default {
         // 上传失败处理
         this.isUploading = false;
         this.uploadSuccess = false;
-        this.errorMessage = `Upload failed: ${error.message}`;
-        this.$message.error(this.errorMessage);
-        this.$emit('upload-fail', error.message);
+        const msg = error && error.message ? String(error.message) : 'Upload failed';
+        if (msg.toLowerCase().includes('cancel')) {
+          this.errorMessage = 'Upload cancelled';
+          this.$message.info('Upload cancelled');
+          this.$emit('upload-fail', 'cancelled');
+        } else {
+          this.errorMessage = `Upload failed: ${msg}`;
+          this.$message.error(this.errorMessage);
+          this.$emit('upload-fail', msg);
+        }
+      } finally {
+        this.cancelUploadRequest = null;
+        this.uploadStage = "idle";
       }
     },
   },

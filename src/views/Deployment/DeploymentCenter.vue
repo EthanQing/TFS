@@ -34,6 +34,16 @@
               <span class="tool-desc">导出为 ONNX/TensorRT</span>
             </div>
           </li>
+          <li 
+            :class="{ active: activeTool === 'comparison' }"
+            @click="activeTool = 'comparison'"
+          >
+            <i class="el-icon-data-analysis"></i>
+            <div class="tool-info">
+              <span class="tool-name">模型对比</span>
+              <span class="tool-desc">对比训练指标与参数</span>
+            </div>
+          </li>
           <!-- Future tools can be added here -->
           <!-- <li class="disabled">
             <i class="el-icon-upload-cloud"></i>
@@ -56,6 +66,7 @@
       <main class="deploy-main glass-panel">
         <transition name="fade" mode="out-in">
           <FormatConversion v-if="activeTool === 'conversion'" />
+          <ModelComparison v-if="activeTool === 'comparison'" />
         </transition>
       </main>
     </section>
@@ -64,10 +75,11 @@
 
 <script>
 import FormatConversion from "@/views/Models/FormatConversion.vue";
+import ModelComparison from "@/views/Deployment/ModelComparison.vue";
 
 export default {
   name: "DeploymentCenter",
-  components: { FormatConversion },
+  components: { FormatConversion, ModelComparison },
   data() {
     return {
       activeTool: 'conversion'
