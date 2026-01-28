@@ -26,12 +26,31 @@
 
     <section class="step-body">
       <div class="step-toolbar">
-        <div class="tab-pill active">官方模型</div>
-        <div class="tab-note">Ultralytics 精选架构</div>
+        <div class="tab-switcher">
+          <button 
+            type="button" 
+            class="tab-btn" 
+            :class="{ active: currentTab === 'detection' }"
+            @click="currentTab = 'detection'"
+          >
+            目标检测
+          </button>
+          <button 
+            type="button" 
+            class="tab-btn" 
+            :class="{ active: currentTab === 'segmentation' }"
+            @click="currentTab = 'segmentation'"
+          >
+            图像分割
+          </button>
+        </div>
+        <div class="tab-note" v-if="currentTab === 'detection'">Ultralytics 检测架构</div>
+        <div class="tab-note" v-else>Ultralytics 分割架构</div>
       </div>
 
       <div class="step-panel">
         <Official
+          :task-type="currentTab"
           @model-selected="handleModelSelected"
           @config-changed="handleConfigChanged"
           :selected-project="selectedProject"
@@ -72,6 +91,7 @@ export default {
   },
   data() {
     return {
+      currentTab: 'detection',
       selectedProject: null,
       selectedModel: null,
       isAdding: false,
@@ -323,18 +343,34 @@ export default {
   gap: 12px;
 }
 
-.tab-pill {
-  padding: 6px 14px;
+.tab-switcher {
+  display: flex;
+  background: #f2f4fb;
+  padding: 4px;
+  border-radius: 999px;
+  gap: 4px;
+}
+
+.tab-btn {
+  padding: 6px 16px;
   border-radius: 999px;
   font-size: 12px;
   font-weight: 600;
-  background: #f2f4fb;
+  border: none;
+  background: transparent;
+  color: var(--ink-500);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.tab-btn:hover {
   color: var(--brand-700);
 }
 
-.tab-pill.active {
-  background: rgba(79, 99, 199, 0.15);
+.tab-btn.active {
+  background: #fff;
   color: var(--brand-700);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
 }
 
 .tab-note {

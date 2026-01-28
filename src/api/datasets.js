@@ -381,16 +381,33 @@ export function uploadDataset(
     { onProgress = null, onUploadDone = null } = {}
 ) {
     try {
-        const formData = new FormData();
-        formData.append('file', file);
-        formData.append('name', datasetName);
-        formData.append('dataset_type', datasetType);
-        if (description) formData.append('description', description);
+        let cancelled = false;
+        let cancelImpl = () => { cancelled = true; };
 
-        const req = xhrUploadJson(`${API_BASE}/api/v2/datasets/upload`, formData, { onProgress, onUploadDone });
+        const promise = (async () => {
+            // Backend flow: 1) create dataset -> 2) upload to /datasets/{id}/upload
+            const ds = await createDataset({ name: datasetName, dataset_type: datasetType, description: description || undefined });
+            const datasetId = ds && (ds.dataset_id || ds.id);
+            if (!datasetId) throw new Error('创建数据集失败');
+            if (cancelled) throw new Error('Upload cancelled');
+
+            const req = uploadDatasetToExisting(datasetId, file, {
+                message: description || null,
+                created_by: null,
+                onProgress,
+                onUploadDone,
+            });
+            cancelImpl = req.cancel;
+            const uploaded = await req.promise;
+            return { dataset: uploaded };
+        })();
+
         return {
-            promise: req.promise.then((result) => ({ dataset: result })),
-            cancel: req.cancel,
+            promise,
+            cancel: () => {
+                cancelled = true;
+                try { cancelImpl(); } catch (_) { /* ignore */ }
+            },
         };
     } catch (error) {
         console.error('上传错误:', error);

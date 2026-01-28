@@ -11,7 +11,7 @@
         <!-- Placeholder Stats -->
         <div class="stat-card">
           <div class="stat-label">工具</div>
-          <div class="stat-value">1</div>
+          <div class="stat-value">3</div>
         </div>
       </div>
     </header>
@@ -32,6 +32,16 @@
             <div class="tool-info">
               <span class="tool-name">格式转换</span>
               <span class="tool-desc">导出为 ONNX/TensorRT</span>
+            </div>
+          </li>
+          <li 
+            :class="{ active: activeTool === 'datasetConversion' }"
+            @click="activeTool = 'datasetConversion'"
+          >
+            <i class="el-icon-folder-opened"></i>
+            <div class="tool-info">
+              <span class="tool-name">数据集转换</span>
+              <span class="tool-desc">ZIP 转 YOLO 格式</span>
             </div>
           </li>
           <li 
@@ -66,6 +76,7 @@
       <main class="deploy-main glass-panel">
         <transition name="fade" mode="out-in">
           <FormatConversion v-if="activeTool === 'conversion'" />
+          <DatasetFormatConversion v-if="activeTool === 'datasetConversion'" />
           <ModelComparison v-if="activeTool === 'comparison'" />
         </transition>
       </main>
@@ -76,10 +87,11 @@
 <script>
 import FormatConversion from "@/views/Models/FormatConversion.vue";
 import ModelComparison from "@/views/Deployment/ModelComparison.vue";
+import DatasetFormatConversion from "@/views/Deployment/DatasetFormatConversion.vue";
 
 export default {
   name: "DeploymentCenter",
-  components: { FormatConversion, ModelComparison },
+  components: { FormatConversion, DatasetFormatConversion, ModelComparison },
   data() {
     return {
       activeTool: 'conversion'

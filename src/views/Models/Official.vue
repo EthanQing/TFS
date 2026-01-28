@@ -12,7 +12,7 @@
     </div>
 
     <div class="arch-section">
-      <div class="section-title">检测架构</div>
+      <div class="section-title">{{ sectionTitle }}</div>
       <div v-if="archLoading" class="arch-state">
         <i class="el-icon-loading"></i>
         <span>加载架构中...</span>
@@ -142,6 +142,10 @@ export default {
     selectedProject: {
       type: Object,
       default: null
+    },
+    taskType: {
+      type: String,
+      default: 'detection'
     }
   },
   data() {
@@ -178,13 +182,22 @@ export default {
         YOLOv8s: { accuracy: 43.5, speedMs: 10.8 },
         YOLOv8m: { accuracy: 47.6, speedMs: 15.9 },
         YOLOv8l: { accuracy: 50.4, speedMs: 22.5 },
-        YOLOv8x: { accuracy: 52.1, speedMs: 29.8 }
+        YOLOv8x: { accuracy: 52.1, speedMs: 29.8 },
+        // Add simple segmentation metrics key placeholders if needed
+        "YOLOv8n-seg": { accuracy: 30.5, speedMs: 8.1 },
+        "YOLOv8s-seg": { accuracy: 36.8, speedMs: 12.3 },
+        "YOLOv8m-seg": { accuracy: 40.2, speedMs: 20.4 },
+        "YOLOv8l-seg": { accuracy: 42.1, speedMs: 35.6 },
+        "YOLOv8x-seg": { accuracy: 43.4, speedMs: 48.2 },
       }
     };
   },
   computed: {
     datasetLabel() {
       return this.selectedProject?.dataset?.dataset_name || "No dataset linked";
+    },
+    sectionTitle() {
+      return this.taskType === 'segmentation' ? '分割架构' : '检测架构';
     },
     archLoading() {
       return !!this.ref?.loading?.architectures;
@@ -197,17 +210,32 @@ export default {
 
       const detected = list.filter((it) => {
         const tt = String(it?.task_type || "").toLowerCase();
-        return !tt || tt === "detection";
+        // Backend usually returns 'detection' or 'segmentation'
+        // If empty, assume detection for BC
+        const target = this.taskType === 'segmentation' ? 'segmentation' : 'detection';
+        return tt === target || (!tt && target === 'detection');
       });
 
       const fallbackFamily = "YOLOv8";
-      const fallbackItems = [
-        { model_variant: "yolov8n" },
-        { model_variant: "yolov8s" },
-        { model_variant: "yolov8m" },
-        { model_variant: "yolov8l" },
-        { model_variant: "yolov8x" }
-      ];
+      // Different fallbacks based on taskType if list is empty
+      let fallbackItems = [];
+      if (this.taskType === 'segmentation') {
+         fallbackItems = [
+            { model_variant: "yolov8n-seg" },
+            { model_variant: "yolov8s-seg" },
+            { model_variant: "yolov8m-seg" },
+            { model_variant: "yolov8l-seg" },
+            { model_variant: "yolov8x-seg" }
+        ];
+      } else {
+        fallbackItems = [
+            { model_variant: "yolov8n" },
+            { model_variant: "yolov8s" },
+            { model_variant: "yolov8m" },
+            { model_variant: "yolov8l" },
+            { model_variant: "yolov8x" }
+        ];
+      }
 
       const items = detected.length ? detected : fallbackItems;
       const map = {};
@@ -322,6 +350,14 @@ export default {
         this.ensureDefaultModel();
       },
       immediate: true
+    },
+    taskType(newType) {
+      if (newType) {
+          // Clear current selection and re-select default
+          this.selectedModel = null;
+          this.selectedArchitectureId = null;
+          this.ensureDefaultModel();
+      }
     },
     selectedModel(newModel) {
       if (newModel) {
