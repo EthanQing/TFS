@@ -41,6 +41,17 @@
             ></el-option>
           </el-select>
         </div>
+
+        <div class="filter-group">
+          <el-select v-model="formatValue" placeholder="全部格式" class="filter-select">
+             <el-option
+              v-for="item in formatOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            ></el-option>
+          </el-select>
+        </div>
       </div>
       
       <div class="toolbar-right">
@@ -75,6 +86,7 @@
         >
           <div class="card-media" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
             <span class="card-type-badge">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
+            <span v-if="d.format === 'coco'" class="card-format-badge coco">COCO</span>
             <div class="card-overlay"></div>
           </div>
           <div class="card-body">
@@ -198,7 +210,13 @@ export default {
         { value: "segmentation", label: "图像分割" },
         { value: "classification", label: "图像分类" },
       ],
+      formatOptions: [
+        { value: "all", label: "全部格式" },
+        { value: "yolo", label: "YOLO" },
+        { value: "coco", label: "COCO" },
+      ],
       value: "all",
+      formatValue: "all",
       activeFilter: null,
       datasets: [],
       originalDatasets: [],
@@ -233,6 +251,9 @@ export default {
       }
       if (this.value !== 'all' && this.value) {
         result = result.filter(dataset => dataset.dataset_type === this.value);
+      }
+      if (this.formatValue !== 'all' && this.formatValue) {
+        result = result.filter(dataset => (dataset.format || 'yolo') === this.formatValue);
       }
       if (this.activeFilter === 'category') {
         result.sort((a, b) => (b.num_classes || 0) - (a.num_classes || 0));
@@ -600,6 +621,24 @@ export default {
   color: var(--color-primary-dark);
   box-shadow: var(--shadow-sm);
   z-index: 2;
+}
+
+.card-format-badge {
+  position: absolute;
+  top: 12px;
+  left: auto;
+  right: 50px; /* Positioned to the left of the 'more' button */
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 700;
+  box-shadow: var(--shadow-sm);
+  z-index: 2;
+}
+
+.card-format-badge.coco {
+    background: #FFC107; /* Amber */
+    color: #3e2723;
 }
 
 .card-more {

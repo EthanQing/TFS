@@ -15,11 +15,17 @@ function toErrorMessage(data, res) {
   return `请求失败: ${res?.status || "unknown"}`;
 }
 
-export async function createDatasetConversion({ file } = {}) {
+export async function createDatasetConversion({ file, targetFormat } = {}) {
   if (!file) throw new Error("缺少zip文件");
   const fd = new FormData();
   fd.append("file", file, file.name || "dataset.zip");
-  const res = await fetch(`${API_BASE}/api/v2/dataset-conversions`, {
+
+  let url = `${API_BASE}/api/v2/dataset-conversions`;
+  if (targetFormat) {
+    url += `?target_format=${encodeURIComponent(targetFormat)}`;
+  }
+
+  const res = await fetch(url, {
     method: "POST",
     body: fd,
   });

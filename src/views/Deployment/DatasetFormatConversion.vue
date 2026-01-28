@@ -35,6 +35,14 @@
         </div>
 
         <div class="config-form">
+          <div class="form-row">
+            <label class="form-label">目标格式</label>
+            <el-radio-group v-model="targetFormat" size="small" :disabled="converting || uploadingDataset">
+              <el-radio label="yolo" border>YOLO (TXT)</el-radio>
+              <el-radio label="coco" border>COCO (JSON)</el-radio>
+            </el-radio-group>
+          </div>
+
           <div class="form-row upload-row">
             <label class="form-label">压缩包文件</label>
             <el-upload
@@ -140,7 +148,9 @@
 
           <div class="form-row">
             <label class="form-label">任务类型</label>
-            <el-tag type="info" effect="plain" size="small">目标检测 (YOLO)</el-tag>
+            <el-tag type="info" effect="plain" size="small">
+              {{ targetFormat === "coco" ? "通用数据 (COCO)" : "目标检测 (YOLO)" }}
+            </el-tag>
           </div>
 
           <div class="form-row action-row">
@@ -179,6 +189,7 @@ export default {
   data() {
     return {
       uploadFile: null,
+      targetFormat: "yolo",
       converting: false,
       uploadingDataset: false,
       datasetName: "",
@@ -227,6 +238,7 @@ export default {
         queued: "排队",
         extracting: "解压资源",
         converting_labels: "转换标注格式",
+        converting_coco: "生成 COCO JSON",
         copying_images: "迁移图片资源",
         writing_data_yaml: "生成配置 (data.yaml)",
         zipping: "打包结果",
@@ -272,6 +284,7 @@ export default {
       this.cancelUpload();
       this.uploadFile = null;
       this.datasetName = "";
+      this.targetFormat = "yolo";
       this.jobId = null;
       this.progress = 0;
       this.stage = "";
@@ -296,9 +309,9 @@ export default {
       }
       this.converting = true;
       this.uploadProgress = 0;
-      this.logs = ["正在初始化任务...", "上传源文件: " + this.uploadFile.name];
+      this.logs = ["正在初始化任务...", "上传源文件: " + this.uploadFile.name, "目标格式: " + this.targetFormat.toUpperCase()];
       try {
-        const job = await createDatasetConversion({ file: this.uploadFile });
+        const job = await createDatasetConversion({ file: this.uploadFile, targetFormat: this.targetFormat });
         this.jobId = job && job.job_id;
         this.status = job && job.status;
         this.stage = job && job.stage;
