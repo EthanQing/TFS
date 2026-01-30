@@ -103,11 +103,20 @@
               >开始</el-button>
               <el-button
                 v-else-if="model.status === 'queued'"
-                type="primary"
+                type="warning"
                 size="mini"
-                disabled
+                :loading="stoppingJobs && stoppingJobs[model.job_id]"
                 class="action-btn"
-              >队列中</el-button>
+                @click.stop="stopJob(model.job_id)"
+              >取消排队</el-button>
+              <el-button
+                v-else-if="model.status === 'running'"
+                type="danger"
+                size="mini"
+                :loading="stoppingJobs && stoppingJobs[model.job_id]"
+                class="action-btn"
+                @click.stop="stopJob(model.job_id)"
+              >停止</el-button>
               <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
                 <span class="more-btn">
                   <i class="el-icon-more"></i>
@@ -192,7 +201,8 @@ import {
   DeleteTrainingJob,
   FetchTrainingJobsStatus,
   ExportModel,
-  FetchTrainingJobModelSize
+  FetchTrainingJobModelSize,
+  CancelTrainingJob
 } from '@/api/training';
 import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
@@ -210,6 +220,7 @@ export default {
       dialogVisible: false,
       dialogWidth: '860px',
       startingJobs: {},
+      stoppingJobs: {},
       wsMap: {},
       wsLimit: 5,
       statusTimer: null,
@@ -332,6 +343,22 @@ export default {
         this.$message.error('启动训练失败。');
       } finally {
         this.$set(this.startingJobs, jobId, false);
+      }
+    },
+    async stopJob(jobId) {
+      this.$set(this.stoppingJobs, jobId, true);
+      try {
+        await this.$confirm('确定要停止/取消此任务吗？', '确认', { type: 'warning' });
+        const updated = await CancelTrainingJob(jobId);
+        const idx = this.projectModels.findIndex(m => m.job_id === jobId);
+        if (idx >= 0 && updated?.status) this.$set(this.projectModels[idx], 'status', updated.status);
+        this.$message.success('已发送停止请求。');
+      } catch (e) {
+        if (e !== 'cancel' && e !== 'close') {
+          this.$message.error('操作失败: ' + (e.message || e));
+        }
+      } finally {
+        this.$set(this.stoppingJobs, jobId, false);
       }
     },
     handlePDCommand(command, jobId) {

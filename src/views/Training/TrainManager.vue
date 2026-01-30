@@ -15,6 +15,9 @@
           <span>进度</span>
           <strong>{{ progress ? progress + '%' : '-' }}</strong>
         </div>
+        <div v-if="canStop" class="tm-stat action-stat">
+           <el-button type="danger" size="small" icon="el-icon-video-pause" @click="handleStop" :loading="stopping">停止训练</el-button>
+        </div>
       </div>
     </section>
 
@@ -81,7 +84,8 @@
 import chart from "@/components/Chart/TrainingChart.vue";
 import {
   FetchTrainingJobsStatus,
-  FetchTrainingJobsMetrics_detailed
+  FetchTrainingJobsMetrics_detailed,
+  CancelTrainingJob
 } from "@/api/training";
 
 export default {
@@ -106,7 +110,8 @@ export default {
       lastMetricsSignature: "",
       terminalMode: false,
       terminalPolls: 0,
-      maxTerminalPolls: 3
+      maxTerminalPolls: 3,
+      stopping: false
     };
   },
   computed: {
@@ -146,6 +151,10 @@ export default {
       const c = Number(this.currentEpoch) || 0;
       if (!t || c <= 0) return 0;
       return Math.max(0, Math.min(100, (c / t) * 100));
+    },
+    canStop() {
+      const s = String(this.status || "").toLowerCase();
+      return s === "running" || s === "queued";
     },
     metricGroups() {
       const data = (this.metrics && this.metrics.metrics) || {};
@@ -398,6 +407,27 @@ export default {
     cleanupAllPolling() {
       this.cleanupStatusPolling();
       this.stopMetricsPolling();
+    },
+    async handleStop() {
+      try {
+        await this.$confirm('确定要停止当前训练任务吗？', '确认停止', {
+          confirmButtonText: '停止',
+          cancelButtonText: '取消',
+          type: 'warning'
+        });
+        
+        this.stopping = true;
+        await CancelTrainingJob(this.jobId);
+        this.$message.success('已发送停止请求');
+        // Refresh status immediately
+        this.fetchStatus();
+      } catch (e) {
+        if (e !== 'cancel' && e !== 'close') {
+          this.$message.error('停止失败: ' + (e.message || e));
+        }
+      } finally {
+        this.stopping = false;
+      }
     }
   },
   beforeDestroy() {
@@ -486,6 +516,13 @@ export default {
   font-size: 18px;
   font-weight: 700;
   color: var(--text-main);
+}
+
+.tm-stat.action-stat {
+    border: none;
+    background: transparent;
+    padding: 0;
+    justify-content: center;
 }
 
 .tm-progress-card {

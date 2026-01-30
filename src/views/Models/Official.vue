@@ -62,6 +62,51 @@
         <span class="chevron" :class="{ open: isRotated }"></span>
       </button>
       <div v-show="isRotated" class="advanced-grid">
+        <!-- Resume Training Section -->
+        <div class="field-row wide">
+          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
+              <div>
+                  <div class="field-label">断点续训 (Resume Training)</div>
+                  <div class="field-hint" style="font-size: 11px; color:#999;">从之前的检查点恢复训练状态，包括权重和Epoch</div>
+              </div>
+              <el-switch v-model="resumeTraining"></el-switch>
+           </div>
+        </div>
+
+        <div class="field-row wide" v-if="resumeTraining">
+            <div class="field-label" style="margin-bottom: 6px;">选择续训任务</div>
+             <el-select v-model="resumeJobId" placeholder="选择之前的训练任务" :loading="jobsLoading" style="width: 100%" size="small">
+                <el-option
+                    v-for="job in projectJobs"
+                    :key="job.job_id"
+                    :label="getJobLabel(job)"
+                    :value="job.job_id">
+                     <span style="float: left">{{ job.job_name }}</span>
+                     <span style="float: right; color: #8492a6; font-size: 12px">Epoch {{ job.current_epoch || 0 }}</span>
+                </el-option>
+             </el-select>
+             
+             <!-- Savings Calculation -->
+             <div v-if="selectedResumeJob" class="resume-info" style="margin-top: 10px; background: rgba(79, 99, 199, 0.08); padding: 10px; border-radius: 8px; display: flex; gap: 16px;">
+                <div class="resume-stat" style="display: flex; flex-direction: column;">
+                    <span style="font-size: 10px; color: #6a7482; text-transform: uppercase;">已完成轮次</span>
+                    <strong style="color: #2b3a67;">{{ selectedResumeJob.current_epoch || 0 }}</strong>
+                </div>
+                 <div class="resume-stat" style="display: flex; flex-direction: column;">
+                    <span style="font-size: 10px; color: #6a7482; text-transform: uppercase;">预计节省</span>
+                    <strong style="color: #059669;">{{ estimateTimeSaved(selectedResumeJob) }}</strong>
+                </div>
+             </div>
+        </div>
+
+        <!-- Save Period -->
+        <div class="field-row">
+          <div class="field-label">保存周期 (Save Period)</div>
+          <el-input v-model="savePeriod" size="small" placeholder="-1" class="field-input">
+             <template slot="append">Epochs</template>
+          </el-input>
+          <div style="font-size: 10px; color: #999; margin-top: 4px;">每隔X轮保存一次 (-1禁用)</div>
+        </div>
         <div class="field-row">
           <div class="field-label">预训练权重</div>
           <el-switch v-model="pretrainedEnabled"></el-switch>
@@ -134,7 +179,7 @@
 
 <script>
 import { referenceStore, loadArchitectures } from "@/store/referenceStore";
-import { uploadPretrainedWeights } from "@/api/training";
+import { uploadPretrainedWeights, fetchTrainingJobs } from "@/api/training";
 
 export default {
   name: "Official",
@@ -189,7 +234,12 @@ export default {
         "YOLOv8m-seg": { accuracy: 40.2, speedMs: 20.4 },
         "YOLOv8l-seg": { accuracy: 42.1, speedMs: 35.6 },
         "YOLOv8x-seg": { accuracy: 43.4, speedMs: 48.2 },
-      }
+      },
+      resumeTraining: false,
+      resumeJobId: "",
+      savePeriod: "-1",
+      projectJobs: [],
+      jobsLoading: false,
     };
   },
   computed: {
@@ -342,6 +392,10 @@ export default {
       const visMax = 90;
       const pct = visMin + normalized * (visMax - visMin);
       return Math.max(0, Math.min(100, pct));
+    },
+    selectedResumeJob() {
+      if (!this.resumeJobId || !this.projectJobs) return null;
+      return this.projectJobs.find(j => j.job_id === this.resumeJobId);
     }
   },
   watch: {
@@ -395,9 +449,64 @@ export default {
         this.pretrainUploadError = "";
       }
       this.emitConfigChange();
+    },
+    selectedProject: {
+      immediate: true,
+      handler(val) {
+        if (val && val.project_id) {
+            this.loadProjectJobs(val.project_id);
+            // Reset resume state
+            this.resumeTraining = false;
+            this.resumeJobId = "";
+            this.savePeriod = "-1";
+        }
+      }
+    },
+    resumeTraining() {
+        if (!this.resumeTraining) {
+            this.resumeJobId = "";
+        }
+        this.emitConfigChange();
+    },
+    resumeJobId() {
+        this.emitConfigChange();
+    },
+    savePeriod() {
+        this.emitConfigChange();
     }
   },
   methods: {
+    async loadProjectJobs(projectId) {
+        this.jobsLoading = true;
+        try {
+            const all = await fetchTrainingJobs();
+            // Filter by project and only show jobs that have some progress
+            this.projectJobs = all.filter(j => 
+                String(j.project_id) === String(projectId) && 
+                ['completed', 'failed', 'cancelled'].includes(j.status)
+            ).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
+        } catch(e) {
+            console.error("Failed to load project jobs", e);
+        } finally {
+            this.jobsLoading = false;
+        }
+    },
+    getJobLabel(job) {
+        return `${job.job_name} (${job.status})`;
+    },
+    estimateTimeSaved(job) {
+        if (!job) return "-";
+        // Simple estimation: if we assume 1 epoch takes X time, we saved Epochs * X.
+        // Since we don't know X easily without digging into logs, we can just show Epochs.
+        // Or if 'duration' is available in job metrics.
+        // For now, let's just return a placeholder or based on epochs.
+        const epochs = job.current_epoch || 0;
+        if (epochs <= 0) return "0 mins";
+        
+        // Rough estimate if we assume 1 min per epoch for typical specialized datasets (mock logic)
+        // Better: just say "Skipped X epochs"
+        return `~${epochs} epochs time`;
+    },
     reloadArchitectures() {
       loadArchitectures({ force: true });
     },
@@ -457,8 +566,13 @@ export default {
         device: this.getDeviceValue(),
         optimizer: String(this.optimizer || "auto").toLowerCase(),
         use_pretrained: this.pretrainedEnabled,
+        optimizer: String(this.optimizer || "auto").toLowerCase(),
+        use_pretrained: this.pretrainedEnabled,
         pretrained_model_path: this.pretrainedEnabled ? this.pretrainedPath : "",
-        dataset_name: this.selectedProject?.dataset?.dataset_name || ""
+        dataset_name: this.selectedProject?.dataset?.dataset_name || "",
+        resume_training: this.resumeTraining,
+        resume_job_id: this.resumeJobId,
+        save_period: parseInt(this.savePeriod, 10)
       };
 
       this.$emit("config-changed", configData);
