@@ -68,19 +68,62 @@ export default {
     datasetId: {
       type: [String, Number],
       required: true
+    },
+    // 支持外部状态管理
+    externalFile: {
+      type: [File, Object],
+      default: null
+    },
+    externalUploading: {
+      type: Boolean,
+      default: null
+    },
+    externalProgress: {
+      type: Number,
+      default: null
     }
   },
   data() {
     return {
-      selectedFile: null,
+      internalFile: null,
       isDragover: false,
       errorMessage: "",
-      isUploading: false,
-      progress: 0,
+      internalUploading: false,
+      internalProgress: 0,
       uploadStage: "idle", // idle | uploading | processing
       cancelUploadRequest: null,
       uploadSuccess: false,
     };
+  },
+  computed: {
+    // 优先使用外部状态，否则使用内部状态
+    selectedFile: {
+      get() {
+        return this.externalFile !== null ? this.externalFile : this.internalFile;
+      },
+      set(val) {
+        this.internalFile = val;
+        this.$emit('update:externalFile', val);
+      }
+    },
+    isUploading: {
+      get() {
+        return this.externalUploading !== null ? this.externalUploading : this.internalUploading;
+      },
+      set(val) {
+        this.internalUploading = val;
+        this.$emit('update:externalUploading', val);
+      }
+    },
+    progress: {
+      get() {
+        return this.externalProgress !== null ? this.externalProgress : this.internalProgress;
+      },
+      set(val) {
+        this.internalProgress = val;
+        this.$emit('update:externalProgress', val);
+      }
+    }
   },
   methods: {
     // 处理文件选择

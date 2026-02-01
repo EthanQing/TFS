@@ -2,7 +2,9 @@
   <div id="app">
      <navigation></navigation>
       <div class="main-content">
-        <router-view></router-view>
+        <keep-alive include="DataDetail">
+        <router-view ></router-view>
+        </keep-alive>
       </div>
       
   </div>
@@ -14,7 +16,6 @@ import Navigation from './components/Navigation/TopNav.vue';
 export default {
   name: 'App',
   components: {
-    // HelloWorld
     Navigation
   }
 }

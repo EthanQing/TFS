@@ -3,7 +3,6 @@
     <div class="panel-top">
       <div>
         <div class="panel-title">官方模型目录</div>
-        <div class="panel-subtitle">从 Ultralytics 预训练模型开始。</div>
       </div>
       <div class="dataset-chip" v-if="selectedProject">
         <span class="label">数据集</span>
@@ -66,13 +65,6 @@
 
         <!-- Save Period -->
         <div class="field-row">
-          <div class="field-label">保存周期 (Save Period)</div>
-          <el-input v-model="savePeriod" size="small" placeholder="-1" class="field-input">
-             <template slot="append">Epochs</template>
-          </el-input>
-          <div style="font-size: 10px; color: #999; margin-top: 4px;">每隔X轮保存一次 (-1禁用)</div>
-        </div>
-        <div class="field-row">
           <div class="field-label">预训练权重</div>
           <el-switch v-model="pretrainedEnabled"></el-switch>
         </div>
@@ -103,6 +95,15 @@
           </div>
           <div v-if="pretrainUploadError" class="upload-error">{{ pretrainUploadError }}</div>
         </div>
+        <div class="field-row">
+          <div class="field-label">保存周期 (每隔X轮保存一次 【-1禁用】)</div>
+          <el-input v-model="savePeriod" size="small" placeholder="-1" class="field-input">
+             <template slot="append">Epochs</template>
+          </el-input>
+          <div style="font-size: 10px; color: #999; margin-top: 4px;"></div>
+        </div>
+
+        
         <div class="field-row">
           <div class="field-label">训练轮次</div>
           <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>

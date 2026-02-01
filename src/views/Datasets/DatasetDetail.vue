@@ -48,6 +48,9 @@
           <div class="empty-action">
             <UploadZip
               :dataset-id="datasetId"
+              :external-file.sync="zipUploadFile"
+              :external-uploading.sync="zipUploading"
+              :external-progress.sync="zipUploadProgress"
               @upload-success="handleUploadSuccess"
               @upload-fail="handleUploadFail"
             ></UploadZip>
@@ -200,7 +203,8 @@
     <!-- Upload Dialog -->
     <el-dialog
       title="添加图片和标注"
-      :visible.sync="showUploadDialog"
+      :visible="showUploadDialog"
+      @close="handleDialogClose"
       width="520px"
       :close-on-click-modal="false"
       :close-on-press-escape="!isUploading"
@@ -412,6 +416,10 @@ export default {
             uploadMode: 'files',
             pendingZipFile: null,
             zipDragOver: false,
+            // UploadZip组件状态（用于keep-alive状态保持）
+            zipUploadFile: null,
+            zipUploading: false,
+            zipUploadProgress: 0,
         }
     },
     created() {
@@ -420,6 +428,15 @@ export default {
     mounted() {
         document.addEventListener('keydown', this.handleKeydown);
         this.debouncedSearch = this.debounce(() => {}, 300);
+    },
+    activated() {
+        // 从缓存中激活时，如果正在上传则保持对话框打开
+        if (this.isUploading && !this.showUploadDialog) {
+            this.showUploadDialog = true;
+        }
+    },
+    deactivated() {
+        // 组件被缓存时，不做任何清理，保持上传状态
     },
     beforeDestroy() {
         document.removeEventListener('keydown', this.handleKeydown);
@@ -720,7 +737,14 @@ export default {
             this.uploadStage = 'idle';
             this.cancelUploadRequest = null;
         },
-        closeUploadDialog() {
+        handleDialogClose() {
+            // 如果正在上传，阻止关闭
+            if (this.isUploading) {
+                return;
+            }
+            this.closeUploadDialog();
+        },
+                closeUploadDialog() {
             this.showUploadDialog = false;
             this.pendingImages = [];
             this.pendingLabels = [];

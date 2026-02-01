@@ -35,16 +35,16 @@
           >
             目标检测
           </button>
-          <button 
+          <!-- <button 
             type="button" 
             class="tab-btn" 
             :class="{ active: currentTab === 'segmentation' }"
             @click="currentTab = 'segmentation'"
           >
             图像分割
-          </button>
+          </button> -->
         </div>
-        <div class="tab-note" v-if="currentTab === 'detection'">Ultralytics 检测架构</div>
+        <div class="tab-note" v-if="currentTab === 'detection'"></div>
         <div class="tab-note" v-else>Ultralytics 分割架构</div>
       </div>
 
