@@ -117,6 +117,14 @@
                 class="action-btn"
                 @click.stop="stopJob(model.job_id)"
               >停止</el-button>
+              <el-button
+                v-else-if="['cancelled', 'failed', 'stopped'].includes((model.status || '').toLowerCase())"
+                type="primary"
+                size="mini"
+                :loading="startingJobs && startingJobs[model.job_id]"
+                class="action-btn"
+                @click.stop="resumeJob(model.job_id)"
+              >继续</el-button>
               <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
                 <span class="more-btn">
                   <i class="el-icon-more"></i>
@@ -202,7 +210,8 @@ import {
   FetchTrainingJobsStatus,
   ExportModel,
   FetchTrainingJobModelSize,
-  CancelTrainingJob
+  CancelTrainingJob,
+  ResumeTrainingJob
 } from '@/api/training';
 import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
@@ -359,6 +368,23 @@ export default {
         }
       } finally {
         this.$set(this.stoppingJobs, jobId, false);
+      }
+    },
+    async resumeJob(jobId) {
+      if (!jobId) return;
+      this.$set(this.startingJobs, jobId, true);
+      try {
+        await this.$confirm('确定要继续之前的训练吗？这将从上次保存的检查点继续训练。', '确认继续', { type: 'info' });
+        const updated = await ResumeTrainingJob(jobId);
+        const idx = this.projectModels.findIndex(m => m.job_id === jobId);
+        if (idx >= 0 && updated?.status) this.$set(this.projectModels[idx], 'status', updated.status);
+        this.$message.success('已恢复训练任务，状态更新为 Queued。');
+      } catch (e) {
+        if (e !== 'cancel' && e !== 'close') {
+          this.$message.error('恢复训练失败: ' + (e.message || e));
+        }
+      } finally {
+         this.$set(this.startingJobs, jobId, false);
       }
     },
     handlePDCommand(command, jobId) {

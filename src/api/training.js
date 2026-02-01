@@ -464,6 +464,23 @@ export async function CancelTrainingJob(jobId) {
   }
 }
 
+// ResumeTrainingJob 恢复训练任务接口（v2: POST run/resume）
+export async function ResumeTrainingJob(jobId) {
+  try {
+    const id = normStr(jobId);
+    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" }
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return await mapTrainingRunToJob(data);
+  } catch (error) {
+    console.error("恢复训练任务失败:", error);
+    throw error;
+  }
+}
+
 // FetchTrainingJobParameters 获取训练任务参数接口（v2: GET run -> parameters）
 export async function FetchTrainingJobParameters(jobId) {
   try {

@@ -62,42 +62,7 @@
         <span class="chevron" :class="{ open: isRotated }"></span>
       </button>
       <div v-show="isRotated" class="advanced-grid">
-        <!-- Resume Training Section -->
-        <div class="field-row wide">
-          <div style="display: flex; align-items: center; justify-content: space-between; width: 100%;">
-              <div>
-                  <div class="field-label">断点续训 (Resume Training)</div>
-                  <div class="field-hint" style="font-size: 11px; color:#999;">从之前的检查点恢复训练状态，包括权重和Epoch</div>
-              </div>
-              <el-switch v-model="resumeTraining"></el-switch>
-           </div>
-        </div>
 
-        <div class="field-row wide" v-if="resumeTraining">
-            <div class="field-label" style="margin-bottom: 6px;">选择续训任务</div>
-             <el-select v-model="resumeJobId" placeholder="选择之前的训练任务" :loading="jobsLoading" style="width: 100%" size="small">
-                <el-option
-                    v-for="job in projectJobs"
-                    :key="job.job_id"
-                    :label="getJobLabel(job)"
-                    :value="job.job_id">
-                     <span style="float: left">{{ job.job_name }}</span>
-                     <span style="float: right; color: #8492a6; font-size: 12px">Epoch {{ job.current_epoch || 0 }}</span>
-                </el-option>
-             </el-select>
-             
-             <!-- Savings Calculation -->
-             <div v-if="selectedResumeJob" class="resume-info" style="margin-top: 10px; background: rgba(79, 99, 199, 0.08); padding: 10px; border-radius: 8px; display: flex; gap: 16px;">
-                <div class="resume-stat" style="display: flex; flex-direction: column;">
-                    <span style="font-size: 10px; color: #6a7482; text-transform: uppercase;">已完成轮次</span>
-                    <strong style="color: #2b3a67;">{{ selectedResumeJob.current_epoch || 0 }}</strong>
-                </div>
-                 <div class="resume-stat" style="display: flex; flex-direction: column;">
-                    <span style="font-size: 10px; color: #6a7482; text-transform: uppercase;">预计节省</span>
-                    <strong style="color: #059669;">{{ estimateTimeSaved(selectedResumeJob) }}</strong>
-                </div>
-             </div>
-        </div>
 
         <!-- Save Period -->
         <div class="field-row">
@@ -179,7 +144,7 @@
 
 <script>
 import { referenceStore, loadArchitectures } from "@/store/referenceStore";
-import { uploadPretrainedWeights, fetchTrainingJobs } from "@/api/training";
+import { uploadPretrainedWeights } from "@/api/training";
 
 export default {
   name: "Official",
@@ -234,12 +199,12 @@ export default {
         "YOLOv8m-seg": { accuracy: 40.2, speedMs: 20.4 },
         "YOLOv8l-seg": { accuracy: 42.1, speedMs: 35.6 },
         "YOLOv8x-seg": { accuracy: 43.4, speedMs: 48.2 },
+        // RTMDet metrics (approximate placeholders)
+        rtmdet_s: { accuracy: 44.6, speedMs: 12.1 },
+        rtmdet_m: { accuracy: 49.4, speedMs: 19.5 },
+        rtmdet_l: { accuracy: 51.5, speedMs: 32.4 },
       },
-      resumeTraining: false,
-      resumeJobId: "",
       savePeriod: "-1",
-      projectJobs: [],
-      jobsLoading: false,
     };
   },
   computed: {
@@ -283,7 +248,11 @@ export default {
             { model_variant: "yolov8s" },
             { model_variant: "yolov8m" },
             { model_variant: "yolov8l" },
-            { model_variant: "yolov8x" }
+            { model_variant: "yolov8x" },
+            // MMDet RTMDet Fallbacks
+            { model_variant: "rtmdet_s", family: "MMDetection" },
+            { model_variant: "rtmdet_m", family: "MMDetection" },
+            { model_variant: "rtmdet_l", family: "MMDetection" }
         ];
       }
 
@@ -327,6 +296,7 @@ export default {
       const m = this.formatVariantKey(this.selectedModel);
       if (/^YOLO11/.test(m)) return "YOLO11";
       if (/^YOLOv8/.test(m)) return "YOLOv8";
+      if (/^rtmdet/.test(m)) return "rtmdet";
       return null;
     },
     seriesModelEntries() {
@@ -392,10 +362,6 @@ export default {
       const visMax = 90;
       const pct = visMin + normalized * (visMax - visMin);
       return Math.max(0, Math.min(100, pct));
-    },
-    selectedResumeJob() {
-      if (!this.resumeJobId || !this.projectJobs) return null;
-      return this.projectJobs.find(j => j.job_id === this.resumeJobId);
     }
   },
   watch: {
@@ -450,63 +416,11 @@ export default {
       }
       this.emitConfigChange();
     },
-    selectedProject: {
-      immediate: true,
-      handler(val) {
-        if (val && val.project_id) {
-            this.loadProjectJobs(val.project_id);
-            // Reset resume state
-            this.resumeTraining = false;
-            this.resumeJobId = "";
-            this.savePeriod = "-1";
-        }
-      }
-    },
-    resumeTraining() {
-        if (!this.resumeTraining) {
-            this.resumeJobId = "";
-        }
-        this.emitConfigChange();
-    },
-    resumeJobId() {
-        this.emitConfigChange();
-    },
     savePeriod() {
         this.emitConfigChange();
     }
   },
   methods: {
-    async loadProjectJobs(projectId) {
-        this.jobsLoading = true;
-        try {
-            const all = await fetchTrainingJobs();
-            // Filter by project and only show jobs that have some progress
-            this.projectJobs = all.filter(j => 
-                String(j.project_id) === String(projectId) && 
-                ['completed', 'failed', 'cancelled'].includes(j.status)
-            ).sort((a,b) => new Date(b.created_at) - new Date(a.created_at));
-        } catch(e) {
-            console.error("Failed to load project jobs", e);
-        } finally {
-            this.jobsLoading = false;
-        }
-    },
-    getJobLabel(job) {
-        return `${job.job_name} (${job.status})`;
-    },
-    estimateTimeSaved(job) {
-        if (!job) return "-";
-        // Simple estimation: if we assume 1 epoch takes X time, we saved Epochs * X.
-        // Since we don't know X easily without digging into logs, we can just show Epochs.
-        // Or if 'duration' is available in job metrics.
-        // For now, let's just return a placeholder or based on epochs.
-        const epochs = job.current_epoch || 0;
-        if (epochs <= 0) return "0 mins";
-        
-        // Rough estimate if we assume 1 min per epoch for typical specialized datasets (mock logic)
-        // Better: just say "Skipped X epochs"
-        return `~${epochs} epochs time`;
-    },
     reloadArchitectures() {
       loadArchitectures({ force: true });
     },
@@ -548,15 +462,32 @@ export default {
     formatVariantKey(v) {
       const s = String(v || "").trim();
       if (!s) return "";
+      // If it looks like RTMDet, keep casing or normalize nicely
+      if (/^rtmdet/i.test(s)) return s.toLowerCase(); // keep 'rtmdet_s' key style
       return s.replace(/^yolo/i, "YOLO");
     },
     formatVariant(v) {
-      return this.formatVariantKey(v);
+      const k = this.formatVariantKey(v);
+      if (k.startsWith("rtmdet")) {
+         // Display as RTMDet-s etc
+         return k.replace("rtmdet_", "RTMDet-");
+      }
+      return k;
     },
     showAdvancedModelConfiguration() {
       this.isRotated = !this.isRotated;
     },
     emitConfigChange() {
+      const variant = String(this.selectedModel || "").toLowerCase();
+      let configPath = "";
+      
+      // Simple mapping for standard RTMDet variants
+      if (variant.startsWith("rtmdet")) {
+         if (variant === "rtmdet_s") configPath = "configs/rtmdet/rtmdet_s_8xb32-300e_coco.py";
+         else if (variant === "rtmdet_m") configPath = "configs/rtmdet/rtmdet_m_8xb32-300e_coco.py";
+         else if (variant === "rtmdet_l") configPath = "configs/rtmdet/rtmdet_l_8xb32-300e_coco.py";
+      }
+
       const configData = {
         epochs: parseInt(this.epochs, 10) || 100,
         img_size: parseInt(this.imgSize, 10) || 640,
@@ -566,13 +497,10 @@ export default {
         device: this.getDeviceValue(),
         optimizer: String(this.optimizer || "auto").toLowerCase(),
         use_pretrained: this.pretrainedEnabled,
-        optimizer: String(this.optimizer || "auto").toLowerCase(),
-        use_pretrained: this.pretrainedEnabled,
         pretrained_model_path: this.pretrainedEnabled ? this.pretrainedPath : "",
         dataset_name: this.selectedProject?.dataset?.dataset_name || "",
-        resume_training: this.resumeTraining,
-        resume_job_id: this.resumeJobId,
-        save_period: parseInt(this.savePeriod, 10)
+        save_period: parseInt(this.savePeriod, 10),
+        config_path: configPath 
       };
 
       this.$emit("config-changed", configData);
