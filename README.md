@@ -1,4 +1,4 @@
-# ultralytics_hub
+# 训练平台
 
 ## Project setup
 ```

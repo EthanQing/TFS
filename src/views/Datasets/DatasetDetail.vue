@@ -96,7 +96,7 @@
               >
                 <div class="class-info">
                     <span class="dot"></span>
-                    <span class="class-name" v-html="input.trim() ? highlightText(classInfo.class_name, input) : classInfo.class_name"></span>
+                    <span class="class-name" v-html="input.trim() ? highlightText(classInfo, input) : classInfo"></span>
                 </div>
                 <span class="class-count">{{ classInfo.image_count }}</span>
               </li>
@@ -444,6 +444,7 @@ export default {
     computed: {
         classList() {
             if (!this.datasetDetail || !this.datasetDetail.classes) return [];
+            // console.log("11****************************************************", this.datasetDetail.classes);
             return this.datasetDetail.classes;
         },
         imagesList() {
@@ -563,9 +564,11 @@ export default {
             this.input = '';
         },
         highlightText(text, query) {
+            console.log("Highlighting text called with:", text, query);
             if (!query || !query.trim()) return text;
             try {
                 const regex = new RegExp(`(${query.trim()})`, 'gi');
+                console.log("Highlighting text:", text, "with query:", query);
                 return text.replace(regex, '<span class="highlight-text">$1</span>');
             } catch (e) {
                 return text;
@@ -573,6 +576,7 @@ export default {
         },
         selectClass(classInfo) {
             this.selectedClass = classInfo;
+            console.log("Selected class:", classInfo);
             if (classInfo && classInfo.class_id !== undefined) {
                 const filteredImages = this.imagesList.filter(img => {
                     const hasClass = img.classes_in_image &&
@@ -668,7 +672,7 @@ export default {
                     filesLimit: 500,
                 });
                 this.datasetDetail = detail;
-                
+                // console.log(this.datasetDetail);
                 if (detail.dataset_name) this.datasetName = detail.dataset_name;
                 if (detail.dataset_type) this.datasetType = detail.dataset_type;
                 if (detail.num_classes !== undefined) this.numClasses = detail.num_classes;

@@ -233,34 +233,7 @@ function parseYamlNames(yamlText) {
     return null;
 }
 
-async function fetchDatasetYamlNames(storagePathOrName, useCache = true) {
-    const ds = normalizeDatasetToken(storagePathOrName);
-    if (!ds) return null;
 
-    // Simple in-memory cache to avoid re-fetching the same yaml many times.
-    if (!fetchDatasetYamlNames._cache) fetchDatasetYamlNames._cache = new Map();
-    const cache = fetchDatasetYamlNames._cache;
-    if (useCache && cache.has(ds)) return cache.get(ds);
-
-    const candidates = ['data.yaml', 'data.yml', 'dataset.yaml', 'dataset.yml'];
-    for (const fname of candidates) {
-        const url = `${API_BASE}/static/datasets/${encodeURIComponent(ds)}/${encodeURIComponent(fname)}`;
-        try {
-            const res = await fetch(url);
-            if (!res.ok) continue;
-            const txt = await safeText(res);
-            const names = parseYamlNames(txt);
-            if (names && names.length) {
-                cache.set(ds, names);
-                return names;
-            }
-        } catch (_) {
-            // ignore and try next
-        }
-    }
-    cache.set(ds, null);
-    return null;
-}
 
 function datasetRelKey(relPath, marker) {
     const p = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
@@ -548,15 +521,16 @@ export async function FetchDatasetPreviewImage(datasetId) {
 }
 
 // FetchDatasetClassNames 从静态 data.yaml 读取类别列表（YOLO 数据集）
-export async function FetchDatasetClassNames(storagePathOrName) {
-    return await fetchDatasetYamlNames(storagePathOrName);
-}
+// export async function FetchDatasetClassNames(storagePathOrName) {
+//     return await fetchDatasetYamlNames(storagePathOrName);
+// }
 
 // FetchDatasetDetail 获取数据集详细信息接口（组合：/detail + /files，适配旧 UI 需要的 images/classes 字段）
 export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionId = null } = {}) {
     try {
         const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/detail`);
         const detail = await safeJson(response);
+        // print the names data type
         if (!response.ok) throw new Error(pickErrorMessage(detail, response));
 
         const ds = detail?.dataset || {};
@@ -704,7 +678,7 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionI
             // 兼容旧字段
             dataset_name: ds?.name,
             dataset_type: ds?.dataset_type,
-            num_classes: yamlNames && yamlNames.length ? yamlNames.length : 0,
+            num_classes: detail?.active_version?.meta?.yolo?.nc,
             total_images: totalImages,
             dataset_size_mb: formatMb(totalSizeMb),
             classes,

@@ -1,5 +1,6 @@
 import Vue from 'vue'
 import App from './App.vue'
+import appConfig from '../app.config.js'
 
 import ElementUI from 'element-ui';
 import 'element-ui/lib/theme-chalk/index.css';
@@ -23,6 +24,9 @@ Vue.prototype.$echarts = echarts
 Vue.config.productionTip = false
 
 Vue.use(ElementUI);
+
+// 设置浏览器标题
+document.title = appConfig.appTitle;
 
 // Preload small reference lists so pages/components don't depend on visit order.
 preloadReferenceData();

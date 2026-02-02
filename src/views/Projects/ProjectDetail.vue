@@ -118,7 +118,7 @@
                 @click.stop="stopJob(model.job_id)"
               >停止</el-button>
               <el-button
-                v-else-if="['cancelled', 'failed', 'stopped'].includes((model.status || '').toLowerCase())"
+                v-else-if="['cancelled'].includes((model.status || '').toLowerCase())"
                 type="primary"
                 size="mini"
                 :loading="startingJobs && startingJobs[model.job_id]"
