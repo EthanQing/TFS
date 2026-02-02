@@ -255,14 +255,17 @@ export async function fetchDatasets(page = 1, pageSize = 50) {
         const url = `${API_BASE}/api/v2/datasets?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
         const response = await fetch(url);
         const data = await safeJson(response);
+        console.log('Datasets raw data:', data);
         if (!response.ok) throw new Error(pickErrorMessage(data, response));
 
         const list = (data && Array.isArray(data.items) && data.items) || [];
+        // console.log(list,'listtttt');
         return list.map(item => ({
             ...item,
             dataset_name: item.dataset_name || item.name,
             dataset_type: item.dataset_type || item.type,
             dataset_id: item.dataset_id || item.id
+
         }));
     } catch (error) {
         console.error('获取数据集失败:', error);
@@ -529,8 +532,10 @@ export async function FetchDatasetPreviewImage(datasetId) {
 export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionId = null } = {}) {
     try {
         const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/detail`);
+        // console.log('Fetching dataset detail from:', `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/detail`);
         const detail = await safeJson(response);
         // print the names data type
+        // console.log('names data type:', typeof detail?.active_version?.meta?.yolo?.names);
         if (!response.ok) throw new Error(pickErrorMessage(detail, response));
 
         const ds = detail?.dataset || {};
@@ -563,111 +568,16 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionI
             };
         });
 
-        const datasetToken = ds?.storage_path || ds?.name || '';
-        const yamlNames = await fetchDatasetYamlNames(datasetToken, false);
-
+        // const datasetToken = ds?.storage_path || ds?.name || '';
+        // const yamlNames = await fetchDatasetYamlNames(datasetToken, false);
+        // console.log('datasetToken:', datasetToken);
+        // const yamlNames = null; // TODO: implement fetchDatasetYamlNames
         // 优先走 YOLO 数据集（data.yaml + labels/*.txt），返回真实类别列表，并支持按类别筛选图片。
-        let classes = [];
-        if (yamlNames && yamlNames.length) {
-            classes = yamlNames.map((name, i) => ({ class_id: i, class_name: String(name), image_count: 0 }));
-
-            // 拉一批 label 文件并建立映射：imageKey -> labelItem
-            let labelsPage = null;
-            try {
-                labelsPage = await FetchDatasetFiles(datasetId, { page: 1, pageSize, kind: 'label', versionId });
-            } catch (_) {
-                labelsPage = { items: [], meta: { page: 1, page_size: pageSize, total: 0 } };
-            }
-            const labelItems = (labelsPage && Array.isArray(labelsPage.items) && labelsPage.items) || [];
-            const labelByKey = new Map();
-            const labelByPath = new Map();
-            for (const it of labelItems) {
-                const rel = String(it?.path || '').replace(/\\/g, '/');
-                if (!rel) continue;
-                labelByPath.set(rel, it);
-                const key = datasetRelKey(rel, 'labels');
-                if (key) labelByKey.set(key, it);
-            }
-
-            const counts = new Array(classes.length).fill(0);
-            const queue = [...images];
-            const worker = async () => {
-                for (; ;) {
-                    const img = queue.shift();
-                    if (!img) return;
-                    const rel = String(img.image_path || '').replace(/\\/g, '/');
-                    if (!rel) continue;
-
-                    const key = datasetRelKey(rel, 'images');
-                    let labelItem = key ? labelByKey.get(key) : null;
-
-                    // Fallback: try to guess label path by replacing /images/ -> /labels/ and ext -> .txt
-                    if (!labelItem) {
-                        const guessed = rel
-                            .replace(/(^|\/)images\//, '$1labels/')
-                            .replace(/\.[^/.]+$/, '.txt');
-                        labelItem = labelByPath.get(guessed) || null;
-                    }
-
-                    if (!labelItem || !labelItem.url) continue;
-                    try {
-                        const labelUrl = encodeURI(toAbsUrl(labelItem.url));
-                        const res = await fetch(labelUrl);
-                        if (!res.ok) continue;
-                        const txt = await safeText(res);
-                        if (!txt) continue;
-
-                        const set = new Set();
-                        let objCount = 0;
-                        for (const line of txt.split(/\r?\n/)) {
-                            const t = line.trim();
-                            if (!t) continue;
-                            const parts = t.split(/\s+/);
-                            if (!parts.length) continue;
-                            const cid = parseInt(parts[0], 10);
-                            if (!Number.isFinite(cid)) continue;
-                            objCount += 1;
-                            if (cid >= 0 && cid < classes.length) set.add(cid);
-                        }
-
-                        const ids = Array.from(set.values()).sort((a, b) => a - b);
-                        img.objects_count = objCount;
-                        img.classes_in_image = ids;
-                        for (const cid of ids) counts[cid] += 1;
-                    } catch (_) {
-                        // ignore
-                    }
-                }
-            };
-
-            const concurrency = Math.min(8, Math.max(1, queue.length));
-            await Promise.all(Array.from({ length: concurrency }, worker));
-
-            classes = classes.map((c, i) => ({ ...c, image_count: counts[i] || 0 }));
-        } else {
-            // 没有 data.yaml 时（例如分类数据集/自定义结构），退回到“父目录分组”的近似分类，至少保证可筛选。
-            const dirToId = new Map();
-            const ensureDir = (dirName) => {
-                const k = String(dirName || 'root');
-                if (dirToId.has(k)) return dirToId.get(k);
-                const id = classes.length + 1;
-                dirToId.set(k, id);
-                classes.push({ class_id: id, class_name: k, image_count: 0 });
-                return id;
-            };
-
-            for (const img of images) {
-                const dir = parentDirName(img.image_path);
-                const classId = ensureDir(dir);
-                img.classes_in_image = [classId];
-            }
-
-            for (const img of images) {
-                const cid = Array.isArray(img.classes_in_image) ? img.classes_in_image[0] : null;
-                if (cid === null || cid === undefined) continue;
-                const c = classes.find(x => x.class_id === cid);
-                if (c) c.image_count += 1;
-            }
+        // let classes = [];
+        let classes = detail?.active_version?.meta?.yolo?.names || [];
+        // the classes type is object but we need array
+        if (classes && typeof classes === 'object' && !Array.isArray(classes)) {
+            classes = Object.values(classes);
         }
 
         const totalImages = Number(stats?.total_images ?? images.length) || images.length;

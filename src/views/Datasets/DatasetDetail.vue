@@ -89,16 +89,16 @@
                 <span class="class-count">{{ datasetDetail ? datasetDetail.total_images : 0 }}</span>
               </li>
               <li
-                v-for="classInfo in filteredClassList"
-                :key="classInfo.class_id"
-                :class="{ 'selected': selectedClass && selectedClass.class_id === classInfo.class_id }"
+                v-for="(classInfo, idx) in filteredClassList"
+                :key="getClassId(classInfo, idx)"
+                :class="{ 'selected': isSelectedClass(classInfo) }"
                 @click="selectClass(classInfo)"
               >
                 <div class="class-info">
                     <span class="dot"></span>
-                    <span class="class-name" v-html="input.trim() ? highlightText(classInfo, input) : classInfo"></span>
+                    <span class="class-name" v-html="input.trim() ? highlightText(getClassName(classInfo), input) : getClassName(classInfo)"></span>
                 </div>
-                <span class="class-count">{{ classInfo.image_count }}</span>
+                <span class="class-count">{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
               </li>
             </ul>
             <div v-else class="no-results">
@@ -488,6 +488,32 @@ export default {
         }
     },
     methods: {
+      // Helpers for class list rendering/selection
+      getClassName(item) {
+        if (!item) return '';
+        if (typeof item === 'string') return item;
+        if (typeof item === 'object') return item.class_name || item.name || '';
+        return String(item);
+      },
+      getClassId(item, idx) {
+        if (item && typeof item === 'object') {
+          const id = item.class_id !== undefined ? item.class_id : item.id;
+          if (id !== undefined && id !== null) return id;
+          const n = item.class_name || item.name;
+          if (n) return `name:${n}`;
+        }
+        if (typeof item === 'string') return `name:${item}`;
+        return idx;
+      },
+      isSelectedClass(item) {
+        if (this.selectedClass === null) return false; // handled by the "全部类别" row
+        const sel = this.selectedClass;
+        const itemId = (item && typeof item === 'object') ? (item.class_id ?? item.id) : null;
+        const selId = (sel && typeof sel === 'object') ? (sel.class_id ?? sel.id) : null;
+        if (itemId !== null && selId !== null) return String(itemId) === String(selId);
+        // Fallback to name comparison
+        return this.getClassName(item) === this.getClassName(sel);
+      },
         async loadDataFromRoute() {
             this.datasetId = this.$route.query.datasetId || '';
             this.datasetName = this.$route.query.datasetName || '';

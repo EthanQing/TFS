@@ -245,6 +245,7 @@ export default {
   computed: {
     filteredDatasets() {
       let result = [...this.datasets];
+      // console.log("the datasets:", this.datasets);
       if (this.searchQuery) {
         const query = this.searchQuery.toLowerCase();
         result = result.filter(dataset => dataset.dataset_name.toLowerCase().includes(query));
@@ -255,6 +256,8 @@ export default {
       if (this.formatValue !== 'all' && this.formatValue) {
         result = result.filter(dataset => (dataset.format || 'yolo') === this.formatValue);
       }
+      console.log('After filtering:', result);
+      console.log('current activeFilter:', this.activeFilter);
       if (this.activeFilter === 'category') {
         result.sort((a, b) => (b.num_classes || 0) - (a.num_classes || 0));
       } else if (this.activeFilter === 'image') {
@@ -262,10 +265,14 @@ export default {
       } else if (this.activeFilter === 'size') {
         result.sort((a, b) => this.parseDatasetSize(b.dataset_size_mb) - this.parseDatasetSize(a.dataset_size_mb));
       }
+      // console.log(result,'filtered result');
       return result;
     }
   },
   methods: {
+    testClick(d){
+      console.log(d);
+    },
     setActiveFilter(filter) {
       this.activeFilter = this.activeFilter === filter ? null : filter;
     },
@@ -318,6 +325,7 @@ export default {
     async fetchDatasetsList() {
       try {
         const list = await fetchDatasets();
+        // console.log(list,'list:');
         this.datasets = Array.isArray(list) ? list : [];
         this.originalDatasets = [...this.datasets];
         this.seedPreviewFromCache();
