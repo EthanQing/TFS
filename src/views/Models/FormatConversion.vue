@@ -166,18 +166,89 @@ import { createModelConversion, fetchModelConversion } from "@/api/modelConversi
 
 export default {
     name: 'ModelFormatConversion',
+    props: {
+        // 支持外部状态管理
+        externalState: {
+            type: Object,
+            default: null
+        }
+    },
     data() {
         return {
-            form: {
+            internalForm: {
                 sourceFormat: 'pt', targetFormat: 'onnx', opset: 12, precision: 'FP32',
                 batchSize: 8, threads: 8, dynamicShape: true, enableQuant: false,
                 minShape: '1x3x640x640', maxShape: '8x3x1280x1280'
             },
-            uploadFile: null, converting: false, progress: 0, logs: [], result: null, jobId: null, pollTimer: null,
-            compare: { latency: { base: null, new: null }, throughput: { base: null, new: null }, size: { base: null, new: null } }
+            internalUploadFile: null, 
+            internalConverting: false, 
+            internalProgress: 0, 
+            internalLogs: [], 
+            internalResult: null, 
+            internalJobId: null, 
+            pollTimer: null,
+            internalCompare: { latency: { base: null, new: null }, throughput: { base: null, new: null }, size: { base: null, new: null } }
         };
     },
+    computed: {
+        // 优先使用外部状态
+        form: {
+            get() { return this.externalState?.form ?? this.internalForm; },
+            set(val) { this.internalForm = val; this.syncState(); }
+        },
+        uploadFile: {
+            get() { return this.externalState?.uploadFile ?? this.internalUploadFile; },
+            set(val) { this.internalUploadFile = val; this.syncState(); }
+        },
+        converting: {
+            get() { return this.externalState?.converting ?? this.internalConverting; },
+            set(val) { this.internalConverting = val; this.syncState(); }
+        },
+        progress: {
+            get() { return this.externalState?.progress ?? this.internalProgress; },
+            set(val) { this.internalProgress = val; this.syncState(); }
+        },
+        logs: {
+            get() { return this.externalState?.logs ?? this.internalLogs; },
+            set(val) { this.internalLogs = val; this.syncState(); }
+        },
+        result: {
+            get() { return this.externalState?.result ?? this.internalResult; },
+            set(val) { this.internalResult = val; this.syncState(); }
+        },
+        jobId: {
+            get() { return this.externalState?.jobId ?? this.internalJobId; },
+            set(val) { this.internalJobId = val; this.syncState(); }
+        },
+        compare: {
+            get() { return this.externalState?.compare ?? this.internalCompare; },
+            set(val) { this.internalCompare = val; this.syncState(); }
+        }
+    },
+    watch: {
+        // 恢复轮询
+        jobId: {
+            immediate: true,
+            handler(newVal) {
+                if (newVal && this.converting && !this.pollTimer) {
+                    this.pollTimer = setInterval(this.pollStatus, 1000);
+                }
+            }
+        }
+    },
     methods: {
+        syncState() {
+            this.$emit('update:externalState', {
+                form: this.internalForm,
+                uploadFile: this.internalUploadFile,
+                converting: this.internalConverting,
+                progress: this.internalProgress,
+                logs: this.internalLogs,
+                result: this.internalResult,
+                jobId: this.internalJobId,
+                compare: this.internalCompare
+            });
+        },
         isNumber(v) { return typeof v === 'number' && !isNaN(v); },
         round(v, digits = 2) {
             const n = Number(v);

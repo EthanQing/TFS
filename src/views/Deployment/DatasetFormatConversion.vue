@@ -28,11 +28,13 @@
     </div>
 
     <div class="content-wrapper">
-      <!-- Config -->
-      <div class="config-panel glass-panel-sm">
-        <div class="panel-header">
-          <i class="el-icon-upload"></i> 导入源数据
-        </div>
+      <!-- Left Column -->
+      <div class="left-column">
+        <!-- Config -->
+        <div class="config-panel glass-panel-sm">
+          <div class="panel-header">
+            <i class="el-icon-upload"></i> 导入源数据
+          </div>
 
         <div class="config-form">
           <div class="form-row">
@@ -75,6 +77,54 @@
           <div class="hint-box">
              <i class="el-icon-info"></i>
              <span>仅支持 ZIP 格式。请确保压缩包内包含图片及对应的 JSON 标注文件。</span>
+          </div>
+          </div>
+        </div>
+
+        <!-- Upload to datasets -->
+        <div class="result-panel glass-panel-sm">
+          <div class="panel-header">
+            <i class="el-icon-upload2"></i> 入库操作
+          </div>
+
+          <div class="config-form">
+            <div class="form-row">
+              <label class="form-label">数据集名称</label>
+              <el-input 
+                v-model="datasetName" 
+                placeholder="请输入数据集名称" 
+                :disabled="!isCompleted || uploadingDataset"
+                size="small"
+              ></el-input>
+            </div>
+
+            <div class="form-row">
+              <label class="form-label">任务类型</label>
+              <el-tag type="info" effect="plain" size="small">
+                {{ targetFormat === "coco" ? "通用数据 (COCO)" : "目标检测 (YOLO)" }}
+              </el-tag>
+            </div>
+
+            <div class="form-row action-row">
+              <el-button
+                type="primary"
+                @click="uploadToDatasets"
+                :loading="uploadingDataset"
+                :disabled="!isCompleted || !outputUrl || !datasetName"
+                size="small"
+                class="full-width-btn"
+              >
+                <i class="el-icon-check"></i> 保存至数据集
+              </el-button>
+            </div>
+
+            <div v-if="uploadingDataset || uploadProgress > 0" class="upload-progress-wrapper">
+              <div class="progress-meta">
+                <span>上传中...</span>
+                <span>{{ uploadProgress }}%</span>
+              </div>
+              <el-progress :percentage="uploadProgress" :show-text="false" :stroke-width="4"></el-progress>
+            </div>
           </div>
         </div>
       </div>
@@ -128,53 +178,6 @@
           <span class="empty-desc">请上传文件并点击“开始执行”</span>
         </div>
       </div>
-
-      <!-- Upload to datasets -->
-      <div class="result-panel glass-panel-sm">
-        <div class="panel-header">
-          <i class="el-icon-upload2"></i> 入库操作
-        </div>
-
-        <div class="config-form">
-          <div class="form-row">
-            <label class="form-label">数据集名称</label>
-            <el-input 
-              v-model="datasetName" 
-              placeholder="请输入数据集名称" 
-              :disabled="!isCompleted || uploadingDataset"
-              size="small"
-            ></el-input>
-          </div>
-
-          <div class="form-row">
-            <label class="form-label">任务类型</label>
-            <el-tag type="info" effect="plain" size="small">
-              {{ targetFormat === "coco" ? "通用数据 (COCO)" : "目标检测 (YOLO)" }}
-            </el-tag>
-          </div>
-
-          <div class="form-row action-row">
-            <el-button
-              type="primary"
-              @click="uploadToDatasets"
-              :loading="uploadingDataset"
-              :disabled="!isCompleted || !outputUrl || !datasetName"
-              size="small"
-              class="full-width-btn"
-            >
-              <i class="el-icon-check"></i> 保存至数据集
-            </el-button>
-          </div>
-
-          <div v-if="uploadingDataset || uploadProgress > 0" class="upload-progress-wrapper">
-            <div class="progress-meta">
-              <span>上传中...</span>
-              <span>{{ uploadProgress }}%</span>
-            </div>
-            <el-progress :percentage="uploadProgress" :show-text="false" :stroke-width="4"></el-progress>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -186,30 +189,98 @@ import { uploadDataset } from "@/api/datasets";
 
 export default {
   name: "DatasetFormatConversion",
+  props: {
+    // 支持外部状态管理
+    externalState: {
+      type: Object,
+      default: null
+    }
+  },
   data() {
     return {
-      uploadFile: null,
-      targetFormat: "yolo",
-      converting: false,
-      uploadingDataset: false,
-      datasetName: "",
+      internalUploadFile: null,
+      internalTargetFormat: "yolo",
+      internalConverting: false,
+      internalUploadingDataset: false,
+      internalDatasetName: "",
 
-      jobId: null,
+      internalJobId: null,
       pollTimer: null,
-      progress: 0,
-      stage: "",
-      processed: 0,
-      total: 0,
-      logs: [],
-      status: null,
-      outputUrl: "",
-      outputFilename: "",
+      internalProgress: 0,
+      internalStage: "",
+      internalProcessed: 0,
+      internalTotal: 0,
+      internalLogs: [],
+      internalStatus: null,
+      internalOutputUrl: "",
+      internalOutputFilename: "",
 
-      uploadProgress: 0,
+      internalUploadProgress: 0,
       uploadCancel: null,
     };
   },
   computed: {
+    // 优先使用外部状态
+    uploadFile: {
+      get() { return this.externalState?.uploadFile ?? this.internalUploadFile; },
+      set(val) { this.internalUploadFile = val; this.syncState(); }
+    },
+    targetFormat: {
+      get() { return this.externalState?.targetFormat ?? this.internalTargetFormat; },
+      set(val) { this.internalTargetFormat = val; this.syncState(); }
+    },
+    converting: {
+      get() { return this.externalState?.converting ?? this.internalConverting; },
+      set(val) { this.internalConverting = val; this.syncState(); }
+    },
+    uploadingDataset: {
+      get() { return this.externalState?.uploadingDataset ?? this.internalUploadingDataset; },
+      set(val) { this.internalUploadingDataset = val; this.syncState(); }
+    },
+    datasetName: {
+      get() { return this.externalState?.datasetName ?? this.internalDatasetName; },
+      set(val) { this.internalDatasetName = val; this.syncState(); }
+    },
+    jobId: {
+      get() { return this.externalState?.jobId ?? this.internalJobId; },
+      set(val) { this.internalJobId = val; this.syncState(); }
+    },
+    progress: {
+      get() { return this.externalState?.progress ?? this.internalProgress; },
+      set(val) { this.internalProgress = val; this.syncState(); }
+    },
+    stage: {
+      get() { return this.externalState?.stage ?? this.internalStage; },
+      set(val) { this.internalStage = val; this.syncState(); }
+    },
+    processed: {
+      get() { return this.externalState?.processed ?? this.internalProcessed; },
+      set(val) { this.internalProcessed = val; this.syncState(); }
+    },
+    total: {
+      get() { return this.externalState?.total ?? this.internalTotal; },
+      set(val) { this.internalTotal = val; this.syncState(); }
+    },
+    logs: {
+      get() { return this.externalState?.logs ?? this.internalLogs; },
+      set(val) { this.internalLogs = val; this.syncState(); }
+    },
+    status: {
+      get() { return this.externalState?.status ?? this.internalStatus; },
+      set(val) { this.internalStatus = val; this.syncState(); }
+    },
+    outputUrl: {
+      get() { return this.externalState?.outputUrl ?? this.internalOutputUrl; },
+      set(val) { this.internalOutputUrl = val; this.syncState(); }
+    },
+    outputFilename: {
+      get() { return this.externalState?.outputFilename ?? this.internalOutputFilename; },
+      set(val) { this.internalOutputFilename = val; this.syncState(); }
+    },
+    uploadProgress: {
+      get() { return this.externalState?.uploadProgress ?? this.internalUploadProgress; },
+      set(val) { this.internalUploadProgress = val; this.syncState(); }
+    },
     isCompleted() {
       return this.status === "completed";
     },
@@ -257,19 +328,102 @@ export default {
     },
   },
   watch: {
-      logs() {
-          this.$nextTick(() => {
-              if (this.$refs.logsContainer) {
-                  this.$refs.logsContainer.scrollTop = this.$refs.logsContainer.scrollHeight;
-              }
-          })
+    logs() {
+        this.$nextTick(() => {
+            if (this.$refs.logsContainer) {
+                this.$refs.logsContainer.scrollTop = this.$refs.logsContainer.scrollHeight;
+            }
+        })
+    },
+    // 恢复轮询
+    jobId: {
+      immediate: true,
+      handler(newVal) {
+        if (newVal && this.converting && !this.pollTimer) {
+          this.pollTimer = setInterval(this.pollStatus, 1000);
+        }
       }
+    }
+  },
+  created() {
+    // 组件创建时，从外部状态恢复内部状态
+    this.restoreFromExternalState();
   },
   beforeDestroy() {
     this.stopPolling();
     this.cancelUpload();
   },
   methods: {
+    restoreFromExternalState() {
+      if (this.externalState) {
+        // 恢复所有内部状态
+        if (this.externalState.uploadFile !== undefined) {
+          this.internalUploadFile = this.externalState.uploadFile;
+        }
+        if (this.externalState.targetFormat !== undefined) {
+          this.internalTargetFormat = this.externalState.targetFormat;
+        }
+        if (this.externalState.converting !== undefined) {
+          this.internalConverting = this.externalState.converting;
+        }
+        if (this.externalState.uploadingDataset !== undefined) {
+          this.internalUploadingDataset = this.externalState.uploadingDataset;
+        }
+        if (this.externalState.datasetName !== undefined) {
+          this.internalDatasetName = this.externalState.datasetName;
+        }
+        if (this.externalState.jobId !== undefined) {
+          this.internalJobId = this.externalState.jobId;
+        }
+        if (this.externalState.progress !== undefined) {
+          this.internalProgress = this.externalState.progress;
+        }
+        if (this.externalState.stage !== undefined) {
+          this.internalStage = this.externalState.stage;
+        }
+        if (this.externalState.processed !== undefined) {
+          this.internalProcessed = this.externalState.processed;
+        }
+        if (this.externalState.total !== undefined) {
+          this.internalTotal = this.externalState.total;
+        }
+        if (this.externalState.logs !== undefined) {
+          this.internalLogs = this.externalState.logs;
+        }
+        if (this.externalState.status !== undefined) {
+          this.internalStatus = this.externalState.status;
+        }
+        if (this.externalState.outputUrl !== undefined) {
+          this.internalOutputUrl = this.externalState.outputUrl;
+        }
+        if (this.externalState.outputFilename !== undefined) {
+          this.internalOutputFilename = this.externalState.outputFilename;
+        }
+        if (this.externalState.uploadProgress !== undefined) {
+          this.internalUploadProgress = this.externalState.uploadProgress;
+        }
+      }
+    },
+    syncState() {
+      // 始终使用内部状态构建完整的状态对象，确保不会丢失任何属性
+      this.$emit('update:externalState', {
+        uploadFile: this.internalUploadFile,
+        targetFormat: this.internalTargetFormat,
+        converting: this.internalConverting,
+        uploadingDataset: this.internalUploadingDataset,
+        datasetName: this.internalDatasetName,
+        jobId: this.internalJobId,
+        progress: this.internalProgress,
+        stage: this.internalStage,
+        processed: this.internalProcessed,
+        total: this.internalTotal,
+        logs: this.internalLogs,
+        status: this.internalStatus,
+        outputUrl: this.internalOutputUrl,
+        outputFilename: this.internalOutputFilename,
+        uploadProgress: this.internalUploadProgress
+      });
+    },
     handleFileChange(file) {
       const f = file && (file.raw || file);
       this.uploadFile = f || null;
@@ -295,6 +449,10 @@ export default {
       this.outputUrl = "";
       this.outputFilename = "";
       this.uploadProgress = 0;
+      
+      // 注意：datasetName 和 targetFormat 不在此处重置
+      // this.datasetName = "";
+      // this.targetFormat = "yolo";
     },
     stopPolling() {
       if (this.pollTimer) {
@@ -326,7 +484,7 @@ export default {
       } catch (e) {
         this.converting = false;
         this.$message.error("任务启动失败: " + (e.message || e));
-        this.logs.push("错误: " + (e.message || e));
+        this.logs = [...this.logs, "错误: " + (e.message || e)];
       }
     },
     async pollStatus() {
@@ -488,6 +646,38 @@ export default {
   gap: 1.5rem;
   min-height: 0;
   flex: 1;
+  overflow: hidden;
+}
+
+/* Left Column - shared scroll area */
+.left-column {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 4px;
+}
+
+/* Custom scrollbar for left column */
+.left-column::-webkit-scrollbar {
+  width: 5px;
+}
+
+.left-column::-webkit-scrollbar-track {
+  background: transparent;
+  border-radius: 3px;
+}
+
+.left-column::-webkit-scrollbar-thumb {
+  background: #dcdfe6;
+  border-radius: 3px;
+  transition: background 0.2s;
+}
+
+.left-column::-webkit-scrollbar-thumb:hover {
+  background: #c0c4cc;
 }
 
 .config-panel,
@@ -495,17 +685,19 @@ export default {
 .result-panel {
   display: flex;
   flex-direction: column;
-  min-height: 0;
   background: #ffffff;
   border-radius: var(--radius-lg, 8px);
-  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05); /* Softer shadow */
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
   border: 1px solid var(--border-light, #e4e7ed);
+  flex-shrink: 0;
 }
 
 .progress-panel {
-  grid-row: span 2;
+  min-height: 0;
+  flex: 1;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .panel-header {
@@ -527,11 +719,10 @@ export default {
 }
 
 .config-form {
-  padding: 1.5rem;
+  padding: 1.25rem;
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
-  flex: 1;
+  gap: 1rem;
 }
 
 .form-label {
@@ -549,7 +740,10 @@ export default {
 
 .upload-area :deep(.el-upload-dragger) {
   width: 100%;
-  height: 140px;
+  height: auto;
+  min-height: 100px;
+  max-height: 140px;
+  padding: 1rem 0.5rem;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -634,17 +828,19 @@ export default {
   display: flex;
   gap: 0.5rem;
   align-items: flex-start;
-  padding: 0.75rem 1rem;
+  padding: 0.6rem 0.75rem;
   background: #fdf6ec;
   border-radius: 4px;
   color: #e6a23c;
-  font-size: 0.8rem;
+  font-size: 0.75rem;
   line-height: 1.4;
+  flex-shrink: 0;
 }
 
 .hint-box i {
-  font-size: 1rem;
+  font-size: 0.9rem;
   margin-top: 0.1rem;
+  flex-shrink: 0;
 }
 
 /* Progress Section */
@@ -791,9 +987,157 @@ export default {
 @media (max-width: 1100px) {
   .content-wrapper {
     grid-template-columns: 1fr;
+    overflow-y: auto;
   }
+  
+  .left-column {
+    overflow: visible;
+    padding-right: 0;
+  }
+  
   .progress-panel {
-    grid-row: auto;
+    min-height: 300px;
+  }
+}
+
+/* 窄高度时的适配 */
+@media (max-height: 700px) {
+  .conversion-container {
+    gap: 1rem;
+  }
+  
+  .header-strip {
+    padding-bottom: 0.25rem;
+    flex-shrink: 0;
+  }
+  
+  .page-title {
+    font-size: 1rem;
+  }
+  
+  .subtitle {
+    font-size: 0.8rem;
+  }
+  
+  .panel-header {
+    padding: 0.75rem 1rem;
+    font-size: 0.9rem;
+  }
+  
+  .config-form {
+    padding: 1rem;
+    gap: 0.75rem;
+  }
+  
+  .upload-area :deep(.el-upload-dragger) {
+    min-height: 80px;
+    max-height: 100px;
+    padding: 0.5rem;
+  }
+  
+  .cloud-icon {
+    font-size: 1.75rem;
+    margin-bottom: 0.25rem;
+  }
+  
+  .upload-text {
+    font-size: 0.75rem;
+  }
+  
+  .progress-body {
+    padding: 1rem;
+    gap: 1rem;
+  }
+  
+  .status-card {
+    padding: 0.75rem;
+  }
+  
+  .logs-container {
+    min-height: 100px;
+  }
+  
+  .left-column {
+    gap: 0.75rem;
+  }
+}
+
+@media (max-height: 550px) {
+  .conversion-container {
+    gap: 0.5rem;
+  }
+  
+  .icon-wrapper {
+    width: 32px;
+    height: 32px;
+  }
+  
+  .tool-icon {
+    font-size: 1rem;
+  }
+  
+  .header-left {
+    gap: 0.75rem;
+  }
+  
+  .panel-header {
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+  }
+  
+  .config-form {
+    padding: 0.75rem;
+    gap: 0.5rem;
+  }
+  
+  .form-label {
+    font-size: 0.8rem;
+    margin-bottom: 0.35rem;
+  }
+  
+  .upload-area :deep(.el-upload-dragger) {
+    min-height: 60px;
+    max-height: 80px;
+  }
+  
+  .hint-box {
+    padding: 0.4rem 0.6rem;
+    font-size: 0.7rem;
+  }
+  
+  .empty-state {
+    padding: 1rem;
+  }
+  
+  .empty-icon-wrapper {
+    width: 48px;
+    height: 48px;
+  }
+  
+  .empty-icon-wrapper i {
+    font-size: 1.25rem;
+  }
+  
+  .left-column {
+    gap: 0.5rem;
+  }
+}
+
+/* 极小屏幕 */
+@media (max-width: 600px) {
+  .header-strip {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.75rem;
+  }
+  
+  .header-actions {
+    width: 100%;
+    justify-content: flex-end;
+  }
+  
+  .content-wrapper {
+    gap: 1rem;
   }
 }
 </style>

@@ -2,7 +2,7 @@
   <div id="app">
      <navigation></navigation>
       <div class="main-content">
-        <keep-alive include="DataDetail">
+        <keep-alive include="DataDetail,DeploymentCenter">
         <router-view ></router-view>
         </keep-alive>
       </div>

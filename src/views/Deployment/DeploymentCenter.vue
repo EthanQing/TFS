@@ -75,8 +75,14 @@
       <!-- Active Tool View -->
       <main class="deploy-main glass-panel">
         <transition name="fade" mode="out-in">
-          <FormatConversion v-if="activeTool === 'conversion'" />
-          <DatasetFormatConversion v-if="activeTool === 'datasetConversion'" />
+          <FormatConversion 
+            v-if="activeTool === 'conversion'" 
+            :external-state.sync="formatConversionState"
+          />
+          <DatasetFormatConversion 
+            v-if="activeTool === 'datasetConversion'" 
+            :external-state.sync="datasetConversionState"
+          />
           <ModelComparison v-if="activeTool === 'comparison'" />
         </transition>
       </main>
@@ -94,7 +100,11 @@ export default {
   components: { FormatConversion, DatasetFormatConversion, ModelComparison },
   data() {
     return {
-      activeTool: 'conversion'
+      activeTool: 'conversion',
+      // FormatConversion 组件状态（用于 keep-alive 状态保持）
+      formatConversionState: null,
+      // DatasetFormatConversion 组件状态（用于 keep-alive 状态保持）
+      datasetConversionState: null
     };
   }
 };
