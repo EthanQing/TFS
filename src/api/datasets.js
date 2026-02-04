@@ -259,13 +259,15 @@ export async function fetchDatasets(page = 1, pageSize = 50) {
         if (!response.ok) throw new Error(pickErrorMessage(data, response));
 
         const list = (data && Array.isArray(data.items) && data.items) || [];
-        // console.log(list,'listtttt');
         return list.map(item => ({
             ...item,
             dataset_name: item.dataset_name || item.name,
             dataset_type: item.dataset_type || item.type,
-            dataset_id: item.dataset_id || item.id
-
+            dataset_id: item.dataset_id || item.id,
+            // Map embedded statistics from new API response
+            num_images: item.statistics?.num_images || 0,
+            num_classes: item.statistics?.num_classes || 0,
+            dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
         }));
     } catch (error) {
         console.error('获取数据集失败:', error);
@@ -600,6 +602,39 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionI
     }
 }
 
+// FetchDatasetView 获取数据集视图接口（类别统计 + 分页图片列表 + 按类别筛选）
+export async function FetchDatasetView(datasetId, { versionId = null, classId = null, page = 1, pageSize = 50 } = {}) {
+    const params = new URLSearchParams();
+    if (versionId !== null && versionId !== undefined && versionId !== '') {
+        params.set('version_id', String(versionId));
+    }
+    if (classId !== null && classId !== undefined && classId !== '') {
+        params.set('class_id', String(classId));
+    }
+    params.set('page', String(page || 1));
+    params.set('page_size', String(pageSize || 50));
+
+    const url = `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/view?${params.toString()}`;
+    const response = await fetch(url);
+    const data = await safeJson(response);
+    if (!response.ok) throw new Error(pickErrorMessage(data, response));
+
+    return {
+        dataset_id: data.dataset_id,
+        version_id: data.version_id,
+        categories: data.categories || [],
+        items: (data.items || []).map(item => ({
+            ...item,
+            image_name: item.name,
+            image_url: toAbsUrl(item.url),
+            thumbnail_url: toAbsUrl(item.thumbnail_url),
+            objects_count: item.classes?.length || 0,
+            classes_in_image: item.classes || [],
+        })),
+        meta: data.meta || { page: 1, page_size: 50, total_items: 0, total_pages: 0 },
+    };
+}
+
 // FetchDatasetType 获取数据集类型接口（旧接口，后端 v2 暂无该路由；保留以避免直接报错）
 export async function FetchDatasetType(jobId) {
     try {
@@ -639,4 +674,29 @@ export async function fetchDatasetVersions(datasetId, { page = 1, pageSize = 50 
         console.error('获取数据集版本失败:', error);
         throw error;
     }
+}
+
+
+// convertIllegalDataset ?????????
+export async function convertIllegalDataset(
+    datasetId,
+    { labelStrategy = 'leaf', labelLevel = null, labelSeparator = '%' } = {}
+) {
+    if (!datasetId) throw new Error('?? datasetId');
+    const payload = {
+        label_strategy: labelStrategy,
+        label_separator: labelSeparator,
+    };
+    if (labelStrategy === 'level') {
+        payload.label_level = Number(labelLevel) || 1;
+    }
+
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/convert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data;
 }

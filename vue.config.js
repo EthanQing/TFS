@@ -4,7 +4,7 @@ const appConfig = require('./app.config.js')
 module.exports = defineConfig({
   transpileDependencies: true,
   lintOnSave: false,
-  
+
   // 设置页面标题
   chainWebpack: config => {
     config.plugin('html').tap(args => {
@@ -12,11 +12,11 @@ module.exports = defineConfig({
       return args
     })
   },
-  
+
   devServer: {
     proxy: {
       '/api': {
-        target: 'http://192.168.2.102:8000/api/datasets'
+        target: 'http://192.168.2.102:18001/api/datasets'
       }
     }
   }

@@ -191,7 +191,7 @@
 
 <script>
 // Logic remains mostly the same, ensuring imports are correct
-import { fetchDatasets, createDataset, deleteDataset, FetchDatasetStatistics, FetchDatasetPreviewImage, FetchDatasetClassNames } from "@/api/datasets";
+import { fetchDatasets, createDataset, deleteDataset, FetchDatasetPreviewImage } from "@/api/datasets";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
@@ -349,22 +349,20 @@ export default {
       this.$forceUpdate();
     },
     async loadStatsParallel() {
-      const jobs = this.datasets.map(async d => {
-        try {
-          const s = await FetchDatasetStatistics(d.dataset_id);
-          this.$set(d, 'num_images', s.num_images || 0);
-          this.$set(d, 'dataset_size_mb', s.dataset_size_mb || '0MB');
-          try {
-            const names = await FetchDatasetClassNames(d.storage_path || d.dataset_name || d.name);
-            this.$set(d, 'num_classes', Array.isArray(names) ? names.length : 0);
-          } catch (_) {
-            this.$set(d, 'num_classes', 0);
-          }
-        } catch (_) {
-            // retain defaults
+      // Statistics now come embedded in fetchDatasets() response
+      // This method is kept for backwards compatibility but no longer needs to fetch separately
+      // Just ensure defaults are set for any missing fields
+      this.datasets.forEach(d => {
+        if (d.num_classes === undefined) {
+          this.$set(d, 'num_classes', 0);
+        }
+        if (d.num_images === undefined) {
+          this.$set(d, 'num_images', 0);
+        }
+        if (d.dataset_size_mb === undefined) {
+          this.$set(d, 'dataset_size_mb', '0MB');
         }
       });
-      await Promise.allSettled(jobs);
     },
     async loadPreviewsParallel(concurrency = 4) {
       const queue = [...this.datasets];

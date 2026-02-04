@@ -36,6 +36,30 @@
         <span>正在加载数据集详情...</span>
       </div>
       <template v-else>
+        <div v-if="isIllegalDataset" class="illegal-banner">
+          <div class="illegal-info">
+            <div class="illegal-title">非法数据集</div>
+            <div class="illegal-desc" v-if="illegalReason === 'labelme_json'">检测到 LabelMe JSON 标注，需要转换为 YOLO</div>
+            <div class="illegal-desc" v-else-if="illegalReason === 'unsupported_json'">检测到不支持的 JSON 格式，暂不支持转换</div>
+            <div class="illegal-desc" v-else>检测到非 YOLO 标注</div>
+            <div v-if="conversionStatusText" class="illegal-status">转换状态：{{ conversionStatusText }}</div>
+            <div v-if="conversionError" class="illegal-error">错误信息：{{ conversionError }}</div>
+          </div>
+          <div class="illegal-actions">
+            <el-button
+              v-if="conversionSupported"
+              type="primary"
+              size="small"
+              :loading="convertingDataset"
+              :disabled="conversionStatus === 'queued' || conversionStatus === 'running'"
+              @click="openConvertDialog"
+            >
+              {{ conversionStatus === 'queued' || conversionStatus === 'running' ? '转换中' : '转换' }}
+            </el-button>
+            <el-button v-else size="small" disabled>暂不支持转换</el-button>
+          </div>
+        </div>
+
         <div v-if="isDatasetEmpty" class="empty-state">
           <div class="empty-content">
             <div class="empty-title">数据集为空</div>
@@ -110,7 +134,7 @@
           <main class="images-panel">
             <div class="panel-head">
               <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
-              <div class="panel-actions">
+              <div v-if="allowAppendUpload" class="panel-actions">
                   <div class="action-card">
                       <el-select
                         v-model="selectedVersionId"
@@ -200,8 +224,39 @@
       </div>
     </div>
 
+    <el-dialog
+      title="标签层级转换"
+      :visible.sync="showConvertDialog"
+      width="420px"
+      :close-on-click-modal="!convertingDataset"
+      :close-on-press-escape="!convertingDataset"
+      class="convert-dialog"
+    >
+      <div class="convert-body">
+        <div class="convert-row">
+          <label class="convert-label">标签策略</label>
+          <el-radio-group v-model="convertForm.labelStrategy" size="small">
+            <el-radio label="full">完整层级</el-radio>
+            <el-radio label="leaf">叶子节点</el-radio>
+            <el-radio label="root">根节点</el-radio>
+            <el-radio label="level">指定层级</el-radio>
+          </el-radio-group>
+        </div>
+        <div class="convert-row" v-if="convertForm.labelStrategy === 'level'">
+          <label class="convert-label">取前N级</label>
+          <el-input-number v-model="convertForm.labelLevel" :min="1" size="small"></el-input-number>
+        </div>
+        <div class="convert-hint">层级分隔符: {{ convertForm.labelSeparator }}</div>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button :disabled="convertingDataset" @click="showConvertDialog = false">取消</el-button>
+        <el-button type="primary" :loading="convertingDataset" @click="submitConvert">开始转换</el-button>
+      </div>
+    </el-dialog>
+
     <!-- Upload Dialog -->
     <el-dialog
+      v-if="allowAppendUpload"
       title="添加图片和标注"
       :visible="showUploadDialog"
       @close="handleDialogClose"
@@ -376,7 +431,7 @@
 </template>
 
 <script>
-import { FetchDatasetDetail, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive } from '@/api/datasets';
+import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset } from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
 export default {
     name: 'DataDetail',
@@ -401,6 +456,7 @@ export default {
             selectedVersionId: null,
             versionOptions: [],
             versionLoading: false,
+            allowAppendUpload: false,
             isUploading: false,
             uploadPercent: 0,
             uploadLoaded: 0,
@@ -420,6 +476,15 @@ export default {
             zipUploadFile: null,
             zipUploading: false,
             zipUploadProgress: 0,
+            // Illegal dataset conversion
+            showConvertDialog: false,
+            convertingDataset: false,
+            conversionTimer: null,
+            convertForm: {
+                labelStrategy: 'leaf',
+                labelLevel: 2,
+                labelSeparator: '%',
+            },
         }
     },
     created() {
@@ -440,12 +505,18 @@ export default {
     },
     beforeDestroy() {
         document.removeEventListener('keydown', this.handleKeydown);
+        this.stopConversionPolling();
     },
     computed: {
         classList() {
-            if (!this.datasetDetail || !this.datasetDetail.classes) return [];
-            // console.log("11****************************************************", this.datasetDetail.classes);
-            return this.datasetDetail.classes;
+            // Use categories from view API (class_id, name, count format)
+            if (!this.datasetDetail || !this.datasetDetail.categories) return [];
+            // Map to legacy format for compatibility with template
+            return this.datasetDetail.categories.map(cat => ({
+                class_id: cat.class_id,
+                class_name: cat.name,
+                image_count: cat.count,
+            }));
         },
         imagesList() {
             if (!this.datasetDetail || !this.datasetDetail.images) return [];
@@ -461,7 +532,43 @@ export default {
             if (!this.datasetDetail) return false;
             const total = Number(this.datasetDetail.total_images ?? this.datasetDetail.num_images ?? this.imagesList.length ?? 0) || 0;
             return total === 0;
-        }
+        },
+        isIllegalDataset() {
+            const ver = this.datasetDetail && this.datasetDetail.active_version;
+            const meta = ver && ver.meta;
+            return !!(ver && ver.status === 'failed' && meta && meta.illegal);
+        },
+        illegalReason() {
+            const ver = this.datasetDetail && this.datasetDetail.active_version;
+            const meta = ver && ver.meta;
+            return meta && meta.illegal_reason ? String(meta.illegal_reason) : '';
+        },
+        conversionStatus() {
+            const ver = this.datasetDetail && this.datasetDetail.active_version;
+            const meta = ver && ver.meta;
+            const conv = meta && meta.conversion;
+            return conv ? (conv.status || '') : '';
+        },
+        conversionSupported() {
+            const ver = this.datasetDetail && this.datasetDetail.active_version;
+            const meta = ver && ver.meta;
+            const conv = meta && meta.conversion;
+            if (conv && typeof conv.supported === 'boolean') {
+                return conv.supported;
+            }
+            return this.illegalReason === 'labelme_json';
+        },
+        conversionStatusText() {
+            const status = this.conversionStatus;
+            const map = { queued: '排队中', running: '转换中', completed: '已完成', failed: '失败', pending: '待转换' };
+            return status ? (map[status] || status) : '';
+        },
+        conversionError() {
+            const ver = this.datasetDetail && this.datasetDetail.active_version;
+            const meta = ver && ver.meta;
+            const conv = meta && meta.conversion;
+            return conv && conv.error_message ? conv.error_message : '';
+        },
     },
     watch: {
         '$route': {
@@ -600,29 +707,55 @@ export default {
                 return text;
             }
         },
-        selectClass(classInfo) {
+        async selectClass(classInfo) {
             this.selectedClass = classInfo;
             console.log("Selected class:", classInfo);
-            if (classInfo && classInfo.class_id !== undefined) {
-                const filteredImages = this.imagesList.filter(img => {
-                    const hasClass = img.classes_in_image &&
-                        img.classes_in_image.includes(classInfo.class_id);
-                    return hasClass;
+            
+            // Use server-side filtering via the view API
+            try {
+                const classId = classInfo && classInfo.class_id !== undefined ? classInfo.class_id : null;
+                const viewData = await FetchDatasetView(this.datasetId, {
+                    versionId: this.selectedVersionId,
+                    classId: classId,
+                    page: 1,
+                    pageSize: 500,
                 });
-                const uniqueImages = filteredImages.filter((img, index, self) =>
-                    index === self.findIndex(item => item.image_name === img.image_name)
-                );
-                this.selectedImages = uniqueImages;
-            } else {
-                const uniqueImages = this.imagesList.filter((img, index, self) =>
-                    index === self.findIndex(item => item.image_name === img.image_name)
-                );
-                this.selectedImages = uniqueImages;
+                this.selectedImages = viewData.items || [];
+            } catch (error) {
+                console.error('Failed to filter images by class:', error);
+                // Fallback to client-side filtering
+                if (classInfo && classInfo.class_id !== undefined) {
+                    this.selectedImages = this.imagesList.filter(img =>
+                        img.classes_in_image && img.classes_in_image.includes(classInfo.class_id)
+                    );
+                } else {
+                    this.selectedImages = [...this.imagesList];
+                }
             }
         },
         handleImageError(event) {
-            event.target.style.display = 'none';
-            // Placeholder logic could go here
+            const img = event.target;
+            const currentSrc = img.src || '';
+            
+            // If static thumbnail failed, try API endpoint as fallback (on-demand generation)
+            if (currentSrc.includes('/static/thumbnails/')) {
+                // Extract dataset_id and path from static URL
+                // Format: /static/thumbnails/{dataset_id}/{path}.webp
+                const match = currentSrc.match(/\/static\/thumbnails\/(\d+)\/(.+)\.webp/);
+                if (match) {
+                    const datasetId = match[1];
+                    // Convert path.webp back to original extension
+                    const relPath = match[2];
+                    // Try API endpoint which generates on-demand
+                    const apiUrl = `/api/v2/thumbnails/${datasetId}/images/${relPath}.jpg`;
+                    img.src = apiUrl;
+                    img.dataset.fallback = 'api';
+                    return;
+                }
+            }
+            
+            // If API also failed or already tried, hide the image
+            img.style.display = 'none';
         },
         openImagePreview(image) {
             this.previewImage = image;
@@ -660,8 +793,128 @@ export default {
             this.$message.success('上传成功，正在刷新数据集。');
             this.refreshVersionsAndDetail({ forceLatest: true });
         },
+        openConvertDialog() {
+          if (!this.conversionSupported) {
+            this.$message.warning('该数据集不支持转换');
+            return;
+          }
+          this.showConvertDialog = true;
+        },
+        async submitConvert() {
+          if (!this.datasetId) return;
+          const strategy = this.convertForm.labelStrategy;
+          if (strategy === 'level') {
+            const lvl = Number(this.convertForm.labelLevel);
+            if (!lvl || lvl < 1) {
+              this.$message.warning('请输入正确的层级');
+              return;
+            }
+          }
+          this.convertingDataset = true;
+          try {
+            await convertIllegalDataset(this.datasetId, {
+              labelStrategy: strategy,
+              labelLevel: this.convertForm.labelLevel,
+              labelSeparator: this.convertForm.labelSeparator,
+            });
+            this.$message.success('转换任务已提交');
+            this.showConvertDialog = false;
+            this.startConversionPolling();
+          } catch (e) {
+            const msg = e && e.message ? String(e.message) : '转换失败';
+            this.$message.error(`转换失败: ${msg}`);
+          } finally {
+            this.convertingDataset = false;
+          }
+        },
+        startConversionPolling() {
+          if (this.conversionTimer) {
+            clearInterval(this.conversionTimer);
+            this.conversionTimer = null;
+          }
+          // Track the version ID before conversion to detect change
+          const startVersionId = this.datasetDetail?.active_version?.version_id;
+          const startTime = Date.now();
+          const TIMEOUT_MS = 120000; // 2 minutes timeout
+          
+          console.log('[Conversion] Starting poll, initial version:', startVersionId);
+          
+          this.conversionTimer = setInterval(async () => {
+            // Check timeout
+            if (Date.now() - startTime > TIMEOUT_MS) {
+              this.stopConversionPolling();
+              console.log('[Conversion] Polling timed out, forcing page reload...');
+              this.$message.warning('转换超时，正在刷新页面...');
+              setTimeout(() => window.location.reload(), 500);
+              return;
+            }
+            
+            try {
+              // Fetch WITHOUT version ID to get the current active version
+              const detail = await FetchDatasetDetail(this.datasetId, {
+                versionId: null, // Important: don't use selectedVersionId
+                filesLimit: 1,
+              });
+              
+              const ver = detail && detail.active_version;
+              const meta = ver && ver.meta;
+              const conv = meta && meta.conversion;
+              const status = conv ? (conv.status || '') : '';
+              const currentVersionId = ver?.version_id;
+              const isNewVersion = startVersionId && currentVersionId && currentVersionId !== startVersionId;
+              const isIllegal = !!(meta && meta.illegal);
+              
+              console.log('[Conversion] Poll result:', { 
+                status, 
+                currentVersionId, 
+                isNewVersion, 
+                verStatus: ver?.status,
+                isIllegal,
+                elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
+              });
+              
+              if (status === 'failed') {
+                this.stopConversionPolling();
+                const err = (conv && conv.error_message) || '转换失败';
+                this.$message.error(`转换失败: ${err}`);
+                return;
+              }
+              
+              // Success: new version is active (version ID changed and new version is finalized and not illegal)
+              if (isNewVersion && ver.status === 'finalized' && !isIllegal) {
+                this.stopConversionPolling();
+                this.$message.success('转换完成，正在刷新页面...');
+                console.log('[Conversion] Success detected, reloading page...');
+                setTimeout(() => window.location.reload(), 500);
+              }
+            } catch (e) {
+              console.error('[Conversion] Poll error:', e);
+            }
+          }, 4000);
+        },
+        stopConversionPolling() {
+          if (this.conversionTimer) {
+            clearInterval(this.conversionTimer);
+            this.conversionTimer = null;
+          }
+        },
+
+        formatUploadErrorMessage(errorMsg) {
+            const msg = errorMsg ? String(errorMsg) : '';
+            if (msg.toLowerCase().includes('no image files found')) {
+                return `${msg}（请检查是否为 .tif/.tiff 或后端未开启支持）`;
+            }
+            if (msg.toLowerCase().includes('no label files found')) {
+                return `${msg}（检测数据集必须包含标注：YOLO txt 或 LabelMe JSON）`;
+            }
+            if (msg.toLowerCase().includes('append upload disabled')) {
+                return '追加上传已禁用';
+            }
+            return msg;
+        },
         handleUploadFail(errorMsg) {
-            this.$message.error(`上传失败: ${errorMsg}`);
+            const msg = this.formatUploadErrorMessage(errorMsg);
+            this.$message.error(`上传失败: ${msg}`);
         },
         formatImageCount(count) {
             if (!count) return '0';
@@ -693,18 +946,54 @@ export default {
 
             this.detailLoading = true;
             try {
+                // First get basic detail for dataset info
                 const detail = await FetchDatasetDetail(this.datasetId, {
                     versionId: this.selectedVersionId,
-                    filesLimit: 500,
+                    filesLimit: 10, // Minimal for basic info
                 });
-                this.datasetDetail = detail;
-                // console.log(this.datasetDetail);
+                
                 if (detail.dataset_name) this.datasetName = detail.dataset_name;
                 if (detail.dataset_type) this.datasetType = detail.dataset_type;
-                if (detail.num_classes !== undefined) this.numClasses = detail.num_classes;
-                if (detail.total_images !== undefined) this.numImages = detail.total_images;
                 if (detail.dataset_size_mb) this.datasetSize = detail.dataset_size_mb;
                 
+                // Then get view data with categories and images
+                try {
+                    const viewData = await FetchDatasetView(this.datasetId, {
+                        versionId: this.selectedVersionId,
+                        classId: null, // No filter initially
+                        page: 1,
+                        pageSize: 500,
+                    });
+                    
+                    // Merge view data into detail object
+                    this.datasetDetail = {
+                        ...detail,
+                        categories: viewData.categories || [],
+                        images: viewData.items || [],
+                        total_images: viewData.meta?.total_items || viewData.items?.length || 0,
+                    };
+                    
+                    // Update stats from view data
+                    this.numClasses = (viewData.categories || []).length;
+                    this.numImages = viewData.meta?.total_items || 0;
+                    
+                    // Set selected images initially
+                    this.selectedImages = viewData.items || [];
+                } catch (viewError) {
+                    console.warn('View API failed, falling back to detail:', viewError);
+                    this.datasetDetail = detail;
+                    if (detail.num_classes !== undefined) this.numClasses = detail.num_classes;
+                    if (detail.total_images !== undefined) this.numImages = detail.total_images;
+                    this.selectedImages = detail.images || [];
+                }
+                
+            const status = this.conversionStatus;
+            if (this.isIllegalDataset && (status === 'queued' || status === 'running')) {
+                if (!this.conversionTimer) this.startConversionPolling();
+            } else {
+                this.stopConversionPolling();
+            }
+
             } catch (error) {
                 console.error('Failed to fetch dataset detail:', error);
                 this.datasetDetail = null;
@@ -716,6 +1005,10 @@ export default {
             await this.fetchDatasetDetail();
         },
         handleAddImage() {
+            if (!this.allowAppendUpload) {
+                this.$message.warning('追加上传已禁用');
+                return;
+            }
             // Open dialog instead of direct file selection
             this.showUploadDialog = true;
             this.pendingImages = [];
@@ -851,10 +1144,11 @@ export default {
                 // Refresh the dataset detail
                 await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
-                const msg = (error && error.message) ? String(error.message) : '上传失败';
-                if (msg.toLowerCase().includes('cancel')) {
+                const rawMsg = (error && error.message) ? String(error.message) : '上传失败';
+                if (rawMsg.toLowerCase().includes('cancel')) {
                     this.$message.info('已取消上传');
                 } else {
+                    const msg = this.formatUploadErrorMessage(rawMsg);
                     this.$message.error(`上传失败: ${msg}`);
                 }
             } finally {
@@ -905,10 +1199,11 @@ export default {
                 // Refresh the dataset detail
                 await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
-                const msg = (error && error.message) ? String(error.message) : '上传失败';
-                if (msg.toLowerCase().includes('cancel')) {
+                const rawMsg = (error && error.message) ? String(error.message) : '上传失败';
+                if (rawMsg.toLowerCase().includes('cancel')) {
                     this.$message.info('已取消上传');
                 } else {
+                    const msg = this.formatUploadErrorMessage(rawMsg);
                     this.$message.error(`上传失败: ${msg}`);
                 }
             } finally {
@@ -934,7 +1229,8 @@ export default {
                 // Refresh the dataset detail
                 await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
-                const msg = (error && error.message) ? String(error.message) : '上传失败';
+                const rawMsg = (error && error.message) ? String(error.message) : '上传失败';
+                const msg = this.formatUploadErrorMessage(rawMsg);
                 this.$message.error(`上传失败: ${msg}`);
             } finally {
                 this.isUploading = false;
