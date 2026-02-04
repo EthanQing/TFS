@@ -298,7 +298,6 @@
                     >
                         <el-option label="YOLOv8" value="yolov8"></el-option>
                         <el-option label="YOLOv7" value="yolov7"></el-option>
-                        <el-option label="Faster R-CNN" value="fasterrcnn"></el-option>
                     </el-select>
                 </el-form-item>
                 <el-form-item label="任务描述" label-width="100px" prop="description">

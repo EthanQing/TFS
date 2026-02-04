@@ -200,10 +200,6 @@ export default {
         "YOLOv8m-seg": { accuracy: 40.2, speedMs: 20.4 },
         "YOLOv8l-seg": { accuracy: 42.1, speedMs: 35.6 },
         "YOLOv8x-seg": { accuracy: 43.4, speedMs: 48.2 },
-        // RTMDet metrics (approximate placeholders)
-        rtmdet_s: { accuracy: 44.6, speedMs: 12.1 },
-        rtmdet_m: { accuracy: 49.4, speedMs: 19.5 },
-        rtmdet_l: { accuracy: 51.5, speedMs: 32.4 },
       },
       savePeriod: "-1",
     };
@@ -223,13 +219,18 @@ export default {
     },
     architectureGroups() {
       const list = Array.isArray(this.ref?.architectures) ? this.ref.architectures : [];
+      const isMmDet = (it) => {
+        const variant = String(it?.model_variant || "").toLowerCase();
+        const family = String(it?.model_family || it?.family || "").toLowerCase();
+        return variant.startsWith("rtmdet") || family.includes("mmdet") || family.includes("mmdetection");
+      };
 
       const detected = list.filter((it) => {
         const tt = String(it?.task_type || "").toLowerCase();
         // Backend usually returns 'detection' or 'segmentation'
         // If empty, assume detection for BC
         const target = this.taskType === 'segmentation' ? 'segmentation' : 'detection';
-        return tt === target || (!tt && target === 'detection');
+        return (tt === target || (!tt && target === 'detection')) && !isMmDet(it);
       });
 
       const fallbackFamily = "YOLOv8";
@@ -249,11 +250,7 @@ export default {
             { model_variant: "yolov8s" },
             { model_variant: "yolov8m" },
             { model_variant: "yolov8l" },
-            { model_variant: "yolov8x" },
-            // MMDet RTMDet Fallbacks
-            { model_variant: "rtmdet_s", family: "MMDetection" },
-            { model_variant: "rtmdet_m", family: "MMDetection" },
-            { model_variant: "rtmdet_l", family: "MMDetection" }
+            { model_variant: "yolov8x" }
         ];
       }
 
@@ -297,7 +294,6 @@ export default {
       const m = this.formatVariantKey(this.selectedModel);
       if (/^YOLO11/.test(m)) return "YOLO11";
       if (/^YOLOv8/.test(m)) return "YOLOv8";
-      if (/^rtmdet/.test(m)) return "rtmdet";
       return null;
     },
     seriesModelEntries() {
@@ -463,16 +459,10 @@ export default {
     formatVariantKey(v) {
       const s = String(v || "").trim();
       if (!s) return "";
-      // If it looks like RTMDet, keep casing or normalize nicely
-      if (/^rtmdet/i.test(s)) return s.toLowerCase(); // keep 'rtmdet_s' key style
       return s.replace(/^yolo/i, "YOLO");
     },
     formatVariant(v) {
       const k = this.formatVariantKey(v);
-      if (k.startsWith("rtmdet")) {
-         // Display as RTMDet-s etc
-         return k.replace("rtmdet_", "RTMDet-");
-      }
       return k;
     },
     showAdvancedModelConfiguration() {
@@ -481,13 +471,6 @@ export default {
     emitConfigChange() {
       const variant = String(this.selectedModel || "").toLowerCase();
       let configPath = "";
-      
-      // Simple mapping for standard RTMDet variants
-      if (variant.startsWith("rtmdet")) {
-         if (variant === "rtmdet_s") configPath = "configs/rtmdet/rtmdet_s_8xb32-300e_coco.py";
-         else if (variant === "rtmdet_m") configPath = "configs/rtmdet/rtmdet_m_8xb32-300e_coco.py";
-         else if (variant === "rtmdet_l") configPath = "configs/rtmdet/rtmdet_l_8xb32-300e_coco.py";
-      }
 
       const configData = {
         epochs: parseInt(this.epochs, 10) || 100,

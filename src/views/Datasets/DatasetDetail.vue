@@ -134,37 +134,48 @@
           <main class="images-panel">
             <div class="panel-head">
               <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
-              <div v-if="allowAppendUpload" class="panel-actions">
-                  <div class="action-card">
-                      <el-select
-                        v-model="selectedVersionId"
-                        placeholder="版本"
-                        class="card-select"
-                        size="small"
-                        :loading="versionLoading"
-                        :disabled="versionOptions.length === 0"
-                        @change="handleVersionChange"
-                      >
-                        <el-option
-                          v-for="item in versionOptions"
-                          :key="item.value"
-                          :label="item.label"
-                          :value="item.value">
-                        </el-option>
-                      </el-select>
-                      <div class="action-divider"></div>
-                      <div class="card-btn" :class="{ 'is-loading': isUploading }" @click="handleAddImage">
-                        <i :class="isUploading ? 'el-icon-loading' : 'el-icon-plus'"></i> {{ isUploading ? '上传中' : '添加' }}
-                      </div>
-                  </div>
-                  <input
-                    ref="imageFileInput"
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    style="display: none;"
-                    @change="handleFilesSelected"
-                  />
+              <div v-if="showPanelActions" class="panel-actions">
+                <el-button
+                  v-if="showSplitButton"
+                  size="small"
+                  type="primary"
+                  plain
+                  :loading="splitSubmitting"
+                  @click="openSplitDialog"
+                >
+                  数据集划分
+                </el-button>
+                <div v-if="allowAppendUpload" class="action-card">
+                    <el-select
+                      v-model="selectedVersionId"
+                      placeholder="版本"
+                      class="card-select"
+                      size="small"
+                      :loading="versionLoading"
+                      :disabled="versionOptions.length === 0"
+                      @change="handleVersionChange"
+                    >
+                      <el-option
+                        v-for="item in versionOptions"
+                        :key="item.value"
+                        :label="item.label"
+                        :value="item.value">
+                      </el-option>
+                    </el-select>
+                    <div class="action-divider"></div>
+                    <div class="card-btn" :class="{ 'is-loading': isUploading }" @click="handleAddImage">
+                      <i :class="isUploading ? 'el-icon-loading' : 'el-icon-plus'"></i> {{ isUploading ? '上传中' : '添加' }}
+                    </div>
+                </div>
+                <input
+                  v-if="allowAppendUpload"
+                  ref="imageFileInput"
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  style="display: none;"
+                  @change="handleFilesSelected"
+                />
               </div>
             </div>
             
@@ -230,6 +241,7 @@
       width="420px"
       :close-on-click-modal="!convertingDataset"
       :close-on-press-escape="!convertingDataset"
+      :append-to-body="true"
       class="convert-dialog"
     >
       <div class="convert-body">
@@ -251,6 +263,39 @@
       <div slot="footer" class="dialog-footer">
         <el-button :disabled="convertingDataset" @click="showConvertDialog = false">取消</el-button>
         <el-button type="primary" :loading="convertingDataset" @click="submitConvert">开始转换</el-button>
+      </div>
+    </el-dialog>
+
+    <el-dialog
+      title="数据集划分"
+      :visible.sync="showSplitDialog"
+      width="420px"
+      :close-on-click-modal="!splitSubmitting"
+      :close-on-press-escape="!splitSubmitting"
+      :append-to-body="true"
+      class="split-dialog"
+    >
+      <div class="split-body">
+        <div class="convert-row">
+          <label class="convert-label">训练</label>
+          <el-input-number v-model="splitForm.train" :min="1" :max="98" size="small"></el-input-number>
+          <span class="split-suffix">%</span>
+        </div>
+        <div class="convert-row">
+          <label class="convert-label">验证</label>
+          <el-input-number v-model="splitForm.val" :min="1" :max="98" size="small"></el-input-number>
+          <span class="split-suffix">%</span>
+        </div>
+        <div class="convert-row">
+          <label class="convert-label">测试</label>
+          <el-input-number v-model="splitForm.test" :min="1" :max="98" size="small"></el-input-number>
+          <span class="split-suffix">%</span>
+        </div>
+        <div class="split-sum" :class="{ invalid: !splitValid }">总和：{{ splitSum }}%</div>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button :disabled="splitSubmitting" @click="showSplitDialog = false">取消</el-button>
+        <el-button type="primary" :loading="splitSubmitting" :disabled="!splitValid" @click="submitSplit">开始划分</el-button>
       </div>
     </el-dialog>
 
@@ -431,7 +476,7 @@
 </template>
 
 <script>
-import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset } from '@/api/datasets';
+import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, fetchDatasetSplitSummary, splitDataset } from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
 export default {
     name: 'DataDetail',
@@ -484,6 +529,15 @@ export default {
                 labelStrategy: 'leaf',
                 labelLevel: 2,
                 labelSeparator: '%',
+            },
+            showSplitDialog: false,
+            splitSubmitting: false,
+            splitSummary: null,
+            splitLoading: false,
+            splitForm: {
+                train: 90,
+                val: 7,
+                test: 3,
             },
         }
     },
@@ -538,6 +592,9 @@ export default {
             const meta = ver && ver.meta;
             return !!(ver && ver.status === 'failed' && meta && meta.illegal);
         },
+        isDetectionDataset() {
+            return String(this.datasetType || '').toLowerCase() === 'detection';
+        },
         illegalReason() {
             const ver = this.datasetDetail && this.datasetDetail.active_version;
             const meta = ver && ver.meta;
@@ -557,6 +614,30 @@ export default {
                 return conv.supported;
             }
             return this.illegalReason === 'labelme_json';
+        },
+        splitSum() {
+            const t = Number(this.splitForm.train) || 0;
+            const v = Number(this.splitForm.val) || 0;
+            const s = Number(this.splitForm.test) || 0;
+            return Math.round((t + v + s) * 100) / 100;
+        },
+        splitValid() {
+            return Math.abs(this.splitSum - 100) < 0.0001;
+        },
+        hasSplit() {
+            const s = this.splitSummary;
+            if (!s) return false;
+            const total = (Number(s.train_count) || 0) + (Number(s.val_count) || 0) + (Number(s.test_count) || 0);
+            return total > 0;
+        },
+        showSplitButton() {
+            if (!this.isDetectionDataset) return false;
+            if (this.isIllegalDataset || this.isDatasetEmpty) return false;
+            if (this.splitSummary && this.hasSplit) return false;
+            return true;
+        },
+        showPanelActions() {
+            return this.showSplitButton || this.allowAppendUpload;
         },
         conversionStatusText() {
             const status = this.conversionStatus;
@@ -630,6 +711,8 @@ export default {
             this.datasetSize = this.$route.query.datasetSize || '0MB';
             this.selectedVersionId = null;
             this.versionOptions = [];
+            this.splitSummary = null;
+            this.splitLoading = false;
             await this.refreshVersionsAndDetail({ forceLatest: true });
         },
         async refreshVersionsAndDetail({ forceLatest = false } = {}) {
@@ -793,12 +876,43 @@ export default {
             this.$message.success('上传成功，正在刷新数据集。');
             this.refreshVersionsAndDetail({ forceLatest: true });
         },
+        openSplitDialog() {
+          if (!this.showSplitButton) return;
+          this.splitForm = { train: 90, val: 7, test: 3 };
+          this.showSplitDialog = true;
+        },
         openConvertDialog() {
           if (!this.conversionSupported) {
             this.$message.warning('该数据集不支持转换');
             return;
           }
           this.showConvertDialog = true;
+        },
+        async submitSplit() {
+          if (!this.datasetId) return;
+          if (!this.splitValid) {
+            this.$message.warning('训练/验证/测试比例总和需为100%');
+            return;
+          }
+          this.splitSubmitting = true;
+          try {
+            const payload = {
+              version_id: this.selectedVersionId ? Number(this.selectedVersionId) : null,
+              train_ratio: (Number(this.splitForm.train) || 0) / 100,
+              val_ratio: (Number(this.splitForm.val) || 0) / 100,
+              test_ratio: (Number(this.splitForm.test) || 0) / 100,
+            };
+            const summary = await splitDataset(this.datasetId, payload);
+            this.splitSummary = summary;
+            this.$message.success('数据集划分完成');
+            this.showSplitDialog = false;
+            await this.fetchDatasetDetail();
+          } catch (e) {
+            const msg = e && e.message ? String(e.message) : '划分失败';
+            this.$message.error(`划分失败: ${msg}`);
+          } finally {
+            this.splitSubmitting = false;
+          }
         },
         async submitConvert() {
           if (!this.datasetId) return;
@@ -986,19 +1100,40 @@ export default {
                     if (detail.total_images !== undefined) this.numImages = detail.total_images;
                     this.selectedImages = detail.images || [];
                 }
-                
-            const status = this.conversionStatus;
-            if (this.isIllegalDataset && (status === 'queued' || status === 'running')) {
-                if (!this.conversionTimer) this.startConversionPolling();
-            } else {
-                this.stopConversionPolling();
-            }
+
+                await this.fetchSplitSummary();
+
+                const status = this.conversionStatus;
+                if (this.isIllegalDataset && (status === 'queued' || status === 'running')) {
+                    if (!this.conversionTimer) this.startConversionPolling();
+                } else {
+                    this.stopConversionPolling();
+                }
 
             } catch (error) {
                 console.error('Failed to fetch dataset detail:', error);
                 this.datasetDetail = null;
             } finally {
                 this.detailLoading = false;
+            }
+        },
+        async fetchSplitSummary() {
+            if (!this.datasetId) return;
+            if (!this.isDetectionDataset || this.isIllegalDataset) {
+                this.splitSummary = null;
+                return;
+            }
+            this.splitLoading = true;
+            try {
+                const summary = await fetchDatasetSplitSummary(this.datasetId, {
+                    versionId: this.selectedVersionId,
+                });
+                this.splitSummary = summary || null;
+            } catch (e) {
+                console.warn('Failed to fetch split summary:', e);
+                this.splitSummary = null;
+            } finally {
+                this.splitLoading = false;
             }
         },
         async handleVersionChange() {
@@ -1468,6 +1603,7 @@ export default {
 .panel-actions { 
   display: flex; 
   align-items: center;
+  gap: 0.5rem;
 }
 
 .images-panel .panel-head {
@@ -1659,6 +1795,60 @@ export default {
 
 .upload-dialog ::v-deep .el-dialog__body {
   padding: 1.5rem;
+}
+
+/* Convert Dialog */
+.convert-dialog ::v-deep .el-dialog__body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.convert-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.convert-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.convert-label {
+  width: 90px;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.convert-hint {
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+}
+
+.split-dialog ::v-deep .el-dialog__body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.split-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.split-suffix {
+  color: var(--text-secondary);
+}
+
+.split-sum {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-left: 90px;
+}
+
+.split-sum.invalid {
+  color: #ef4444;
+  font-weight: 600;
 }
 
 .upload-sections {

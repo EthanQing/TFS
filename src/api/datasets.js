@@ -306,7 +306,19 @@ export async function createDataset({ name, dataset_type, description = null, st
 export function uploadDatasetToExisting(
     datasetId,
     file,
-    { message = null, created_by = null, onProgress = null, onUploadDone = null } = {}
+    {
+        message = null,
+        created_by = null,
+        split_enabled = false,
+        split_train_ratio = null,
+        split_val_ratio = null,
+        split_test_ratio = null,
+        split_seed = null,
+        split_shuffle = null,
+        split_overwrite = null,
+        onProgress = null,
+        onUploadDone = null,
+    } = {}
 ) {
     try {
         if (!datasetId) throw new Error('?? datasetId');
@@ -314,6 +326,27 @@ export function uploadDatasetToExisting(
         formData.append('file', file);
         if (message) formData.append('message', message);
         if (created_by) formData.append('created_by', created_by);
+        if (split_enabled) {
+            formData.append('split_enabled', 'true');
+            if (split_train_ratio !== null && split_train_ratio !== undefined) {
+                formData.append('split_train_ratio', String(split_train_ratio));
+            }
+            if (split_val_ratio !== null && split_val_ratio !== undefined) {
+                formData.append('split_val_ratio', String(split_val_ratio));
+            }
+            if (split_test_ratio !== null && split_test_ratio !== undefined) {
+                formData.append('split_test_ratio', String(split_test_ratio));
+            }
+            if (split_seed !== null && split_seed !== undefined) {
+                formData.append('split_seed', String(split_seed));
+            }
+            if (split_shuffle !== null && split_shuffle !== undefined) {
+                formData.append('split_shuffle', split_shuffle ? 'true' : 'false');
+            }
+            if (split_overwrite !== null && split_overwrite !== undefined) {
+                formData.append('split_overwrite', split_overwrite ? 'true' : 'false');
+            }
+        }
 
         return xhrUploadJson(
             `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload`,
@@ -356,7 +389,17 @@ export function uploadDataset(
     datasetName,
     datasetType,
     description = null,
-    { onProgress = null, onUploadDone = null } = {}
+    {
+        split_enabled = false,
+        split_train_ratio = null,
+        split_val_ratio = null,
+        split_test_ratio = null,
+        split_seed = null,
+        split_shuffle = null,
+        split_overwrite = null,
+        onProgress = null,
+        onUploadDone = null,
+    } = {}
 ) {
     try {
         let cancelled = false;
@@ -372,6 +415,13 @@ export function uploadDataset(
             const req = uploadDatasetToExisting(datasetId, file, {
                 message: description || null,
                 created_by: null,
+                split_enabled,
+                split_train_ratio,
+                split_val_ratio,
+                split_test_ratio,
+                split_seed,
+                split_shuffle,
+                split_overwrite,
                 onProgress,
                 onUploadDone,
             });
@@ -676,11 +726,75 @@ export async function fetchDatasetVersions(datasetId, { page = 1, pageSize = 50 
     }
 }
 
+// fetchDatasetSplitSummary 获取数据集划分统计
+export async function fetchDatasetSplitSummary(datasetId, { versionId = null } = {}) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    const qs = new URLSearchParams();
+    qs.set('page', '1');
+    qs.set('page_size', '1');
+    if (versionId !== null && versionId !== undefined && versionId !== '') {
+        qs.set('version_id', String(versionId));
+    }
+
+    const url = `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/split?${qs.toString()}`;
+    const response = await fetch(url);
+    const data = await safeJson(response);
+    if (!response.ok) throw new Error(pickErrorMessage(data, response));
+    return data && data.summary ? data.summary : data;
+}
+
+// splitDataset 手动划分数据集
+export async function splitDataset(
+    datasetId,
+    {
+        version_id = null,
+        train_ratio = 0.9,
+        val_ratio = null,
+        test_ratio = null,
+        seed = null,
+        shuffle = true,
+        overwrite = true,
+    } = {}
+) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    const payload = {
+        train_ratio,
+        shuffle: !!shuffle,
+        overwrite: !!overwrite,
+    };
+    if (version_id !== null && version_id !== undefined && version_id !== '') {
+        payload.version_id = Number(version_id);
+    }
+    if (val_ratio !== null && val_ratio !== undefined) payload.val_ratio = val_ratio;
+    if (test_ratio !== null && test_ratio !== undefined) payload.test_ratio = test_ratio;
+    if (seed !== null && seed !== undefined) payload.seed = Number(seed);
+
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/split`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data;
+}
+
 
 // convertIllegalDataset ?????????
 export async function convertIllegalDataset(
     datasetId,
-    { labelStrategy = 'leaf', labelLevel = null, labelSeparator = '%' } = {}
+    {
+        labelStrategy = 'leaf',
+        labelLevel = null,
+        labelSeparator = '%',
+        split_enabled = false,
+        split_train_ratio = null,
+        split_val_ratio = null,
+        split_test_ratio = null,
+        split_seed = null,
+        split_shuffle = null,
+        split_overwrite = null,
+    } = {}
 ) {
     if (!datasetId) throw new Error('?? datasetId');
     const payload = {
@@ -689,6 +803,15 @@ export async function convertIllegalDataset(
     };
     if (labelStrategy === 'level') {
         payload.label_level = Number(labelLevel) || 1;
+    }
+    if (split_enabled) {
+        payload.split_enabled = true;
+        if (split_train_ratio !== null && split_train_ratio !== undefined) payload.split_train_ratio = split_train_ratio;
+        if (split_val_ratio !== null && split_val_ratio !== undefined) payload.split_val_ratio = split_val_ratio;
+        if (split_test_ratio !== null && split_test_ratio !== undefined) payload.split_test_ratio = split_test_ratio;
+        if (split_seed !== null && split_seed !== undefined) payload.split_seed = split_seed;
+        if (split_shuffle !== null && split_shuffle !== undefined) payload.split_shuffle = !!split_shuffle;
+        if (split_overwrite !== null && split_overwrite !== undefined) payload.split_overwrite = !!split_overwrite;
     }
 
     const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/convert`, {

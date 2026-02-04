@@ -32,7 +32,6 @@
           </div>
         </div>
 
-        <!-- 上传按钮 -->
         <button
           class="upload-button"
           :disabled="!selectedFile || isUploading || !datasetId"
@@ -344,4 +343,5 @@ export default {
   text-align: center;
   color: #4caf50;
 }
+
 </style>

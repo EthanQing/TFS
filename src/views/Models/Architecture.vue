@@ -84,10 +84,18 @@ export default {
     };
   },
   computed: {
-    groupedList() {
+    filteredArchitectures() {
       if (!Array.isArray(this.architectures)) return [];
+      return this.architectures.filter(it => {
+        const variant = String(it?.model_variant || "").toLowerCase();
+        const family = String(it?.model_family || it?.family || "").toLowerCase();
+        return !(variant.startsWith("rtmdet") || family.includes("mmdet") || family.includes("mmdetection"));
+      });
+    },
+    groupedList() {
+      if (!this.filteredArchitectures.length) return [];
       const map = {};
-      this.architectures.forEach(it => {
+      this.filteredArchitectures.forEach(it => {
         const fam = it.model_family || 'Uncategorized';
         (map[fam] = map[fam] || []).push(it);
       });
@@ -118,7 +126,7 @@ export default {
         }));
     },
     totalArchitectures() {
-      return Array.isArray(this.architectures) ? this.architectures.length : 0;
+      return this.filteredArchitectures.length;
     },
   },
   methods: {
