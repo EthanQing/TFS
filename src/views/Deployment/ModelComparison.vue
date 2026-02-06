@@ -77,17 +77,17 @@
             <!-- Parameters Tab -->
             <div class="tab-content" v-show="activeTab === 'params'">
                 <div class="params-table-wrapper glass-panel-sm" v-loading="loadingParams">
-                     <el-table :data="paramRows" border style="width: 100%" height="100%">
+                     <el-table ref="paramsTable" :data="paramRows" row-key="key" border style="width: 100%" height="100%">
                         <el-table-column prop="key" label="参数" width="180" fixed></el-table-column>
                          <el-table-column 
                             v-for="run in selectedRuns" 
-                            :key="run.run_id" 
-                            :label="run.name"
+                            :key="getRunId(run)" 
+                            :label="getRunLabel(run)"
                             min-width="150"
                         >
                             <template slot-scope="scope">
-                                <span :class="{ 'diff-val': scope.row.isDiff }">
-                                    {{ formatVal(scope.row[run.run_id]) }}
+                                <span>
+                                    {{ formatVal(scope.row[getRunId(run)]) }}
                                 </span>
                             </template>
                         </el-table-column>
@@ -200,6 +200,15 @@ export default {
         paramRows() {
             if (!this.compareData || !this.compareData.runs) return [];
             
+            // Build a map from compareData.runs using both job_id and run_id as possible keys
+            const runsMap = {};
+            this.compareData.runs.forEach(r => {
+                const key = r.job_id || r.run_id;
+                runsMap[key] = r;
+                // Also map by lowercase for case-insensitive matching
+                if (key) runsMap[key.toLowerCase()] = r;
+            });
+            
             // Collect all unique keys from parameters
             const keySet = new Set();
             const runs = this.compareData.runs;
@@ -217,30 +226,48 @@ export default {
             Array.from(keySet).sort().forEach(key => {
                 const row = { key };
                 const values = [];
-                runs.forEach(r => {
+                
+                // Use selectedRuns to ensure we match metricsData keys
+                this.selectedRuns.forEach(selectedRun => {
                     let val = null;
-                    const rid = r.run_id || r.job_id; // Ensure we match the key used in metricsData
+                    const rid = selectedRun.job_id || selectedRun.run_id;
+                    
+                    // Find corresponding run data from compareData
+                    const r = runsMap[rid] || runsMap[rid?.toLowerCase()] || {};
 
                     if (key === 'model_size_mb') val = r.model_size_mb;
                     else if (key === 'best_mAP_50') {
                         // Try API provided best_metrics first
                         val = r.best_metrics?.['metrics/mAP50(B)'];
-                        // Fallback: calculate from curves
-                        if ((val === null || val === undefined) && this.metricsData[rid]) {
-                            const arr = this.metricsData[rid]['metrics/mAP50(B)'];
-                            if (arr && arr.length) val = Math.max(...arr.filter(n => typeof n === 'number'));
+                        // Fallback: calculate from curves with fuzzy key matching
+                        if ((val === null || val === undefined)) {
+                            const dataObj = this.metricsData[rid];
+                            if (dataObj) {
+                                const foundKey = Object.keys(dataObj).find(k => k.includes('mAP50') && !k.includes('mAP50-95'));
+                                if (foundKey) {
+                                    const arr = dataObj[foundKey];
+                                    if (arr && arr.length) val = Math.max(...arr.filter(n => typeof n === 'number'));
+                                }
+                            }
                         }
                     } 
                     else if (key === 'best_mAP_50_95') {
                         val = r.best_metrics?.['metrics/mAP50-95(B)'];
-                         if ((val === null || val === undefined) && this.metricsData[rid]) {
-                            const arr = this.metricsData[rid]['metrics/mAP50-95(B)'];
-                            if (arr && arr.length) val = Math.max(...arr.filter(n => typeof n === 'number'));
+                        // Fallback: calculate from curves with fuzzy key matching
+                        if ((val === null || val === undefined)) {
+                            const dataObj = this.metricsData[rid];
+                            if (dataObj) {
+                                const foundKey = Object.keys(dataObj).find(k => k.includes('mAP50-95'));
+                                if (foundKey) {
+                                    const arr = dataObj[foundKey];
+                                    if (arr && arr.length) val = Math.max(...arr.filter(n => typeof n === 'number'));
+                                }
+                            }
                         }
                     }
                     else val = r.parameters?.[key];
                     
-                    row[r.run_id] = val;
+                    row[rid] = val;
                     values.push(JSON.stringify(val));
                 });
                 
@@ -249,16 +276,8 @@ export default {
                 rows.push(row);
             });
             
-            // Sort: put metrics first, then diffs, then others
-            return rows.sort((a, b) => {
-                const aM = a.key.includes('best_') || a.key.includes('size');
-                const bM = b.key.includes('best_') || b.key.includes('size');
-                if (aM && !bM) return -1;
-                if (!aM && bM) return 1;
-                if (a.isDiff && !b.isDiff) return -1;
-                if (!a.isDiff && b.isDiff) return 1;
-                return a.key.localeCompare(b.key);
-            });
+            // Sort: alphabetically by key name
+            return rows.sort((a, b) => a.key.localeCompare(b.key));
         }
     },
     watch: {
@@ -267,6 +286,10 @@ export default {
                 this.$nextTick(() => {
                     this.resizeCharts();
                     this.renderCharts();
+                });
+            } else if (val === 'params') {
+                this.$nextTick(() => {
+                    this.reflowParamsTable();
                 });
             }
         },
@@ -301,6 +324,18 @@ export default {
         Object.values(this.chartInstances).forEach(c => c.dispose());
     },
     methods: {
+        getRunId(run) {
+            return run?.job_id || run?.run_id;
+        },
+        getRunLabel(run) {
+            return run?.name || run?.job_name || this.getRunId(run) || '-';
+        },
+        reflowParamsTable() {
+            const table = this.$refs.paramsTable;
+            if (table && typeof table.doLayout === 'function') {
+                table.doLayout();
+            }
+        },
         formatVal(v) {
             if (v === null || v === undefined) return '-';
             if (typeof v === 'boolean') return v ? 'Yes' : 'No';
@@ -412,6 +447,9 @@ export default {
             // 1. Fetch Comparison Data (Parameters)
             try {
                 this.compareData = await CompareTrainingRuns(ids);
+                this.$nextTick(() => {
+                    this.reflowParamsTable();
+                });
             } catch (e) {
                 this.$message.error('获取对比数据失败');
             } finally {
@@ -424,15 +462,24 @@ export default {
             
             try {
                 const results = await Promise.all(promises);
+                const newMetricsData = {};
                 results.forEach(({ id, res }) => {
-                    this.metricsData[id] = res.metrics; 
+                    newMetricsData[id] = res.metrics; 
                 });
+                // Use Vue.set or reassign to trigger reactivity
+                this.metricsData = newMetricsData;
                 
                 console.log('Metrics Data Loaded:', Object.keys(this.metricsData));
 
-                if (this.activeTab === 'curves') {
-                    this.$nextTick(this.renderCharts);
-                }
+                // Force re-render of params table by triggering a view update
+                this.$nextTick(() => {
+                    if (this.activeTab === 'curves') {
+                        this.renderCharts();
+                    }
+                    this.reflowParamsTable();
+                    // Force computed to recalculate
+                    this.$forceUpdate();
+                });
             } catch (e) {
                 console.error(e);
                 this.$message.error('部分曲线数据加载失败');

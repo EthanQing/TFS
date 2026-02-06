@@ -117,12 +117,36 @@
                 :key="getClassId(classInfo, idx)"
                 :class="{ 'selected': isSelectedClass(classInfo) }"
                 @click="selectClass(classInfo)"
+                @mouseenter="hoveredClassId = getClassId(classInfo, idx)"
+                @mouseleave="handleClassMouseLeave()"
               >
                 <div class="class-info">
                     <span class="dot"></span>
                     <span class="class-name" v-html="input.trim() ? highlightText(getClassName(classInfo), input) : getClassName(classInfo)"></span>
                 </div>
-                <span class="class-count">{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
+                <span 
+                  class="class-count" 
+                  v-show="hoveredClassId !== getClassId(classInfo, idx)"
+                >{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
+                <el-dropdown
+                  v-show="hoveredClassId === getClassId(classInfo, idx)"
+                  trigger="click"
+                  @command="(cmd) => handleTagAction(cmd, classInfo)"
+                  @visible-change="(visible) => handleDropdownVisibleChange(visible, classInfo, idx)"
+                >
+                  <el-button 
+                    type="text" 
+                    class="edit-tag-btn"
+                    @click.stop
+                  >
+                    编辑 
+                  </el-button>
+                  <el-dropdown-menu slot="dropdown">
+                    <el-dropdown-item command="rename" icon="el-icon-edit">修改名称</el-dropdown-item>
+                    <el-dropdown-item command="delete" icon="el-icon-delete">删除标签</el-dropdown-item>
+                    <el-dropdown-item command="merge" icon="el-icon-connection">合并标签</el-dropdown-item>
+                  </el-dropdown-menu>
+                </el-dropdown>
               </li>
             </ul>
             <div v-else class="no-results">
@@ -296,6 +320,38 @@
       <div slot="footer" class="dialog-footer">
         <el-button :disabled="splitSubmitting" @click="showSplitDialog = false">取消</el-button>
         <el-button type="primary" :loading="splitSubmitting" :disabled="!splitValid" @click="submitSplit">开始划分</el-button>
+      </div>
+    </el-dialog>
+
+    <!-- Merge Tag Dialog -->
+    <el-dialog
+      title="合并标签"
+      :visible.sync="showMergeDialog"
+      width="420px"
+      :close-on-click-modal="!mergeSubmitting"
+      :close-on-press-escape="!mergeSubmitting"
+      :append-to-body="true"
+      class="merge-dialog"
+    >
+      <div class="merge-body">
+        <p class="merge-hint">将标签 "{{ mergeSourceTag ? getClassName(mergeSourceTag) : '' }}" 合并到：</p>
+        <el-select 
+          v-model="mergeTargetTagId" 
+          placeholder="请选择目标标签" 
+          style="width: 100%"
+          filterable
+        >
+          <el-option
+            v-for="tag in mergeTargetOptions"
+            :key="getClassId(tag)"
+            :label="getClassName(tag)"
+            :value="getClassId(tag)"
+          ></el-option>
+        </el-select>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button :disabled="mergeSubmitting" @click="showMergeDialog = false">取消</el-button>
+        <el-button type="primary" :loading="mergeSubmitting" :disabled="!mergeTargetTagId" @click="submitMergeTag">确定合并</el-button>
       </div>
     </el-dialog>
 
@@ -517,6 +573,9 @@ export default {
             uploadMode: 'files',
             pendingZipFile: null,
             zipDragOver: false,
+            // 标签编辑相关
+            hoveredClassId: null,
+            tagDropdownOpen: false,
             // UploadZip组件状态（用于keep-alive状态保持）
             zipUploadFile: null,
             zipUploading: false,
@@ -539,6 +598,11 @@ export default {
                 val: 7,
                 test: 3,
             },
+            // 合并标签相关
+            showMergeDialog: false,
+            mergeSubmitting: false,
+            mergeSourceTag: null,
+            mergeTargetTagId: '',
         }
     },
     created() {
@@ -649,6 +713,10 @@ export default {
             const meta = ver && ver.meta;
             const conv = meta && meta.conversion;
             return conv && conv.error_message ? conv.error_message : '';
+        },
+        mergeTargetOptions() {
+            if (!this.mergeSourceTag) return this.classList;
+            return this.classList.filter(c => this.getClassId(c) !== this.getClassId(this.mergeSourceTag));
         },
     },
     watch: {
@@ -1347,6 +1415,62 @@ export default {
                 this.uploadStage = 'idle';
             }
         },
+        handleClassMouseLeave() {
+            // 如果下拉菜单打开，不隐藏编辑按钮
+            if (!this.tagDropdownOpen) {
+                this.hoveredClassId = null;
+            }
+        },
+        handleDropdownVisibleChange(visible, classInfo, idx) {
+            this.tagDropdownOpen = visible;
+            if (!visible) {
+                // 下拉菜单关闭后，检查鼠标是否还在该项上
+                this.hoveredClassId = null;
+            }
+        },
+        handleTagAction(command, classInfo) {
+            const className = this.getClassName(classInfo);
+            switch (command) {
+                case 'rename':
+                    this.$prompt('请输入新的标签名称', '修改标签名称', {
+                        confirmButtonText: '确定',
+                        cancelButtonText: '取消',
+                        inputValue: className,
+                        inputPattern: /^.+$/,
+                        inputErrorMessage: '标签名称不能为空'
+                    }).then(({ value }) => {
+                        if (value && value !== className) {
+                            // TODO: 调用API修改标签名称
+                            console.log('Rename tag:', classInfo, 'to', value);
+                            this.$message.info(`重命名标签: ${className} → ${value} (待实现)`);
+                        }
+                    }).catch(() => {});
+                    break;
+                case 'delete':
+                    this.$confirm(`确定要删除标签 "${className}" 吗？该操作会移除所有相关标注。`, '删除标签', {
+                        confirmButtonText: '确定删除',
+                        cancelButtonText: '取消',
+                        type: 'warning'
+                    }).then(() => {
+                        // TODO: 调用API删除标签
+                        console.log('Delete tag:', classInfo);
+                        this.$message.info(`删除标签: ${className} (待实现)`);
+                    }).catch(() => {});
+                    break;
+                case 'merge':
+                    // 获取其他可合并的标签
+                    const otherTags = this.classList.filter(c => this.getClassId(c) !== this.getClassId(classInfo));
+                    if (otherTags.length === 0) {
+                        this.$message.warning('没有其他标签可供合并');
+                        return;
+                    }
+                    // 打开合并对话框
+                    this.mergeSourceTag = classInfo;
+                    this.mergeTargetTagId = '';
+                    this.showMergeDialog = true;
+                    break;
+            }
+        },
         async handleFilesSelected(event) {
             const files = Array.from(event.target.files || []);
             if (!files.length) return;
@@ -1372,6 +1496,23 @@ export default {
                 // Reset file input
                 event.target.value = '';
             }
+        },
+        submitMergeTag() {
+            if (!this.mergeTargetTagId || !this.mergeSourceTag) {
+                this.$message.warning('请选择目标标签');
+                return;
+            }
+            const targetTag = this.mergeTargetOptions.find(t => this.getClassId(t) === this.mergeTargetTagId);
+            const sourceName = this.getClassName(this.mergeSourceTag);
+            const targetName = this.getClassName(targetTag);
+            
+            // TODO: 调用API合并标签
+            console.log('Merge tag:', this.mergeSourceTag, 'into', targetTag);
+            this.$message.info(`合并标签: ${sourceName} → ${targetName} (待实现)`);
+            
+            this.showMergeDialog = false;
+            this.mergeSourceTag = null;
+            this.mergeTargetTagId = '';
         }
     }
 }
@@ -1580,12 +1721,56 @@ export default {
 .class-list li:hover { background: rgba(255,255,255,0.8); }
 .class-list li.selected { background: var(--color-primary); color: white; box-shadow: var(--shadow-md); }
 
-.class-info { display: flex; align-items: center; gap: 0.75rem; overflow: hidden; }
+.class-info { display: flex; align-items: center; gap: 0.75rem; overflow: hidden; flex: 1; min-width: 0; }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: #94a3b8; flex-shrink: 0; }
 .dot.all { background: #f59e0b; }
 .selected .dot { background: white; }
 .class-name { font-size: 0.875rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.class-count { font-size: 0.75rem; font-weight: 600; opacity: 0.7; }
+.class-count { font-size: 0.75rem; font-weight: 600; opacity: 0.7; flex-shrink: 0; }
+
+/* 标签编辑按钮 */
+.edit-tag-btn {
+  padding: 5px 14px !important;
+  font-size: 0.8rem !important;
+  font-weight: 500 !important;
+  color: var(--color-primary) !important;
+  border: 1px solid rgba(99, 102, 241, 0.2) !important;
+  border-radius: 6px !important;
+  transition: all 0.25s ease !important;
+  flex-shrink: 0;
+  text-decoration: none !important;
+  box-shadow: 0 1px 3px rgba(99, 102, 241, 0.1);
+  letter-spacing: 0.02em;
+}
+
+.edit-tag-btn:hover {
+  text-decoration: none !important;
+  transform: translateY(-1px);
+}
+
+.edit-tag-btn:active {
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(99, 102, 241, 0.15);
+}
+
+.edit-tag-btn span,
+.edit-tag-btn:hover span {
+  text-decoration: none !important;
+}
+
+.selected .edit-tag-btn {
+  color: white !important;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.22) 0%, rgba(255, 255, 255, 0.15) 100%) !important;
+  border-color: rgba(255, 255, 255, 0.3) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.selected .edit-tag-btn:hover {
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.32) 0%, rgba(255, 255, 255, 0.25) 100%) !important;
+  border-color: rgba(255, 255, 255, 0.45) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  text-decoration: none !important;
+}
 .highlight-text { background: rgba(255,255,0,0.3); color: inherit; }
 
 .images-panel {
@@ -1850,6 +2035,24 @@ export default {
   color: #ef4444;
   font-weight: 600;
 }
+
+/* Merge Dialog */
+.merge-dialog ::v-deep .el-dialog__body {
+  padding: 1.25rem 1.5rem 1.5rem;
+}
+
+.merge-body {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.merge-hint {
+  color: #606266;
+  margin: 0;
+  font-size: 0.9rem;
+}
+
 
 .upload-sections {
   display: flex;

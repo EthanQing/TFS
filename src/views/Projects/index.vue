@@ -26,7 +26,8 @@
     </header>
 
     <section class="pr-toolbar">
-       <div class="search-shell">
+      <div class="toolbar-left">
+        <div class="search-shell">
           <i class="el-icon-search"></i>
           <el-input
             v-model="searchQuery"
@@ -35,7 +36,19 @@
             clearable
           ></el-input>
         </div>
-        <!-- Add more toolbars controls if needed -->
+      </div>
+      <div class="toolbar-right">
+        <div class="filter-group">
+          <el-select v-model="activeFilter" placeholder="排序方式" class="filter-select" clearable>
+            <el-option
+              v-for="item in sortOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            ></el-option>
+          </el-select>
+        </div>
+      </div>
     </section>
 
     <section class="pr-body">
@@ -146,6 +159,12 @@ export default {
   data() {
     return {
       searchQuery: "",
+      activeFilter: null,
+      sortOptions: [
+        { value: "time", label: "时间" },
+        { value: "model", label: "模型" },
+        { value: "size", label: "大小" },
+      ],
       dialogFormVisible: false,
       form: { name: "", description: "", dataset: "" , user: "" },
       projects: [],
@@ -166,11 +185,22 @@ export default {
         : 0;
     },
     filteredProjects() {
-      if (!this.searchQuery) return this.projects;
-      const query = this.searchQuery.toLowerCase();
-      return this.projects.filter(project => 
-        project.project_name.toLowerCase().includes(query)
-      );
+      if (!this.searchQuery && !this.activeFilter) return this.projects;
+      let result = [...this.projects];
+      if (this.searchQuery) {
+        const query = this.searchQuery.toLowerCase();
+        result = result.filter(project => 
+          project.project_name.toLowerCase().includes(query)
+        );
+      }
+      if (this.activeFilter === 'time') {
+        result.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+      } else if (this.activeFilter === 'model') {
+        result.sort((a, b) => (b.completed_models_count || 0) - (a.completed_models_count || 0));
+      } else if (this.activeFilter === 'size') {
+        result.sort((a, b) => this.parseSize(b.total_size_mb) - this.parseSize(a.total_size_mb));
+      }
+      return result;
     }
   },
   methods: {
@@ -307,6 +337,12 @@ export default {
       if (!size) return '0MB';
       return (typeof size === 'string' && size.includes('MB')) ? size : `${parseFloat(size).toFixed(1)}MB`;
     },
+    parseSize(sizeStr) {
+      if (!sizeStr) return 0;
+      if (typeof sizeStr === 'number') return sizeStr;
+      const match = String(sizeStr).match(/(\d+\.?\d*)/);
+      return match ? parseFloat(match[1]) : 0;
+    },
   },
   mounted() {
     this.fetchProjectsList();
@@ -395,11 +431,26 @@ export default {
 
 /* Toolbar */
 .pr-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
   padding: 16px;
   background: var(--bg-card);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border-light);
   box-shadow: var(--shadow-sm);
+}
+
+.toolbar-left, .toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.filter-group {
+  min-width: 140px;
 }
 
 .search-shell {
@@ -422,6 +473,12 @@ export default {
   background: transparent;
   padding: 0;
   height: auto;
+}
+
+.search-input ::v-deep .el-input__inner:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 
 /* Grid */

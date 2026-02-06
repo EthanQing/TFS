@@ -55,23 +55,15 @@
       </div>
       
       <div class="toolbar-right">
-        <span class="filter-label">排序:</span>
-        <div class="sort-actions">
-           <button
-            class="chip"
-            :class="{ active: activeFilter === 'category' }"
-            @click="setActiveFilter('category')"
-          >类别</button>
-          <button
-            class="chip"
-            :class="{ active: activeFilter === 'image' }"
-            @click="setActiveFilter('image')"
-          >图片数</button>
-          <button
-            class="chip"
-            :class="{ active: activeFilter === 'size' }"
-            @click="setActiveFilter('size')"
-          >大小</button>
+        <div class="filter-group">
+          <el-select v-model="activeFilter" placeholder="排序方式" class="filter-select" clearable>
+            <el-option
+              v-for="item in sortOptions"
+              :key="item.value"
+              :label="item.label"
+              :value="item.value"
+            ></el-option>
+          </el-select>
         </div>
       </div>
     </section>
@@ -215,6 +207,11 @@ export default {
         { value: "yolo", label: "YOLO" },
         { value: "coco", label: "COCO" },
       ],
+      sortOptions: [
+        { value: "category", label: "类别" },
+        { value: "image", label: "图片数" },
+        { value: "size", label: "大小" },
+      ],
       value: "all",
       formatValue: "all",
       activeFilter: null,
@@ -257,7 +254,6 @@ export default {
         result = result.filter(dataset => (dataset.format || 'yolo') === this.formatValue);
       }
       console.log('After filtering:', result);
-      console.log('current activeFilter:', this.activeFilter);
       if (this.activeFilter === 'category') {
         result.sort((a, b) => (b.num_classes || 0) - (a.num_classes || 0));
       } else if (this.activeFilter === 'image') {
@@ -540,6 +536,12 @@ export default {
   background: transparent;
   padding: 0;
   height: auto;
+}
+
+.search-input ::v-deep .el-input__inner:focus {
+  border: none;
+  box-shadow: none;
+  outline: none;
 }
 
 .filter-group {
