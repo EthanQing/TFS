@@ -95,7 +95,7 @@
           <aside class="sidebar-panel glass-panel-sm">
             <div class="panel-head">
               <div class="panel-title">类别</div>
-              <div class="panel-sub">按类别筛选图片</div>
+              <div class="panel-sub">按类别筛选图片 · 双击编辑名称</div>
             </div>
             
             <div class="search-box">
@@ -127,12 +127,36 @@
                 :key="getClassId(classInfo, idx)"
                 :class="{ 'selected': isSelectedClass(classInfo) }"
                 @click="selectClass(classInfo)"
+                @dblclick.stop="startEditClass(classInfo, idx)"
               >
-                <div class="class-info">
+                <template v-if="editingClassIdx === idx">
+                  <div class="class-info editing">
+                    <span class="dot"></span>
+                    <input
+                      ref="classEditInput"
+                      v-model="editingClassName"
+                      class="class-edit-input"
+                      :class="{ 'is-saving': renameSaving }"
+                      :disabled="renameSaving"
+                      @click.stop
+                      @keyup.enter="confirmEditClass(classInfo)"
+                      @keyup.esc="cancelEditClass"
+                      @blur="confirmEditClass(classInfo)"
+                    />
+                  </div>
+                  <span v-if="renameSaving" class="class-edit-status"><i class="el-icon-loading"></i></span>
+                  <span v-else class="class-edit-actions" @click.stop>
+                    <i class="el-icon-check class-edit-btn confirm" @click="confirmEditClass(classInfo)"></i>
+                    <i class="el-icon-close class-edit-btn cancel" @click="cancelEditClass"></i>
+                  </span>
+                </template>
+                <template v-else>
+                  <div class="class-info">
                     <span class="dot"></span>
                     <span class="class-name" v-html="input.trim() ? highlightText(getClassName(classInfo), input) : getClassName(classInfo)"></span>
-                </div>
-                <span class="class-count">{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
+                  </div>
+                  <span class="class-count">{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
+                </template>
               </li>
             </ul>
             <div v-else class="no-results">
@@ -489,7 +513,7 @@
 </template>
 
 <script>
-import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, fetchDatasetSplitSummary, splitDataset, fetchIllegalDatasetLabels, updateIllegalDatasetLabels } from '@/api/datasets';
+import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, fetchDatasetSplitSummary, splitDataset, fetchIllegalDatasetLabels, updateIllegalDatasetLabels, renameDatasetClasses } from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
 import LabelMappingPanel from '@/components/LabelMappingPanel.vue';
 export default {
@@ -560,6 +584,11 @@ export default {
             illegalLabels: [],
             hasSavedMapping: false,
             savedLabelMapping: null,
+
+            // 类别重命名
+            editingClassIdx: null,
+            editingClassName: '',
+            renameSaving: false,
         }
     },
     created() {
@@ -817,6 +846,52 @@ export default {
         // Fallback to name comparison
         return this.getClassName(item) === this.getClassName(sel);
       },
+
+      // --- 类别重命名 ---
+      startEditClass(classInfo, idx) {
+        if (this.renameSaving) return;
+        this.editingClassIdx = idx;
+        this.editingClassName = this.getClassName(classInfo);
+        this.$nextTick(() => {
+          const inputs = this.$refs.classEditInput;
+          if (inputs) {
+            const el = Array.isArray(inputs) ? inputs[0] : inputs;
+            if (el) el.focus();
+          }
+        });
+      },
+      cancelEditClass() {
+        this.editingClassIdx = null;
+        this.editingClassName = '';
+      },
+      async confirmEditClass(classInfo) {
+        const oldName = this.getClassName(classInfo);
+        const newName = (this.editingClassName || '').trim();
+        // 未改动或为空 → 取消
+        if (!newName || newName === oldName) {
+          this.cancelEditClass();
+          return;
+        }
+        // 检查是否与其他类别重名
+        const existing = this.classList.find(c => this.getClassName(c) === newName);
+        if (existing) {
+          this.$message.warning(`类别名 "${newName}" 已存在`);
+          return;
+        }
+        this.renameSaving = true;
+        try {
+          const result = await renameDatasetClasses(this.datasetId, { [oldName]: newName });
+          this.$message.success(`已重命名: ${oldName} → ${newName}`);
+          this.cancelEditClass();
+          // 刷新数据集详情以反映新的类别名
+          await this.fetchDatasetDetail();
+        } catch (e) {
+          this.$message.error('重命名失败: ' + (e.message || e));
+        } finally {
+          this.renameSaving = false;
+        }
+      },
+
         async loadDataFromRoute() {
             this.datasetId = this.$route.query.datasetId || '';
             this.datasetName = this.$route.query.datasetName || '';
@@ -1749,6 +1824,56 @@ export default {
 .selected .dot { background: white; }
 .class-name { font-size: 0.875rem; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .class-count { font-size: 0.75rem; font-weight: 600; opacity: 0.7; flex-shrink: 0; }
+
+/* 类别内联编辑 */
+.class-info.editing { flex: 1; min-width: 0; }
+.class-edit-input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--color-primary);
+  border-radius: 4px;
+  padding: 2px 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  outline: none;
+  background: rgba(255,255,255,0.95);
+  color: var(--text-main);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.class-edit-input:focus {
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2);
+}
+.class-edit-input.is-saving {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.selected .class-edit-input {
+  color: var(--text-main);
+}
+.class-edit-actions {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+  align-items: center;
+}
+.class-edit-btn {
+  cursor: pointer;
+  font-size: 14px;
+  padding: 2px;
+  border-radius: 4px;
+  transition: background 0.15s, color 0.15s;
+}
+.class-edit-btn.confirm { color: #10b981; }
+.class-edit-btn.confirm:hover { background: rgba(16, 185, 129, 0.15); }
+.class-edit-btn.cancel { color: #ef4444; }
+.class-edit-btn.cancel:hover { background: rgba(239, 68, 68, 0.15); }
+.selected .class-edit-btn.confirm { color: #6ee7b7; }
+.selected .class-edit-btn.cancel { color: #fca5a5; }
+.class-edit-status {
+  flex-shrink: 0;
+  font-size: 14px;
+  color: var(--color-primary);
+}
 
 /* 标签编辑按钮 */
 .edit-tag-btn {

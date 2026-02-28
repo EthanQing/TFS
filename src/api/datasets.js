@@ -849,3 +849,24 @@ export async function convertIllegalDataset(
     if (!res.ok) throw new Error(pickErrorMessage(data, res));
     return data;
 }
+
+/**
+ * Rename class labels in a converted YOLO dataset.
+ * @param {number|string} datasetId
+ * @param {Object<string,string>} renameMap - { oldName: newName }
+ * @returns {Promise<{renamed: number, total_classes: number, class_names: string[]}>}
+ */
+export async function renameDatasetClasses(datasetId, renameMap) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    if (!renameMap || typeof renameMap !== 'object' || !Object.keys(renameMap).length) {
+        throw new Error('renameMap 不能为空');
+    }
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/classes`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rename_map: renameMap }),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data;
+}
