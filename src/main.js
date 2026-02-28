@@ -15,6 +15,27 @@ import "@/styles/element-overrides.css";
 
 import { preloadReferenceData } from "@/store/referenceStore";
 
+// 解决 ResizeObserver loop limit exceeded 报错 (ElTable 常规报错)
+const debounce = (fn, delay) => {
+  let timer = null;
+  return function () {
+    let context = this;
+    let args = arguments;
+    clearTimeout(timer);
+    timer = setTimeout(function () {
+      fn.apply(context, args);
+    }, delay);
+  };
+};
+
+const _ResizeObserver = window.ResizeObserver;
+window.ResizeObserver = class ResizeObserver extends _ResizeObserver {
+  constructor(callback) {
+    callback = debounce(callback, 16);
+    super(callback);
+  }
+};
+
 // 创建全局 EventBus
 Vue.prototype.EventBus = new Vue()
 

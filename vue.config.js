@@ -14,9 +14,12 @@ module.exports = defineConfig({
   },
 
   devServer: {
+    client: {
+      overlay: false
+    },
     proxy: {
       '/api': {
-        target: 'http://192.168.2.102:18001/api/datasets'
+        target: 'http://192.168.2.102:18001'
       }
     }
   }

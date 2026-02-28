@@ -779,6 +779,28 @@ export async function splitDataset(
     return data;
 }
 
+export async function fetchIllegalDatasetLabels(datasetId) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/illegal-labels`, {
+        method: 'GET',
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data;
+}
+
+export async function updateIllegalDatasetLabels(datasetId, labelMapping) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/illegal-labels`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ label_mapping: labelMapping }),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data;
+}
+
 
 // convertIllegalDataset ?????????
 export async function convertIllegalDataset(
@@ -787,6 +809,7 @@ export async function convertIllegalDataset(
         labelStrategy = 'leaf',
         labelLevel = null,
         labelSeparator = '%',
+        labelMapping = null,
         split_enabled = false,
         split_train_ratio = null,
         split_val_ratio = null,
@@ -803,6 +826,9 @@ export async function convertIllegalDataset(
     };
     if (labelStrategy === 'level') {
         payload.label_level = Number(labelLevel) || 1;
+    }
+    if (labelMapping && typeof labelMapping === 'object') {
+        payload.label_mapping = labelMapping;
     }
     if (split_enabled) {
         payload.split_enabled = true;

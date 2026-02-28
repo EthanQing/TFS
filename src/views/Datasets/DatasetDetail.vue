@@ -36,28 +36,38 @@
         <span>正在加载数据集详情...</span>
       </div>
       <template v-else>
-        <div v-if="isIllegalDataset" class="illegal-banner">
-          <div class="illegal-info">
-            <div class="illegal-title">非法数据集</div>
-            <div class="illegal-desc" v-if="illegalReason === 'labelme_json'">检测到 LabelMe JSON 标注，需要转换为 YOLO</div>
-            <div class="illegal-desc" v-else-if="illegalReason === 'unsupported_json'">检测到不支持的 JSON 格式，暂不支持转换</div>
-            <div class="illegal-desc" v-else>检测到非 YOLO 标注</div>
-            <div v-if="conversionStatusText" class="illegal-status">转换状态：{{ conversionStatusText }}</div>
-            <div v-if="conversionError" class="illegal-error">错误信息：{{ conversionError }}</div>
+        <div v-if="isIllegalDataset" class="illegal-section">
+          <div class="illegal-banner glass-panel warning-theme">
+            <div class="illegal-icon">
+              <i class="el-icon-warning"></i>
+            </div>
+            <div class="illegal-content">
+              <div class="illegal-title">非法数据集</div>
+              <div class="illegal-desc" v-if="illegalReason === 'labelme_json'">检测到 LabelMe JSON 标注，请配置标签映射后进行转换</div>
+              <div class="illegal-desc" v-else-if="illegalReason === 'unsupported_json'">检测到不支持的 JSON 格式，暂不支持转换</div>
+              <div class="illegal-desc" v-else>检测到非 YOLO 标注，请配置标签映射后进行转换</div>
+              <div v-if="conversionStatusText" class="illegal-badge">
+                <span class="badge-dot"></span> 转换状态：{{ conversionStatusText }}
+              </div>
+              <div v-if="conversionError" class="illegal-error">
+                <i class="el-icon-error"></i> {{ conversionError }}
+              </div>
+            </div>
+            <div class="illegal-actions" v-if="!conversionSupported">
+              <el-button size="medium" disabled>暂不支持转换</el-button>
+            </div>
           </div>
-          <div class="illegal-actions">
-            <el-button
-              v-if="conversionSupported"
-              type="primary"
-              size="small"
-              :loading="convertingDataset"
-              :disabled="conversionStatus === 'queued' || conversionStatus === 'running'"
-              @click="openConvertDialog"
-            >
-              {{ conversionStatus === 'queued' || conversionStatus === 'running' ? '转换中' : '转换' }}
-            </el-button>
-            <el-button v-else size="small" disabled>暂不支持转换</el-button>
-          </div>
+
+          <!-- Inline Label Mapping Panel -->
+          <LabelMappingPanel
+            v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
+            :labels="illegalLabels"
+            :loading="loadingLabels"
+            :saving="savingLabels"
+            :converting="convertingDataset"
+            @save="handleLabelMappingSave"
+            @save-and-convert="handleSaveAndConvert"
+          />
         </div>
 
         <div v-if="isDatasetEmpty" class="empty-state">
@@ -81,7 +91,7 @@
           </div>
         </div>
 
-        <div v-else class="gallery-layout">
+        <div v-else-if="!isIllegalDataset" class="gallery-layout">
           <aside class="sidebar-panel glass-panel-sm">
             <div class="panel-head">
               <div class="panel-title">类别</div>
@@ -117,36 +127,12 @@
                 :key="getClassId(classInfo, idx)"
                 :class="{ 'selected': isSelectedClass(classInfo) }"
                 @click="selectClass(classInfo)"
-                @mouseenter="hoveredClassId = getClassId(classInfo, idx)"
-                @mouseleave="handleClassMouseLeave()"
               >
                 <div class="class-info">
                     <span class="dot"></span>
                     <span class="class-name" v-html="input.trim() ? highlightText(getClassName(classInfo), input) : getClassName(classInfo)"></span>
                 </div>
-                <span 
-                  class="class-count" 
-                  v-show="hoveredClassId !== getClassId(classInfo, idx)"
-                >{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
-                <el-dropdown
-                  v-show="hoveredClassId === getClassId(classInfo, idx)"
-                  trigger="click"
-                  @command="(cmd) => handleTagAction(cmd, classInfo)"
-                  @visible-change="(visible) => handleDropdownVisibleChange(visible, classInfo, idx)"
-                >
-                  <el-button 
-                    type="text" 
-                    class="edit-tag-btn"
-                    @click.stop
-                  >
-                    编辑 
-                  </el-button>
-                  <el-dropdown-menu slot="dropdown">
-                    <el-dropdown-item command="rename" icon="el-icon-edit">修改名称</el-dropdown-item>
-                    <el-dropdown-item command="delete" icon="el-icon-delete">删除标签</el-dropdown-item>
-                    <el-dropdown-item command="merge" icon="el-icon-connection">合并标签</el-dropdown-item>
-                  </el-dropdown-menu>
-                </el-dropdown>
+                <span class="class-count">{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
               </li>
             </ul>
             <div v-else class="no-results">
@@ -259,6 +245,8 @@
       </div>
     </div>
 
+
+
     <el-dialog
       title="标签层级转换"
       :visible.sync="showConvertDialog"
@@ -323,37 +311,6 @@
       </div>
     </el-dialog>
 
-    <!-- Merge Tag Dialog -->
-    <el-dialog
-      title="合并标签"
-      :visible.sync="showMergeDialog"
-      width="420px"
-      :close-on-click-modal="!mergeSubmitting"
-      :close-on-press-escape="!mergeSubmitting"
-      :append-to-body="true"
-      class="merge-dialog"
-    >
-      <div class="merge-body">
-        <p class="merge-hint">将标签 "{{ mergeSourceTag ? getClassName(mergeSourceTag) : '' }}" 合并到：</p>
-        <el-select 
-          v-model="mergeTargetTagId" 
-          placeholder="请选择目标标签" 
-          style="width: 100%"
-          filterable
-        >
-          <el-option
-            v-for="tag in mergeTargetOptions"
-            :key="getClassId(tag)"
-            :label="getClassName(tag)"
-            :value="getClassId(tag)"
-          ></el-option>
-        </el-select>
-      </div>
-      <div slot="footer" class="dialog-footer">
-        <el-button :disabled="mergeSubmitting" @click="showMergeDialog = false">取消</el-button>
-        <el-button type="primary" :loading="mergeSubmitting" :disabled="!mergeTargetTagId" @click="submitMergeTag">确定合并</el-button>
-      </div>
-    </el-dialog>
 
     <!-- Upload Dialog -->
     <el-dialog
@@ -532,11 +489,12 @@
 </template>
 
 <script>
-import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, fetchDatasetSplitSummary, splitDataset } from '@/api/datasets';
+import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, fetchDatasetSplitSummary, splitDataset, fetchIllegalDatasetLabels, updateIllegalDatasetLabels } from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
+import LabelMappingPanel from '@/components/LabelMappingPanel.vue';
 export default {
     name: 'DataDetail',
-    components: { UploadZip },
+    components: { UploadZip, LabelMappingPanel },
     data() {
         return {
             datasetId: '',
@@ -573,10 +531,7 @@ export default {
             uploadMode: 'files',
             pendingZipFile: null,
             zipDragOver: false,
-            // 标签编辑相关
-            hoveredClassId: null,
-            tagDropdownOpen: false,
-            // UploadZip组件状态（用于keep-alive状态保持）
+
             zipUploadFile: null,
             zipUploading: false,
             zipUploadProgress: 0,
@@ -598,11 +553,13 @@ export default {
                 val: 7,
                 test: 3,
             },
-            // 合并标签相关
-            showMergeDialog: false,
-            mergeSubmitting: false,
-            mergeSourceTag: null,
-            mergeTargetTagId: '',
+
+            // 标签映射相关
+            loadingLabels: false,
+            savingLabels: false,
+            illegalLabels: [],
+            hasSavedMapping: false,
+            savedLabelMapping: null,
         }
     },
     created() {
@@ -714,10 +671,7 @@ export default {
             const conv = meta && meta.conversion;
             return conv && conv.error_message ? conv.error_message : '';
         },
-        mergeTargetOptions() {
-            if (!this.mergeSourceTag) return this.classList;
-            return this.classList.filter(c => this.getClassId(c) !== this.getClassId(this.mergeSourceTag));
-        },
+
     },
     watch: {
         '$route': {
@@ -744,6 +698,99 @@ export default {
         }
     },
     methods: {
+      async autoLoadIllegalLabels() {
+            if (this.illegalLabels.length > 0) return; // already loaded
+            this.loadingLabels = true;
+            try {
+                const res = await fetchIllegalDatasetLabels(this.datasetId);
+                this.illegalLabels = res.labels || [];
+            } catch (e) {
+                console.error('Auto-load illegal labels failed:', e);
+            } finally {
+                this.loadingLabels = false;
+            }
+        },
+        async handleLabelMappingSave(mapping) {
+            this.savingLabels = true;
+            try {
+                const expanded = { ...mapping };
+                Object.keys(mapping || {}).forEach((key) => {
+                  const val = mapping[key];
+                  if (val && val !== '__DISCARD__') {
+                    expanded[val] = val;
+                  }
+                });
+                await updateIllegalDatasetLabels(this.datasetId, expanded);
+                this.$message.success('映射保存成功');
+                this.hasSavedMapping = true;
+                this.savedLabelMapping = expanded;
+                this.saveLocalLabelMapping(expanded);
+            } catch(e) {
+                this.$message.error('保存失败: ' + e.message);
+            } finally {
+                this.savingLabels = false;
+            }
+        },
+        async handleSaveAndConvert(mapping) {
+            await this.handleLabelMappingSave(mapping);
+            if (!this.hasSavedMapping) return; // save failed
+            await this.submitConvertWithMapping();
+        },
+      getLabelMappingStorageKey() {
+        const id = this.datasetId || '';
+        return `illegal_label_mapping_${id}`;
+      },
+      loadLocalLabelMapping() {
+        const key = this.getLabelMappingStorageKey();
+        if (!key) return null;
+        try {
+          const raw = localStorage.getItem(key);
+          if (!raw) return null;
+          const obj = JSON.parse(raw);
+          if (obj && typeof obj === 'object' && Object.keys(obj).length > 0) return obj;
+        } catch (_) {
+          // ignore malformed storage
+        }
+        return null;
+      },
+      saveLocalLabelMapping(mapping) {
+        const key = this.getLabelMappingStorageKey();
+        if (!key) return;
+        try {
+          if (mapping && typeof mapping === 'object' && Object.keys(mapping).length > 0) {
+            localStorage.setItem(key, JSON.stringify(mapping));
+          } else {
+            localStorage.removeItem(key);
+          }
+        } catch (_) {
+          // ignore storage errors
+        }
+      },
+      syncIllegalLabelMapping(detail) {
+        const ver = detail && detail.active_version;
+        const meta = ver && ver.meta;
+        const isIllegal = !!(ver && ver.status === 'failed' && meta && meta.illegal);
+        if (!isIllegal) {
+          this.savedLabelMapping = null;
+          this.hasSavedMapping = false;
+          return;
+        }
+        const serverMapping = meta && meta.illegal_label_mapping;
+        if (serverMapping && typeof serverMapping === 'object' && Object.keys(serverMapping).length > 0) {
+          this.savedLabelMapping = serverMapping;
+          this.hasSavedMapping = true;
+          this.saveLocalLabelMapping(serverMapping);
+          return;
+        }
+        const localMapping = this.loadLocalLabelMapping();
+        if (localMapping && typeof localMapping === 'object' && Object.keys(localMapping).length > 0) {
+          this.savedLabelMapping = localMapping;
+          this.hasSavedMapping = true;
+          return;
+        }
+        this.savedLabelMapping = null;
+        this.hasSavedMapping = false;
+      },
       // Helpers for class list rendering/selection
       getClassName(item) {
         if (!item) return '';
@@ -781,6 +828,8 @@ export default {
             this.versionOptions = [];
             this.splitSummary = null;
             this.splitLoading = false;
+            this.savedLabelMapping = this.loadLocalLabelMapping();
+            this.hasSavedMapping = !!(this.savedLabelMapping && Object.keys(this.savedLabelMapping).length > 0);
             await this.refreshVersionsAndDetail({ forceLatest: true });
         },
         async refreshVersionsAndDetail({ forceLatest = false } = {}) {
@@ -949,12 +998,44 @@ export default {
           this.splitForm = { train: 90, val: 7, test: 3 };
           this.showSplitDialog = true;
         },
+        handleConvertClick() {
+          if (this.hasSavedMapping) {
+            // Mapping already saved, convert directly using it
+            this.submitConvertWithMapping();
+          } else {
+            this.openConvertDialog();
+          }
+        },
         openConvertDialog() {
           if (!this.conversionSupported) {
             this.$message.warning('该数据集不支持转换');
             return;
           }
           this.showConvertDialog = true;
+        },
+        async submitConvertWithMapping() {
+          if (!this.datasetId) return;
+          const mapping = this.savedLabelMapping || this.loadLocalLabelMapping();
+          if (!mapping || typeof mapping !== 'object' || Object.keys(mapping).length === 0) {
+            this.$message.warning('未找到已保存的映射，请先保存映射');
+            this.openLabelEditor();
+            return;
+          }
+          this.convertingDataset = true;
+          try {
+            await convertIllegalDataset(this.datasetId, {
+              labelStrategy: 'mapping',
+              labelSeparator: '%',
+              labelMapping: mapping,
+            });
+            this.$message.success('转换任务已提交');
+            this.startConversionPolling();
+          } catch (e) {
+            const msg = e && e.message ? String(e.message) : '转换失败';
+            this.$message.error(`转换失败: ${msg}`);
+          } finally {
+            this.convertingDataset = false;
+          }
         },
         async submitSplit() {
           if (!this.datasetId) return;
@@ -1138,36 +1219,51 @@ export default {
                 if (detail.dataset_type) this.datasetType = detail.dataset_type;
                 if (detail.dataset_size_mb) this.datasetSize = detail.dataset_size_mb;
                 
-                // Then get view data with categories and images
-                try {
-                    const viewData = await FetchDatasetView(this.datasetId, {
-                        versionId: this.selectedVersionId,
-                        classId: null, // No filter initially
-                        page: 1,
-                        pageSize: 500,
-                    });
-                    
-                    // Merge view data into detail object
-                    this.datasetDetail = {
-                        ...detail,
-                        categories: viewData.categories || [],
-                        images: viewData.items || [],
-                        total_images: viewData.meta?.total_items || viewData.items?.length || 0,
-                    };
-                    
-                    // Update stats from view data
-                    this.numClasses = (viewData.categories || []).length;
-                    this.numImages = viewData.meta?.total_items || 0;
-                    
-                    // Set selected images initially
-                    this.selectedImages = viewData.items || [];
-                } catch (viewError) {
-                    console.warn('View API failed, falling back to detail:', viewError);
+                const ver = detail && detail.active_version;
+                const meta = ver && ver.meta;
+                const isIllegal = !!(ver && ver.status === 'failed' && meta && meta.illegal);
+
+                if (isIllegal) {
                     this.datasetDetail = detail;
-                    if (detail.num_classes !== undefined) this.numClasses = detail.num_classes;
-                    if (detail.total_images !== undefined) this.numImages = detail.total_images;
-                    this.selectedImages = detail.images || [];
+                    this.numClasses = detail.num_classes || 0;
+                    this.numImages = detail.total_images || 0;
+                    this.selectedImages = [];
+                    // Auto-load illegal labels for inline mapping panel
+                    this.autoLoadIllegalLabels();
+                } else {
+                    // Then get view data with categories and images
+                    try {
+                        const viewData = await FetchDatasetView(this.datasetId, {
+                            versionId: this.selectedVersionId,
+                            classId: null, // No filter initially
+                            page: 1,
+                            pageSize: 500,
+                        });
+                        
+                        // Merge view data into detail object
+                        this.datasetDetail = {
+                            ...detail,
+                            categories: viewData.categories || [],
+                            images: viewData.items || [],
+                            total_images: viewData.meta?.total_items || viewData.items?.length || 0,
+                        };
+                        
+                        // Update stats from view data
+                        this.numClasses = (viewData.categories || []).length;
+                        this.numImages = viewData.meta?.total_items || 0;
+                        
+                        // Set selected images initially
+                        this.selectedImages = viewData.items || [];
+                    } catch (viewError) {
+                        console.warn('View API failed, falling back to detail:', viewError);
+                        this.datasetDetail = detail;
+                        if (detail.num_classes !== undefined) this.numClasses = detail.num_classes;
+                        if (detail.total_images !== undefined) this.numImages = detail.total_images;
+                        this.selectedImages = detail.images || [];
+                    }
                 }
+
+                this.syncIllegalLabelMapping(detail);
 
                 await this.fetchSplitSummary();
 
@@ -1415,62 +1511,6 @@ export default {
                 this.uploadStage = 'idle';
             }
         },
-        handleClassMouseLeave() {
-            // 如果下拉菜单打开，不隐藏编辑按钮
-            if (!this.tagDropdownOpen) {
-                this.hoveredClassId = null;
-            }
-        },
-        handleDropdownVisibleChange(visible, classInfo, idx) {
-            this.tagDropdownOpen = visible;
-            if (!visible) {
-                // 下拉菜单关闭后，检查鼠标是否还在该项上
-                this.hoveredClassId = null;
-            }
-        },
-        handleTagAction(command, classInfo) {
-            const className = this.getClassName(classInfo);
-            switch (command) {
-                case 'rename':
-                    this.$prompt('请输入新的标签名称', '修改标签名称', {
-                        confirmButtonText: '确定',
-                        cancelButtonText: '取消',
-                        inputValue: className,
-                        inputPattern: /^.+$/,
-                        inputErrorMessage: '标签名称不能为空'
-                    }).then(({ value }) => {
-                        if (value && value !== className) {
-                            // TODO: 调用API修改标签名称
-                            console.log('Rename tag:', classInfo, 'to', value);
-                            this.$message.info(`重命名标签: ${className} → ${value} (待实现)`);
-                        }
-                    }).catch(() => {});
-                    break;
-                case 'delete':
-                    this.$confirm(`确定要删除标签 "${className}" 吗？该操作会移除所有相关标注。`, '删除标签', {
-                        confirmButtonText: '确定删除',
-                        cancelButtonText: '取消',
-                        type: 'warning'
-                    }).then(() => {
-                        // TODO: 调用API删除标签
-                        console.log('Delete tag:', classInfo);
-                        this.$message.info(`删除标签: ${className} (待实现)`);
-                    }).catch(() => {});
-                    break;
-                case 'merge':
-                    // 获取其他可合并的标签
-                    const otherTags = this.classList.filter(c => this.getClassId(c) !== this.getClassId(classInfo));
-                    if (otherTags.length === 0) {
-                        this.$message.warning('没有其他标签可供合并');
-                        return;
-                    }
-                    // 打开合并对话框
-                    this.mergeSourceTag = classInfo;
-                    this.mergeTargetTagId = '';
-                    this.showMergeDialog = true;
-                    break;
-            }
-        },
         async handleFilesSelected(event) {
             const files = Array.from(event.target.files || []);
             if (!files.length) return;
@@ -1485,7 +1525,6 @@ export default {
                 });
                 const result = await req.promise;
                 this.$message.success(`成功上传 ${result.saved_count || files.length} 张图片`);
-                // Refresh the dataset detail
                 await this.refreshVersionsAndDetail({ forceLatest: true });
             } catch (error) {
                 const rawMsg = (error && error.message) ? String(error.message) : '上传失败';
@@ -1493,27 +1532,10 @@ export default {
                 this.$message.error(`上传失败: ${msg}`);
             } finally {
                 this.isUploading = false;
-                // Reset file input
                 event.target.value = '';
             }
         },
-        submitMergeTag() {
-            if (!this.mergeTargetTagId || !this.mergeSourceTag) {
-                this.$message.warning('请选择目标标签');
-                return;
-            }
-            const targetTag = this.mergeTargetOptions.find(t => this.getClassId(t) === this.mergeTargetTagId);
-            const sourceName = this.getClassName(this.mergeSourceTag);
-            const targetName = this.getClassName(targetTag);
-            
-            // TODO: 调用API合并标签
-            console.log('Merge tag:', this.mergeSourceTag, 'into', targetTag);
-            this.$message.info(`合并标签: ${sourceName} → ${targetName} (待实现)`);
-            
-            this.showMergeDialog = false;
-            this.mergeSourceTag = null;
-            this.mergeTargetTagId = '';
-        }
+
     }
 }
 </script>
@@ -2273,4 +2295,75 @@ export default {
   line-height: 1.4;
   background: transparent;
 }
+
+/* Illegal Section + Banner */
+.illegal-section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+.illegal-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 16px 20px;
+  background: rgba(254, 243, 199, 0.4);
+  border: 1px solid rgba(245, 158, 11, 0.2);
+  border-radius: var(--radius-md);
+}
+.illegal-icon {
+  font-size: 24px;
+  color: #f59e0b;
+  margin-top: 2px;
+}
+.illegal-content {
+  flex: 1;
+}
+.illegal-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #92400e;
+  margin-bottom: 8px;
+}
+.illegal-desc {
+  font-size: 0.9rem;
+  color: #b45309;
+  margin-bottom: 8px;
+}
+.illegal-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  background: rgba(245, 158, 11, 0.15);
+  border-radius: 12px;
+  font-size: 0.8rem;
+  color: #d97706;
+  margin-bottom: 8px;
+}
+.badge-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #f59e0b;
+}
+.illegal-error {
+  font-size: 0.85rem;
+  color: #ef4444;
+  margin-bottom: 8px;
+}
+.illegal-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 140px;
+}
+.action-btn {
+  width: 100%;
+  margin: 0 !important;
+}
+
+
 </style>
