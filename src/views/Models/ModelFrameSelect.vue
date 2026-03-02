@@ -311,6 +311,27 @@ export default {
                         { title: 'INT8 优化', desc: '成熟的 INT8 PTQ/QAT 流程' },
                         { title: '多设备编排', desc: 'CPU + iGPU + VPU 组合调度' }
                     ]
+                },
+                {
+                    id: 'paddlepaddle',
+                    name: 'PaddlePaddle',
+                    version: '2.6',
+                    license: 'Apache 2.0',
+                    stage: 'Stable',
+                    icon: 'el-icon-ship',
+                    score: 8.7,
+                    ecosystem: 'PaddleDetection / PaddleSlim / Paddle Inference',
+                    devices: ['GPU', 'CPU', 'XPU', 'NPU'],
+                    desc: '百度自研深度学习框架，检测套件成熟，国产硬件适配优秀',
+                    tags: ['PP-YOLOE', 'PicoDet', '国产硬件'],
+                    bestFor: '目标检测、遥感、工业质检场景',
+                    recommend: 'NVIDIA GPU / 昆仑芯 XPU / 昇腾 NPU',
+                    export: 'Paddle Inference / ONNX / TensorRT',
+                    features: [
+                        { title: '检测套件完善', desc: 'PP-YOLOE+、PicoDet、RT-DETR 等 SOTA 模型开箱即用' },
+                        { title: '国产硬件支持', desc: '原生适配昆仑芯 XPU、昇腾 NPU、海光 DCU 等' },
+                        { title: '端到端部署', desc: 'Paddle Inference + PaddleSlim 量化压缩一站式' }
+                    ]
                 }
             ],
             selectedFrameworkId: 'pytorch',
@@ -337,7 +358,8 @@ export default {
                 pytorch: ['FP32', 'FP16', 'INT8'],
                 tensorflow: ['FP32', 'BF16', 'FP16', 'INT8'],
                 onnx: ['FP32', 'FP16', 'INT8'],
-                openvino: ['FP32', 'FP16', 'INT8']
+                openvino: ['FP32', 'FP16', 'INT8'],
+                paddlepaddle: ['FP32', 'FP16', 'INT8']
             };
             const list = map[this.selectedFrame.id] || ['FP32'];
             if (!list.includes(this.form.precision)) {
@@ -362,6 +384,10 @@ export default {
                 openvino: [
                     { title: 'CPU 高性价比', body: '开启 INT8 + 多线程，充分利用 x86 VNNI 指令集。', tags: ['CPU', 'INT8'] },
                     { title: '边缘编排', body: 'CPU+iGPU+VPU 协同，平衡延迟与功耗，适合边缘场景。', tags: ['边缘', '多设备'] }
+                ],
+                paddlepaddle: [
+                    { title: '检测训练', body: '使用 PP-YOLOE+ 或 PicoDet，配合 COCO 数据格式获得最佳精度。', tags: ['PP-YOLOE', '检测'] },
+                    { title: '部署推理', body: '导出 Paddle Inference 模型，结合 PaddleSlim 量化实现高效部署。', tags: ['Inference', 'PaddleSlim'] }
                 ]
             };
             return tips[this.selectedFrameworkId] || [];

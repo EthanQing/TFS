@@ -86,11 +86,7 @@ export default {
   computed: {
     filteredArchitectures() {
       if (!Array.isArray(this.architectures)) return [];
-      return this.architectures.filter(it => {
-        const variant = String(it?.model_variant || "").toLowerCase();
-        const family = String(it?.model_family || it?.family || "").toLowerCase();
-        return !(variant.startsWith("rtmdet") || family.includes("mmdet") || family.includes("mmdetection"));
-      });
+      return this.architectures;
     },
     groupedList() {
       if (!this.filteredArchitectures.length) return [];

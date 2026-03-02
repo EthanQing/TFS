@@ -78,7 +78,7 @@
               :on-change="handlePretrainFileChange"
               :show-file-list="false"
               :disabled="uploadingPretrain"
-              accept=".pt,.pth,.ckpt"
+              accept=".pt,.pth,.ckpt,.pdparams"
               class="upload-hidden"
             >
               <el-button size="small" type="primary" :loading="uploadingPretrain" class="browse-btn">
@@ -91,7 +91,7 @@
               {{ pretrainedFileName }}
               <i class="el-icon-close remove-icon" @click="removePretrainFile"></i>
             </span>
-            <span v-else class="file-hint">.pt / .pth / .ckpt</span>
+            <span v-else class="file-hint">.pt / .pth / .ckpt / .pdparams</span>
           </div>
           <div v-if="pretrainUploadError" class="upload-error">{{ pretrainUploadError }}</div>
         </div>
@@ -200,6 +200,14 @@ export default {
         "YOLOv8m-seg": { accuracy: 40.2, speedMs: 20.4 },
         "YOLOv8l-seg": { accuracy: 42.1, speedMs: 35.6 },
         "YOLOv8x-seg": { accuracy: 43.4, speedMs: 48.2 },
+        // PaddleDetection PP-YOLOE+ series (COCO mAP / T4 FP16 ms)
+        "PP-YOLOE_s": { accuracy: 43.1, speedMs: 8.5 },
+        "PP-YOLOE_m": { accuracy: 48.9, speedMs: 14.2 },
+        "PP-YOLOE_l": { accuracy: 51.4, speedMs: 20.8 },
+        "PP-YOLOE_x": { accuracy: 53.3, speedMs: 32.1 },
+        // PaddleDetection PicoDet series
+        "PicoDet_s": { accuracy: 29.1, speedMs: 3.5 },
+        "PicoDet_l": { accuracy: 36.6, speedMs: 6.8 },
       },
       savePeriod: "-1",
     };
@@ -219,18 +227,13 @@ export default {
     },
     architectureGroups() {
       const list = Array.isArray(this.ref?.architectures) ? this.ref.architectures : [];
-      const isMmDet = (it) => {
-        const variant = String(it?.model_variant || "").toLowerCase();
-        const family = String(it?.model_family || it?.family || "").toLowerCase();
-        return variant.startsWith("rtmdet") || family.includes("mmdet") || family.includes("mmdetection");
-      };
 
       const detected = list.filter((it) => {
         const tt = String(it?.task_type || "").toLowerCase();
         // Backend usually returns 'detection' or 'segmentation'
         // If empty, assume detection for BC
         const target = this.taskType === 'segmentation' ? 'segmentation' : 'detection';
-        return (tt === target || (!tt && target === 'detection')) && !isMmDet(it);
+        return tt === target || (!tt && target === 'detection');
       });
 
       const fallbackFamily = "YOLOv8";
@@ -459,7 +462,10 @@ export default {
     formatVariantKey(v) {
       const s = String(v || "").trim();
       if (!s) return "";
-      return s.replace(/^yolo/i, "YOLO");
+      return s
+        .replace(/^ppyoloe/i, "PP-YOLOE")
+        .replace(/^picodet/i, "PicoDet")
+        .replace(/^yolo/i, "YOLO");
     },
     formatVariant(v) {
       const k = this.formatVariantKey(v);
