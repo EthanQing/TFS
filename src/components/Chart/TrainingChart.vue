@@ -1,6 +1,7 @@
 <template>
   <div class="echarts-container" :class="chartType">
-    <div ref="chartContainer" :style="containerStyle"></div>
+    <div v-if="isEmpty" class="chart-empty">{{ emptyText || "暂无该指标数据。" }}</div>
+    <div v-show="!isEmpty" ref="chartContainer" :style="containerStyle"></div>
   </div>
 </template>
 
@@ -24,6 +25,10 @@ export default {
       type: String,
       default: ""
     },
+    emptyText: {
+      type: String,
+      default: "暂无该指标数据。"
+    },
     chartType: {
       type: String,
       default: "metrics"
@@ -36,6 +41,7 @@ export default {
   data() {
     return {
       chartInstance: null,
+      isEmpty: false,
       containerStyle: {
         width: "90%",
         height: "350px",
@@ -70,6 +76,7 @@ export default {
   mounted() {
     this.updateContainerStyle();
     this.initChart();
+    this.updateChart();
   },
   beforeDestroy() {
     window.removeEventListener("resize", this.resizeChart);
@@ -100,12 +107,40 @@ export default {
       if (!echarts || !this.$refs.chartContainer) return;
 
       this.chartInstance = echarts.init(this.$refs.chartContainer);
-      this.chartInstance.setOption(this.getChartOption());
       window.addEventListener("resize", this.resizeChart);
     },
+    _seriesHasFinitePoint(seriesData) {
+      if (!Array.isArray(seriesData)) return false;
+      return seriesData.some((point) => {
+        if (Array.isArray(point) && point.length >= 2) {
+          return Number.isFinite(Number(point[1]));
+        }
+        return Number.isFinite(Number(point));
+      });
+    },
+    _hasAnyFiniteSeries(series) {
+      if (!Array.isArray(series)) return false;
+      return series.some((item) => this._seriesHasFinitePoint(item && item.data));
+    },
     updateChart() {
-      if (!this.chartInstance) return;
-      this.chartInstance.setOption(this.getChartOption(), true);
+      const option = this.getChartOption();
+      const hasData = this._hasAnyFiniteSeries(option.series || []);
+      this.isEmpty = !hasData;
+
+      if (this.isEmpty) {
+        return;
+      }
+
+      this.$nextTick(() => {
+        if (!this.chartInstance) {
+          this.initChart();
+        }
+        if (!this.chartInstance) return;
+        this.chartInstance.setOption(option, {
+          notMerge: false,
+          lazyUpdate: true,
+        });
+      });
     },
     _inferMaxLen(data) {
       try {
@@ -292,10 +327,8 @@ export default {
         (useCustom ? this._inferMaxLenFromSeries(series) : this._inferMaxLen(data)) ||
         100;
 
-      // Calculate dynamic interval to avoid crowding or sparseness
-      // Aim for about 10-20 ticks
-      let interval = Math.ceil(maxLen / 10);
-      if (interval < 1) interval = 1;
+      // Ensure minimum display range. When only 1~few epochs exist, show at least 10 range.
+      const displayMax = Math.max(maxLen, 10);
 
       return {
         title: {
@@ -354,13 +387,15 @@ export default {
         xAxis: {
           type: "value",
           min: 0,
-          max: maxLen,
-          interval: interval,
+          max: displayMax,
+          splitNumber: 5,
+          minInterval: 1,
           name: "轮次",
           nameLocation: "middle",
           nameGap: 25,
           axisLabel: {
-            fontSize: this.chartType === "metrics" ? 12 : 10
+            fontSize: this.chartType === "metrics" ? 12 : 10,
+            formatter: (val) => Number.isInteger(val) ? val : ''
           }
         },
         yAxis: {
@@ -396,6 +431,18 @@ export default {
 
 .echarts-container.metrics {
   margin-bottom: 20px;
+}
+
+.chart-empty {
+  height: 260px;
+  margin: 0 16px;
+  border: 1px dashed #cbd5e1;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .echarts-container.box_loss,

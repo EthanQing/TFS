@@ -50,10 +50,10 @@
           </tr>
         </thead>
         <tbody>
-          <template v-for="node in displayNodes">
-            <tr
-              :key="node.key"
-              class="mapping-row"
+          <tr
+            v-for="node in displayNodes"
+            :key="node.key"
+            class="mapping-row"
               :class="{
                 'is-virtual': node.isVirtual,
                 'is-discarded': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded
@@ -147,7 +147,6 @@
                 </template>
               </td>
             </tr>
-          </template>
         </tbody>
       </table>
       <div v-if="displayNodes.length === 0 && !loading" class="no-data">

@@ -49,6 +49,10 @@
       </div>
 
       <div v-if="metrics" class="metrics-container">
+        <div v-if="waitEvalHint" class="wait-eval-note">
+          <i class="el-icon-time"></i>
+          <span>{{ waitEvalHint }}</span>
+        </div>
         <div v-if="metricGroups.length === 0" class="state-card">
           <i class="el-icon-info"></i>
           <span>暂无可用指标。</span>
@@ -67,6 +71,7 @@
               :custom-y-axis-name="group.yAxis"
               :total-epoch="totalEpochs || metrics.total_epochs"
               :chart-type="group.isWide ? 'overview' : 'generic'"
+              :empty-text="group.emptyText || '暂无该指标数据。'"
             ></chart>
           </div>
         </div>
@@ -76,17 +81,56 @@
         <i class="el-icon-circle-check"></i>
         <span>{{ refreshHint }}</span>
       </div>
+      <div v-if="streamNotice" class="stream-note">
+        <i class="el-icon-connection"></i>
+        <span>{{ streamNotice }}</span>
+      </div>
     </section>
   </div>
 </template>
 
 <script>
 import chart from "@/components/Chart/TrainingChart.vue";
+import { buildMetricGroups, hasAccuracyCurves } from "@/utils/trainingMetricProfiles";
 import {
   FetchTrainingJobsStatus,
   FetchTrainingJobsMetrics_detailed,
-  CancelTrainingJob
+  CancelTrainingJob,
+  openTrainingRunMetricsStream,
 } from "@/api/training";
+
+const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "deleted"]);
+const METRIC_ALIAS_GROUPS = [
+  {
+    target: "metrics/mAP50(B)",
+    aliases: ["AP50", "mAP50", "eval/bbox_AP50", "eval/bbox_ap50"],
+  },
+  {
+    target: "metrics/mAP50-95(B)",
+    aliases: ["mAP", "eval/bbox_mAP", "eval/bbox_map"],
+  },
+  {
+    target: "metrics/precision(B)",
+    aliases: ["precision", "eval/bbox_precision"],
+  },
+  {
+    target: "metrics/recall(B)",
+    aliases: ["recall", "eval/bbox_recall"],
+  },
+];
+
+function normalizeStatus(status) {
+  return String(status || "").trim().toLowerCase();
+}
+
+function toMetricNumber(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj || {}, key);
+}
 
 export default {
   name: "TrainPart",
@@ -100,23 +144,28 @@ export default {
       metrics: null,
       error: null,
       loading: false,
-      statusPollingInterval: null,
       metricsPollingInterval: null,
       metricsPollingMs: 0,
+      streamController: null,
+      streamConnected: false,
+      streamDone: false,
+      streamNotice: "",
+      fallbackPollingMs: 12000,
+      streamLastMetricId: 0,
+      streamLastEventId: 0,
       currentEpoch: 0,
       totalEpochs: 0,
       progress: 0,
-      metricsStableCount: 0,
-      lastMetricsSignature: "",
-      terminalMode: false,
-      terminalPolls: 0,
-      maxTerminalPolls: 3,
+      engine: null,
+      family: null,
+      variant: null,
+      evalInterval: null,
       stopping: false
     };
   },
   computed: {
     statusLabel() {
-      const s = String(this.status || "").toLowerCase();
+      const s = normalizeStatus(this.status);
       if (!s) return "等待中";
       if (s === "created") return "等待中";
       if (s === "queued") return "排队中";
@@ -128,20 +177,13 @@ export default {
       return s;
     },
     statusClass() {
-      const s = String(this.status || "pending").toLowerCase();
+      const s = normalizeStatus(this.status || "pending");
       return `status-${s || "pending"}`;
     },
-    refreshLabel() {
-      if (this.metricsPollingInterval) {
-        return this.isTerminalStatus() ? "正在完成" : "实时";
-      }
-      if (this.isTerminalStatus()) return "已停止";
-      return "空闲";
-    },
     refreshHint() {
-      if (this.isTerminalStatus() && !this.metricsPollingInterval && this.metrics) {
-        return "完成后自动刷新已停止。";
-      }
+      if (this.isTerminalStatus()) return "训练已结束，指标已停止刷新。";
+      if (this.metricsPollingInterval) return "实时连接中断，当前使用低频同步。";
+      if (this.streamConnected) return "实时更新中。";
       return "";
     },
     epochPercent() {
@@ -153,131 +195,85 @@ export default {
       return Math.max(0, Math.min(100, (c / t) * 100));
     },
     canStop() {
-      const s = String(this.status || "").toLowerCase();
+      const s = normalizeStatus(this.status);
       return s === "running" || s === "queued";
+    },
+    waitEvalHint() {
+      if (normalizeStatus(this.status) !== "running") return "";
+      if (normalizeStatus(this.engine) !== "paddle-det") return "";
+      const interval = Number(this.evalInterval);
+      if (!Number.isFinite(interval) || interval <= 1) return "";
+      const metricsMap = (this.metrics && this.metrics.metrics) || {};
+      if (hasAccuracyCurves(metricsMap)) return "";
+      const current = Math.max(0, Number(this.currentEpoch) || 0);
+      const nextEvalEpoch = this.nextEvalEpoch(current, interval);
+      if (current >= nextEvalEpoch) return "";
+      return `当前每 ${interval} 轮验证一次，准确度指标将在第 ${nextEvalEpoch} 轮验证后出现。`;
     },
     metricGroups() {
       const data = (this.metrics && this.metrics.metrics) || {};
-      const keys = Object.keys(data || {});
-      if (!keys.length) return [];
-
-      const groups = new Map();
-      keys.forEach((key) => {
-        const parts = String(key).split("/");
-        let prefix = "value";
-        let metricName = String(key);
-        if (parts.length > 1) {
-          prefix = parts.slice(0, -1).join("/") || "value";
-          metricName = parts[parts.length - 1] || key;
-        }
-
-        const groupKey = metricName;
-        if (!groups.has(groupKey)) {
-          groups.set(groupKey, {
-            key: groupKey,
-            title: this.formatMetricTitle(metricName),
-            yAxis: "",
-            series: []
-          });
-        }
-
-        groups.get(groupKey).series.push({
-          name: this.formatSeriesName(prefix),
-          data: Array.isArray(data[key]) ? data[key] : []
-        });
-      });
-
-      const list = Array.from(groups.values());
-      
-      // Define priority for sorting: mAP first, then others
-      const getPriority = (key) => {
-        const k = String(key).toLowerCase();
-        if (k.includes("map")) return 3; // Highest priority
-        if (k.includes("precision") || k.includes("recall")) return 2;
-        if (k.includes("loss")) return 1;
-        return 0;
-      };
-
-      list.forEach((g) => {
-        g.series.sort((a, b) => String(a.name).localeCompare(String(b.name), "zh"));
-        const k = String(g.key).toLowerCase();
-        // Layout: first 2 rows are 2-up (mAP + Precision/Recall), third row is 3-up (losses).
-        if (k.includes("map")) g.isWide = true;
-        if (k.includes("precision") || k.includes("recall")) g.isHalf = true;
-      });
-
-      list.sort((a, b) => {
-        const pA = getPriority(a.key);
-        const pB = getPriority(b.key);
-        if (pA !== pB) return pB - pA; // Descending priority
-        return String(a.title).localeCompare(String(b.title), "zh");
-      });
-
-      return list;
+      return buildMetricGroups(this.engine, data);
     }
   },
   watch: {
     "$route.query.jobId": {
       immediate: true,
       handler(newJobId) {
-        if (newJobId) {
-          this.jobId = newJobId;
-          this.resetMetricsState();
-          this.cleanupAllPolling();
-          this.startStatusPolling();
-          localStorage.setItem("currentJobId", newJobId);
-        }
+        const id = String(newJobId || "").trim();
+        if (!id) return;
+        if (this.jobId !== id) this.jobId = id;
+        localStorage.setItem("currentJobId", id);
+        this.startRealtimeSession();
       }
     }
   },
   activated() {
-    const storedJobId = localStorage.getItem("currentJobId");
-    const routeJobId = this.$route.query.jobId;
+    const routeJobId = String(this.$route.query.jobId || "").trim();
+    const storedJobId = String(localStorage.getItem("currentJobId") || "").trim();
+    const nextJobId = routeJobId || this.jobId || storedJobId;
+    if (!nextJobId) return;
 
-    if (!this.jobId && storedJobId) {
-      this.jobId = storedJobId;
-      this.resetMetricsState();
-      this.cleanupAllPolling();
-      this.startStatusPolling();
-    } else if (routeJobId && this.jobId !== routeJobId) {
-      this.jobId = routeJobId;
-      this.resetMetricsState();
-      this.cleanupAllPolling();
-      this.startStatusPolling();
+    if (this.jobId !== nextJobId) {
+      this.jobId = nextJobId;
+      localStorage.setItem("currentJobId", nextJobId);
+      this.startRealtimeSession();
+      return;
     }
+
+    if (!this.metrics && !this.loading) {
+      this.startRealtimeSession();
+      return;
+    }
+
+    if (!this.isTerminalStatus() && !this.streamConnected && !this.streamController) {
+      this.connectMetricsStream();
+      if (!this.streamController) this.startFallbackPolling(true);
+    }
+  },
+  deactivated() {
+    this.cleanupAllPolling();
   },
   methods: {
     resetMetricsState() {
       this.metrics = null;
       this.error = null;
-      this.metricsStableCount = 0;
-      this.lastMetricsSignature = "";
-      this.terminalMode = false;
-      this.terminalPolls = 0;
+      this.engine = null;
+      this.family = null;
+      this.variant = null;
+      this.evalInterval = null;
+      this.currentEpoch = 0;
+      this.totalEpochs = 0;
+      this.progress = 0;
+      this.streamDone = false;
+      this.streamConnected = false;
+      this.streamNotice = "";
+      this.streamLastMetricId = 0;
+      this.streamLastEventId = 0;
     },
-    formatMetricTitle(name) {
-      return String(name || "")
-        .replace(/_/g, " ")
-        .replace(/\b\w/g, (m) => m.toUpperCase());
-    },
-    formatSeriesName(name) {
-      const n = String(name || "").toLowerCase();
-      if (n === "train") return "训练集";
-      if (n === "val") return "验证集";
-      if (n === "test") return "测试集";
-      if (n === "metrics") return "指标";
-      return name || "值";
-    },
-    computeMetricsSignature() {
-      const data = (this.metrics && this.metrics.metrics) || {};
-      const keys = Object.keys(data).sort();
-      const parts = keys.map((k) => {
-        const arr = Array.isArray(data[k]) ? data[k] : [];
-        const len = arr.length;
-        const last = len ? arr[len - 1] : null;
-        return `${k}:${len}:${last}`;
-      });
-      return parts.join("|");
+    nextEvalEpoch(currentEpoch, evalInterval) {
+      const interval = Math.max(1, Math.floor(Number(evalInterval) || 1));
+      const current = Math.max(1, Math.floor(Number(currentEpoch) || 1));
+      return Math.ceil(current / interval) * interval;
     },
     inferMaxEpoch() {
       const data = (this.metrics && this.metrics.metrics) || {};
@@ -289,124 +285,360 @@ export default {
       return maxLen;
     },
     isTerminalStatus() {
-      return ["completed", "failed", "cancelled", "deleted"].includes(String(this.status || "").toLowerCase());
+      return TERMINAL_STATUSES.has(normalizeStatus(this.status));
     },
-    startStatusPolling() {
-      if (!this.jobId) return;
-      this.fetchStatus();
-      this.statusPollingInterval = setInterval(this.fetchStatus, 12000);
+    ensureMetricStore() {
+      if (!this.metrics || typeof this.metrics !== "object") {
+        this.metrics = { metrics: {}, total_epochs: 0 };
+      }
+      if (!this.metrics.metrics || typeof this.metrics.metrics !== "object") {
+        this.$set(this.metrics, "metrics", {});
+      }
     },
-    async fetchStatus() {
-      if (!this.jobId) return;
-      this.loading = true;
-      try {
-        const statusResponse = await FetchTrainingJobsStatus(this.jobId);
-        this.status = statusResponse.status;
-        if (Number.isFinite(Number(statusResponse.progress))) this.progress = Number(statusResponse.progress);
-        if (Number.isFinite(Number(statusResponse.total_epochs))) {
-          this.totalEpochs = Number(statusResponse.total_epochs) || this.totalEpochs || 0;
-        }
-        if (Number.isFinite(Number(statusResponse.current_epoch))) {
-          this.currentEpoch = Number(statusResponse.current_epoch) + 1;
-        }
+    applyStatusPayload(payload = {}) {
+      const status = normalizeStatus(payload.status);
+      if (status) this.status = status;
 
-        if (this.status === "running") {
-          this.startMetricsPolling(4000);
-        } else if (this.isTerminalStatus()) {
-          if (!this.terminalMode) {
-            this.terminalMode = true;
-            this.cleanupStatusPolling();
+      const progress = Number(payload.progress);
+      if (Number.isFinite(progress)) {
+        this.progress = Math.max(0, Math.min(100, Math.round(progress)));
+      }
+
+      const total = Number(payload.total_epochs);
+      if (Number.isFinite(total) && total > 0) {
+        this.totalEpochs = Math.max(this.totalEpochs || 0, Math.floor(total));
+      }
+
+      const epochRaw = Number(payload.current_epoch);
+      if (Number.isFinite(epochRaw)) {
+        const next = Math.max(0, Math.floor(epochRaw)) + 1;
+        this.currentEpoch = Math.max(this.currentEpoch || 0, next);
+      }
+
+      if (payload.engine !== undefined) this.engine = payload.engine || null;
+      if (payload.family !== undefined) this.family = payload.family || null;
+      if (payload.variant !== undefined) this.variant = payload.variant || null;
+
+      if (payload.eval_interval === null) {
+        this.evalInterval = null;
+      } else if (payload.eval_interval !== undefined) {
+        const interval = Number(payload.eval_interval);
+        this.evalInterval = Number.isFinite(interval) && interval > 0 ? Math.floor(interval) : null;
+      }
+
+      if (this.isTerminalStatus()) {
+        this.streamDone = true;
+        this.stopFallbackPolling();
+        this.closeMetricsStream();
+      }
+    },
+    normalizeIncomingMetricKeys(metricDict) {
+      const source = metricDict && typeof metricDict === "object" ? metricDict : {};
+      const normalized = { ...source };
+
+      METRIC_ALIAS_GROUPS.forEach(({ target, aliases }) => {
+        if (hasOwn(normalized, target)) return;
+        for (const key of aliases) {
+          if (hasOwn(normalized, key)) {
+            normalized[target] = normalized[key];
+            break;
           }
-          this.startMetricsPolling(2000);
-        } else {
-          this.startMetricsPolling(8000);
         }
+      });
+
+      return normalized;
+    },
+    normalizeSeriesMap(seriesMap) {
+      const raw = seriesMap && typeof seriesMap === "object" ? seriesMap : {};
+      const normalized = {};
+
+      Object.keys(raw).forEach((key) => {
+        if (!Array.isArray(raw[key])) return;
+        normalized[key] = raw[key].map((item) => toMetricNumber(item));
+      });
+
+      METRIC_ALIAS_GROUPS.forEach(({ target, aliases }) => {
+        if (Array.isArray(normalized[target])) return;
+        for (const key of aliases) {
+          if (Array.isArray(normalized[key])) {
+            normalized[target] = normalized[key].slice();
+            break;
+          }
+        }
+      });
+
+      return normalized;
+    },
+    mergeSeriesSnapshot(key, incoming) {
+      if (!Array.isArray(incoming)) return false;
+      this.ensureMetricStore();
+      const metricsMap = this.metrics.metrics;
+      if (!Array.isArray(metricsMap[key])) this.$set(metricsMap, key, []);
+
+      const target = metricsMap[key];
+      let changed = false;
+
+      for (let idx = 0; idx < incoming.length; idx += 1) {
+        const nextValue = toMetricNumber(incoming[idx]);
+        if (idx >= target.length) {
+          target.push(nextValue);
+          changed = true;
+          continue;
+        }
+        if (target[idx] !== nextValue) {
+          this.$set(target, idx, nextValue);
+          changed = true;
+        }
+      }
+
+      return changed;
+    },
+    mergeMetricsSnapshot(snapshot) {
+      if (!snapshot || typeof snapshot !== "object") return;
+      const normalizedMap = this.normalizeSeriesMap(snapshot.metrics || {});
+      let changed = false;
+
+      Object.keys(normalizedMap).forEach((key) => {
+        const didChange = this.mergeSeriesSnapshot(key, normalizedMap[key]);
+        changed = changed || didChange;
+      });
+
+      this.ensureMetricStore();
+      const totalFromSnapshot = Number(snapshot.total_epochs);
+      if (Number.isFinite(totalFromSnapshot) && totalFromSnapshot > 0) {
+        const mergedTotal = Math.max(
+          Number(this.metrics.total_epochs) || 0,
+          Math.floor(totalFromSnapshot),
+        );
+        if (mergedTotal !== Number(this.metrics.total_epochs || 0)) {
+          this.$set(this.metrics, "total_epochs", mergedTotal);
+        }
+      }
+
+      this.syncEpochAndProgress();
+      return changed;
+    },
+    upsertMetricEpoch(epoch, metricDict) {
+      const idx = Math.floor(Number(epoch));
+      if (!Number.isFinite(idx) || idx < 0) return false;
+
+      this.ensureMetricStore();
+      const normalized = this.normalizeIncomingMetricKeys(metricDict);
+      const metricsMap = this.metrics.metrics;
+      let changed = false;
+
+      Object.keys(normalized).forEach((key) => {
+        if (!Array.isArray(metricsMap[key])) this.$set(metricsMap, key, []);
+        const arr = metricsMap[key];
+        while (arr.length < idx) {
+          arr.push(null);
+          changed = true;
+        }
+        const nextValue = toMetricNumber(normalized[key]);
+        if (idx >= arr.length) {
+          arr.push(nextValue);
+          changed = true;
+          return;
+        }
+        if (arr[idx] !== nextValue) {
+          this.$set(arr, idx, nextValue);
+          changed = true;
+        }
+      });
+
+      const nextTotal = Math.max(Number(this.metrics.total_epochs) || 0, idx + 1);
+      if (nextTotal !== Number(this.metrics.total_epochs || 0)) {
+        this.$set(this.metrics, "total_epochs", nextTotal);
+      }
+
+      this.syncEpochAndProgress();
+      return changed;
+    },
+    syncEpochAndProgress() {
+      const maxEpoch = this.inferMaxEpoch();
+      if (maxEpoch > this.currentEpoch) this.currentEpoch = maxEpoch;
+
+      const metricsTotal = Number(this.metrics && this.metrics.total_epochs) || 0;
+      if (!this.totalEpochs && metricsTotal > 0) {
+        this.totalEpochs = metricsTotal;
+      }
+
+      const total = Number(this.totalEpochs) || 0;
+      if (total > 0 && maxEpoch > 0) {
+        const nextProgress = Math.round((maxEpoch / total) * 100);
+        if (nextProgress > this.progress) {
+          this.progress = Math.min(100, nextProgress);
+        }
+      }
+    },
+    async syncSnapshot({ withStatus = true, withMetrics = true } = {}) {
+      if (!this.jobId) return;
+      let statusErr = null;
+      let metricsErr = null;
+
+      if (withStatus) {
+        try {
+          const statusResponse = await FetchTrainingJobsStatus(this.jobId);
+          this.applyStatusPayload(statusResponse);
+        } catch (err) {
+          statusErr = err;
+          console.error("Error fetching status snapshot:", err);
+        }
+      }
+
+      if (withMetrics) {
+        try {
+          const metricsResponse = await FetchTrainingJobsMetrics_detailed(this.jobId);
+          this.mergeMetricsSnapshot(metricsResponse);
+        } catch (err) {
+          metricsErr = err;
+          console.error("Error fetching metrics snapshot:", err);
+        }
+      }
+
+      if (statusErr && metricsErr) throw statusErr;
+      if (statusErr && !this.status) throw statusErr;
+      if (metricsErr && !this.metrics) throw metricsErr;
+    },
+    async startRealtimeSession() {
+      if (!this.jobId) return;
+      this.cleanupAllPolling();
+      this.resetMetricsState();
+      this.loading = true;
+
+      try {
+        await this.syncSnapshot({ withStatus: true, withMetrics: true });
+        if (this.isTerminalStatus()) return;
+        this.connectMetricsStream();
+        if (!this.streamController) this.startFallbackPolling(true);
       } catch (err) {
         this.error = "获取训练状态失败。请重试。";
-        console.error("Error fetching status:", err);
-        this.cleanupAllPolling();
+        this.streamNotice = "实时连接未建立，当前使用低频同步。";
+        this.startFallbackPolling(true);
+        console.error("Error starting realtime session:", err);
       } finally {
         this.loading = false;
       }
     },
-    startMetricsPolling(intervalMs = 4000) {
-      if (!this.jobId) return;
-      const ms = Math.max(1500, Number(intervalMs) || 4000);
-      if (this.metricsPollingInterval && this.metricsPollingMs === ms) return;
-      this.stopMetricsPolling();
-      this.metricsPollingMs = ms;
-      this.fetchMetrics();
-      this.metricsPollingInterval = setInterval(this.fetchMetrics, ms);
-    },
-    stopMetricsPolling() {
-      if (this.metricsPollingInterval) {
-        clearInterval(this.metricsPollingInterval);
-        this.metricsPollingInterval = null;
-        this.metricsPollingMs = 0;
-      }
-    },
-    isMetricsComplete() {
-      const total = Number(this.totalEpochs) || Number(this.metrics?.total_epochs) || 0;
-      const maxLen = this.inferMaxEpoch();
-      if (!total) return maxLen > 0;
-      return maxLen >= total;
-    },
-    async fetchMetrics() {
-      if (!this.jobId) return;
-      this.loading = true;
-      try {
-        const metricsResponse = await FetchTrainingJobsMetrics_detailed(this.jobId);
-        this.metrics = metricsResponse;
-        
-        // Sync currentEpoch with actual metrics data length
-        const metricsEpoch = this.inferMaxEpoch();
-        if (metricsEpoch > this.currentEpoch) {
-          this.currentEpoch = metricsEpoch;
-        }
-        // Update progress based on metrics if total epochs is known
-        if (this.totalEpochs > 0 && metricsEpoch > 0) {
-          const metricsProgress = Math.round((metricsEpoch / this.totalEpochs) * 100);
-          if (metricsProgress > this.progress) {
-            this.progress = metricsProgress;
-          }
-        }
-        
-        const signature = this.computeMetricsSignature();
-        if (signature && signature === this.lastMetricsSignature) {
-          this.metricsStableCount += 1;
-        } else {
-          this.metricsStableCount = 0;
-          this.lastMetricsSignature = signature;
-        }
+    connectMetricsStream() {
+      if (!this.jobId || this.isTerminalStatus()) return;
+      if (this.streamController) this.closeMetricsStream();
 
-        if (this.terminalMode) {
-          this.terminalPolls += 1;
-          const shouldStop =
-            this.metricsStableCount >= 2 ||
-            this.isMetricsComplete() ||
-            this.terminalPolls >= this.maxTerminalPolls;
-          if (shouldStop) {
-            this.stopMetricsPolling();
-          }
+      this.streamDone = false;
+      this.streamController = openTrainingRunMetricsStream(
+        this.jobId,
+        {
+          onOpen: () => {
+            this.streamConnected = true;
+            this.streamNotice = "";
+            this.stopFallbackPolling();
+          },
+          onStatus: (payload) => {
+            this.applyStatusPayload(payload || {});
+          },
+          onMetric: (payload) => {
+            const data = payload && typeof payload === "object" ? payload : {};
+            const metricId = Number(data.metric_id);
+            if (Number.isFinite(metricId)) {
+              this.streamLastMetricId = Math.max(this.streamLastMetricId || 0, metricId);
+            }
+            const progress = Number(data.progress);
+            if (Number.isFinite(progress)) {
+              this.progress = Math.max(this.progress || 0, Math.min(100, Math.round(progress)));
+            }
+            this.upsertMetricEpoch(data.epoch, data.metrics || {});
+          },
+          onEvent: (payload) => {
+            const eventId = Number(payload && payload.event_id);
+            if (Number.isFinite(eventId)) {
+              this.streamLastEventId = Math.max(this.streamLastEventId || 0, eventId);
+            }
+          },
+          onDone: async (payload) => {
+            this.streamDone = true;
+            this.streamConnected = false;
+            if (payload && payload.status) this.status = normalizeStatus(payload.status);
+            this.stopFallbackPolling();
+            this.closeMetricsStream();
+            this.streamNotice = "";
+            try {
+              await this.syncSnapshot({ withStatus: true, withMetrics: true });
+            } catch (err) {
+              console.error("Error syncing final metrics snapshot:", err);
+            }
+          },
+          onError: (err) => {
+            if (this.isTerminalStatus()) return;
+            this.streamConnected = false;
+            this.streamNotice = "实时连接中断，当前使用低频同步。";
+            this.startFallbackPolling(true);
+            console.error("Metrics stream error:", err);
+          },
+          onClose: () => {
+            this.streamConnected = false;
+            if (this.streamDone || this.isTerminalStatus()) return;
+            if (!this.streamNotice) {
+              this.streamNotice = "实时连接已断开，正在自动恢复。";
+            }
+            this.startFallbackPolling(true);
+          },
+          onReconnect: ({ delayMs } = {}) => {
+            if (this.isTerminalStatus()) return;
+            const secs = Math.max(1, Math.round(Number(delayMs || 0) / 1000));
+            this.streamNotice = `实时连接中断，将在 ${secs} 秒后重连。`;
+            this.startFallbackPolling(true);
+          },
+        },
+        {
+          fromMetricId: this.streamLastMetricId || null,
+          fromEventId: this.streamLastEventId || null,
+          minDelayMs: 1000,
+          maxDelayMs: 30000,
+          reconnectFactor: 1.8,
+          jitterMs: 300,
         }
+      );
+    },
+    closeMetricsStream() {
+      if (!this.streamController) return;
+      const controller = this.streamController;
+      this.streamController = null;
+      try {
+        controller.close();
+      } catch (_) {
+        0;
+      }
+      this.streamConnected = false;
+    },
+    startFallbackPolling(immediate = false) {
+      if (!this.jobId || this.streamConnected || this.streamDone || this.isTerminalStatus()) return;
+      if (this.metricsPollingInterval) return;
+      this.metricsPollingMs = Math.max(10_000, Number(this.fallbackPollingMs) || 12_000);
+      if (immediate) this.fetchFallbackSnapshot();
+      this.metricsPollingInterval = setInterval(() => {
+        this.fetchFallbackSnapshot();
+      }, this.metricsPollingMs);
+    },
+    stopFallbackPolling() {
+      if (!this.metricsPollingInterval) return;
+      clearInterval(this.metricsPollingInterval);
+      this.metricsPollingInterval = null;
+      this.metricsPollingMs = 0;
+    },
+    async fetchFallbackSnapshot() {
+      if (!this.jobId || this.streamConnected || this.isTerminalStatus()) return;
+      try {
+        await this.syncSnapshot({ withStatus: true, withMetrics: true });
       } catch (err) {
-        console.error("Error fetching metrics:", err);
-        if (!this.metrics) {
+        if (!this.metrics && !this.loading) {
           this.error = "获取指标失败。请重试。";
         }
-      } finally {
-        this.loading = false;
-      }
-    },
-    cleanupStatusPolling() {
-      if (this.statusPollingInterval) {
-        clearInterval(this.statusPollingInterval);
-        this.statusPollingInterval = null;
+        console.error("Error fetching fallback metrics snapshot:", err);
       }
     },
     cleanupAllPolling() {
-      this.cleanupStatusPolling();
-      this.stopMetricsPolling();
+      this.stopFallbackPolling();
+      this.closeMetricsStream();
     },
     async handleStop() {
       try {
@@ -419,8 +651,7 @@ export default {
         this.stopping = true;
         await CancelTrainingJob(this.jobId);
         this.$message.success('已发送停止请求');
-        // Refresh status immediately
-        this.fetchStatus();
+        await this.syncSnapshot({ withStatus: true, withMetrics: false });
       } catch (e) {
         if (e !== 'cancel' && e !== 'close') {
           this.$message.error('停止失败: ' + (e.message || e));
@@ -586,6 +817,19 @@ export default {
   margin-top: 16px;
 }
 
+.wait-eval-note {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  margin-bottom: 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -623,6 +867,16 @@ export default {
   align-items: center;
   gap: 8px;
   color: var(--color-primary);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.stream-note {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #b45309;
   font-size: 12px;
   font-weight: 500;
 }

@@ -1,4 +1,4 @@
-import { API_BASE } from "@/utils/request";
+import { API_BASE, WS_BASE } from "@/utils/request";
 
 async function safeJson(res) {
   try {
@@ -54,6 +54,15 @@ function mapParametersOut(p) {
     img_size: imageSize,
     imgsz: imageSize,
   };
+}
+
+function inferEvalInterval(parameters) {
+  const p = parameters && typeof parameters === "object" ? parameters : {};
+  const add = p.additional_params && typeof p.additional_params === "object" ? p.additional_params : {};
+  const raw = add.eval_interval ?? add.snapshot_epoch ?? add.save_period;
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return null;
+  return Math.max(1, Math.floor(n));
 }
 
 function mapArchitectureOut(a) {
@@ -268,28 +277,6 @@ export async function startTrainingJob(jobId) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
-    // In original code lines 267-270:
-    // const res = await fetch(..., { method: "POST", headers: ..., }); 
-    // It didn't send body. I should stick to original behavior or fix if obvious.
-    // Original: `const res = await fetch(...);` -> It had no body.
-
-    // But `fetch` with POST without body is fine.
-
-    // Wait, in my overwritten content above I added `body: JSON.stringify(payload)`. 
-    // `payload` is NOT defined in `startTrainingJob`.
-    // I entered a bug in my thought? No, I copy-pasted `createTrainingJob`.
-
-    // Let me check lines 264-278 of original file in Step 842.
-    /*
-    264: export async function startTrainingJob(jobId) {
-    265:   try {
-    266:     const id = normStr(jobId);
-    267:     const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/queue`, {
-    268:       method: "POST",
-    269:       headers: { "Content-Type": "application/json" },
-    270:     });
-    */
-    // There is no body. Correct.
 
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
@@ -377,6 +364,10 @@ export async function FetchTrainingJobsStatus(jobId) {
       current_epoch: job.current_epoch ?? 0,
       total_epochs: job.total_epochs ?? job.parameters?.epochs ?? null,
       progress: job.progress ?? 0,
+      engine: job.architecture?.engine || null,
+      family: job.architecture?.family || job.architecture?.model_family || null,
+      variant: job.architecture?.variant || job.architecture?.model_variant || null,
+      eval_interval: inferEvalInterval(job.parameters),
     };
   } catch (error) {
     console.error("获取训练任务状态失败:", error);
@@ -423,6 +414,175 @@ export async function FetchTrainingJobsMetrics_detailed(jobId) {
     console.error("获取训练任务详细指标失败:", error);
     throw error;
   }
+}
+
+function buildWsUrl(runId, query = {}) {
+  const rid = encodeURIComponent(normStr(runId));
+  const qs = new URLSearchParams();
+  Object.keys(query || {}).forEach((k) => {
+    const v = query[k];
+    if (v == null) return;
+    const s = String(v).trim();
+    if (!s) return;
+    qs.set(k, s);
+  });
+  const base = String(WS_BASE || API_BASE || "").replace(/\/+$/, "");
+  const tail = qs.toString();
+  return `${base}/api/v2/training-runs/${rid}/metrics/stream${tail ? `?${tail}` : ""}`;
+}
+
+export function openTrainingRunMetricsStream(runId, handlers = {}, options = {}) {
+  const id = normStr(runId);
+  if (!id) throw new Error("Missing run id");
+
+  const onStatus = typeof handlers.onStatus === "function" ? handlers.onStatus : () => {};
+  const onMetric = typeof handlers.onMetric === "function" ? handlers.onMetric : () => {};
+  const onEvent = typeof handlers.onEvent === "function" ? handlers.onEvent : () => {};
+  const onDone = typeof handlers.onDone === "function" ? handlers.onDone : () => {};
+  const onError = typeof handlers.onError === "function" ? handlers.onError : () => {};
+  const onOpen = typeof handlers.onOpen === "function" ? handlers.onOpen : () => {};
+  const onClose = typeof handlers.onClose === "function" ? handlers.onClose : () => {};
+  const onReconnect = typeof handlers.onReconnect === "function" ? handlers.onReconnect : () => {};
+
+  const minDelayMs = Math.max(300, Number(options.minDelayMs ?? 1000) || 1000);
+  const maxDelayMs = Math.max(minDelayMs, Number(options.maxDelayMs ?? 30000) || 30000);
+  const reconnectFactor = Math.max(1.1, Number(options.reconnectFactor ?? 1.8) || 1.8);
+  const jitterMs = Math.max(0, Number(options.jitterMs ?? 300) || 0);
+
+  let ws = null;
+  let reconnectTimer = null;
+  let closedManually = false;
+  let reconnectAttempt = 0;
+  let lastFromMetricId = options.fromMetricId ?? null;
+  let lastFromEventId = options.fromEventId ?? null;
+
+  const clearReconnectTimer = () => {
+    if (reconnectTimer) {
+      clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+  };
+
+  const scheduleReconnect = () => {
+    if (closedManually) return;
+    reconnectAttempt += 1;
+    const baseDelay = Math.min(maxDelayMs, Math.round(minDelayMs * Math.pow(reconnectFactor, reconnectAttempt - 1)));
+    const delay = baseDelay + (jitterMs ? Math.floor(Math.random() * jitterMs) : 0);
+    onReconnect({ attempt: reconnectAttempt, delayMs: delay });
+    clearReconnectTimer();
+    reconnectTimer = setTimeout(() => {
+      reconnectTimer = null;
+      connect();
+    }, delay);
+  };
+
+  const connect = () => {
+    if (closedManually) return;
+    clearReconnectTimer();
+
+    const query = {
+      from_metric_id: lastFromMetricId,
+      from_event_id: lastFromEventId,
+    };
+    const url = buildWsUrl(id, query);
+
+    try {
+      ws = new WebSocket(url);
+    } catch (e) {
+      onError(e);
+      scheduleReconnect();
+      return;
+    }
+
+    ws.onopen = () => {
+      reconnectAttempt = 0;
+      onOpen({ url });
+    };
+
+    ws.onmessage = (evt) => {
+      let payload = null;
+      try {
+        payload = JSON.parse(evt.data || "{}");
+      } catch (_) {
+        return;
+      }
+      const type = String(payload?.type || "");
+      const data = payload?.data || {};
+
+      if (type === "cursor") {
+        if (Number.isFinite(Number(data.last_metric_id))) lastFromMetricId = Number(data.last_metric_id);
+        if (Number.isFinite(Number(data.last_event_id))) lastFromEventId = Number(data.last_event_id);
+        return;
+      }
+      if (type === "status") {
+        onStatus(data);
+        return;
+      }
+      if (type === "metric") {
+        if (Number.isFinite(Number(data.metric_id))) lastFromMetricId = Number(data.metric_id);
+        onMetric(data);
+        return;
+      }
+      if (type === "event") {
+        if (Number.isFinite(Number(data.event_id))) lastFromEventId = Number(data.event_id);
+        onEvent(data);
+        return;
+      }
+      if (type === "done") {
+        onDone(data);
+        return;
+      }
+      if (type === "error") {
+        onError(data?.message || "metrics stream error");
+        return;
+      }
+      if (type === "ping") {
+        return;
+      }
+    };
+
+    ws.onerror = (err) => {
+      onError(err);
+    };
+
+    ws.onclose = (evt) => {
+      onClose(evt);
+      if (!closedManually) scheduleReconnect();
+    };
+  };
+
+  connect();
+
+  return {
+    close() {
+      closedManually = true;
+      clearReconnectTimer();
+      if (ws) {
+        try {
+          ws.close();
+        } catch (_) {
+          0;
+        }
+        ws = null;
+      }
+    },
+    reconnect() {
+      if (closedManually) return;
+      if (ws) {
+        try {
+          ws.close();
+        } catch (_) {
+          0;
+        }
+      } else {
+        scheduleReconnect();
+      }
+    },
+    setCursor({ metricId, eventId } = {}) {
+      if (metricId != null) lastFromMetricId = Number(metricId);
+      if (eventId != null) lastFromEventId = Number(eventId);
+    },
+  };
 }
 
 // DeleteTrainingJob 删除训练任务接口（v2: request_delete -> DELETE run）
