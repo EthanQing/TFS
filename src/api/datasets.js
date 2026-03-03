@@ -810,6 +810,16 @@ export async function convertIllegalDataset(
         labelLevel = null,
         labelSeparator = '%',
         labelMapping = null,
+        // Slice/crop parameters
+        slice_size = null,
+        overlap = null,
+        padding = null,
+        min_area_ratio = null,
+        min_visibility = null,
+        min_pixel_size = null,
+        negative_ratio = null,
+        empty_positive_action = null,
+        // Split parameters
         split_enabled = false,
         split_train_ratio = null,
         split_val_ratio = null,
@@ -819,7 +829,7 @@ export async function convertIllegalDataset(
         split_overwrite = null,
     } = {}
 ) {
-    if (!datasetId) throw new Error('?? datasetId');
+    if (!datasetId) throw new Error('缺少 datasetId');
     const payload = {
         label_strategy: labelStrategy,
         label_separator: labelSeparator,
@@ -830,6 +840,16 @@ export async function convertIllegalDataset(
     if (labelMapping && typeof labelMapping === 'object') {
         payload.label_mapping = labelMapping;
     }
+    // Slice/crop parameters
+    if (slice_size !== null && slice_size !== undefined) payload.slice_size = Number(slice_size);
+    if (overlap !== null && overlap !== undefined) payload.overlap = Number(overlap);
+    if (padding !== null && padding !== undefined) payload.padding = Number(padding);
+    if (min_area_ratio !== null && min_area_ratio !== undefined) payload.min_area_ratio = Number(min_area_ratio);
+    if (min_visibility !== null && min_visibility !== undefined) payload.min_visibility = Number(min_visibility);
+    if (min_pixel_size !== null && min_pixel_size !== undefined) payload.min_pixel_size = Number(min_pixel_size);
+    if (negative_ratio !== null && negative_ratio !== undefined) payload.negative_ratio = Number(negative_ratio);
+    if (empty_positive_action !== null && empty_positive_action !== undefined) payload.empty_positive_action = String(empty_positive_action);
+    // Split parameters
     if (split_enabled) {
         payload.split_enabled = true;
         if (split_train_ratio !== null && split_train_ratio !== undefined) payload.split_train_ratio = split_train_ratio;

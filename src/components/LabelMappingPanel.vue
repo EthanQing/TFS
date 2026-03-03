@@ -15,19 +15,12 @@
               @click="applyPreset(p.mode)"
             >{{ p.label }}</el-button>
           </el-button-group>
-          <el-popover
-            v-if="activePreset === 'level'"
-            placement="bottom"
-            trigger="manual"
-            :value="showLevelPicker"
-          >
-            <div class="level-picker">
-              <span>取第</span>
-              <el-input-number v-model="levelValue" :min="1" :max="maxLevel" size="mini" />
-              <span>级</span>
-              <el-button size="mini" type="primary" @click="confirmLevel">确定</el-button>
-            </div>
-          </el-popover>
+          <div v-show="activePreset === 'level'" class="level-picker">
+            <span>取第</span>
+            <el-input-number v-model="levelValue" :min="1" :max="maxLevel" size="mini" />
+            <span>级</span>
+            <el-button size="mini" type="primary" @click="confirmLevel">确定</el-button>
+          </div>
         </div>
       </div>
       <div class="panel-sub-row">
@@ -185,6 +178,12 @@
       <div class="action-row">
         <el-button
           size="small"
+          :type="sliceParamsConfirmed ? 'success' : ''"
+          :icon="sliceParamsConfirmed ? 'el-icon-check' : 'el-icon-setting'"
+          @click="showSliceDialog = true"
+        >{{ sliceParamsConfirmed ? '裁剪参数已设置' : '裁剪参数设置' }}</el-button>
+        <el-button
+          size="small"
           :loading="saving"
           @click="handleSave"
           :disabled="!hasValidMapping"
@@ -202,6 +201,87 @@
         </el-button>
       </div>
     </div>
+
+    <!-- Slice Parameters Dialog -->
+    <el-dialog
+      title="裁剪参数设置"
+      :visible.sync="showSliceDialog"
+      width="560px"
+      :close-on-click-modal="false"
+      append-to-body
+    >
+      <div class="slice-dialog-hint">
+        调整大图切片、标注过滤等参数，这些参数会影响最终训练数据的质量。
+      </div>
+      <div class="params-grid">
+        <div class="param-item">
+          <label class="param-label">切片尺寸 <span class="param-key">slice_size</span></label>
+          <div class="param-control">
+            <el-input-number v-model="sliceParams.sliceSize" :min="128" :max="4096" :step="64" size="mini" />
+            <span class="param-unit">px</span>
+          </div>
+          <span class="param-desc">每个切片的像素边长</span>
+        </div>
+        <div class="param-item">
+          <label class="param-label">重叠比例 <span class="param-key">overlap</span></label>
+          <div class="param-control">
+            <el-input-number v-model="sliceParams.overlap" :min="0" :max="0.9" :step="0.05" :precision="2" size="mini" />
+          </div>
+          <span class="param-desc">相邻切片间的重叠率</span>
+        </div>
+        <div class="param-item">
+          <label class="param-label">内边距 <span class="param-key">padding</span></label>
+          <div class="param-control">
+            <el-input-number v-model="sliceParams.padding" :min="0" :max="512" :step="8" size="mini" />
+            <span class="param-unit">px</span>
+          </div>
+          <span class="param-desc">标注框周围的额外扩展区域</span>
+        </div>
+        <div class="param-item">
+          <label class="param-label">最小面积比 <span class="param-key">min_area_ratio</span></label>
+          <div class="param-control">
+            <el-input-number v-model="sliceParams.minAreaRatio" :min="0" :max="1" :step="0.05" :precision="2" size="mini" />
+          </div>
+          <span class="param-desc">标注框须落入切片的最小面积占比</span>
+        </div>
+        <div class="param-item">
+          <label class="param-label">最小可见度 <span class="param-key">min_visibility</span></label>
+          <div class="param-control">
+            <el-input-number v-model="sliceParams.minVisibility" :min="0" :max="1" :step="0.05" :precision="2" size="mini" />
+          </div>
+          <span class="param-desc">标注框宽/高在切片中的最小可见比例</span>
+        </div>
+        <div class="param-item">
+          <label class="param-label">最小像素 <span class="param-key">min_pixel_size</span></label>
+          <div class="param-control">
+            <el-input-number v-model="sliceParams.minPixelSize" :min="1" :max="100" :step="1" size="mini" />
+            <span class="param-unit">px</span>
+          </div>
+          <span class="param-desc">切片中标注框宽高的最小像素值</span>
+        </div>
+        <div class="param-item">
+          <label class="param-label">负样本比例 <span class="param-key">negative_ratio</span></label>
+          <div class="param-control">
+            <el-input-number v-model="sliceParams.negativeRatio" :min="0" :max="1" :step="0.05" :precision="2" size="mini" />
+          </div>
+          <span class="param-desc">无标注切片与有标注切片的比例 (0=不保留)</span>
+        </div>
+        <div class="param-item">
+          <label class="param-label">空正样本处理 <span class="param-key">empty_positive_action</span></label>
+          <div class="param-control">
+            <el-select v-model="sliceParams.emptyPositiveAction" size="mini" style="width: 120px;">
+              <el-option label="丢弃" value="discard" />
+              <el-option label="转为负样本" value="negative" />
+            </el-select>
+          </div>
+          <span class="param-desc">原本应包含标注但过滤后为空的切片处理方式</span>
+        </div>
+      </div>
+      <div slot="footer">
+        <el-button size="small" @click="showSliceDialog = false">取消</el-button>
+        <el-button size="small" type="primary" @click="confirmSliceParams">确认参数</el-button>
+      </div>
+    </el-dialog>
   </div>
 </template>
 
@@ -223,6 +303,19 @@ export default {
       levelValue: 2,
       showLevelPicker: false,
       expandedGroups: {},
+      showSliceDialog: false,
+      sliceParamsConfirmed: false,
+      pendingConvert: false,
+      sliceParams: {
+        sliceSize: 1280,
+        overlap: 0.2,
+        padding: 64,
+        minAreaRatio: 0.3,
+        minVisibility: 0.15,
+        minPixelSize: 5,
+        negativeRatio: 0.1,
+        emptyPositiveAction: 'discard',
+      },
       presets: [
         { mode: 'root',  label: '取根节点' },
         { mode: 'leaf',  label: '取叶子节点' },
@@ -492,13 +585,41 @@ export default {
       });
       return mapping;
     },
+    buildSliceParams() {
+      return {
+        slice_size: this.sliceParams.sliceSize,
+        overlap: this.sliceParams.overlap,
+        padding: this.sliceParams.padding,
+        min_area_ratio: this.sliceParams.minAreaRatio,
+        min_visibility: this.sliceParams.minVisibility,
+        min_pixel_size: this.sliceParams.minPixelSize,
+        negative_ratio: this.sliceParams.negativeRatio,
+        empty_positive_action: this.sliceParams.emptyPositiveAction,
+      };
+    },
     handleSave() {
       if (!this.hasValidMapping) return;
       this.$emit('save', this.buildMapping());
     },
+    confirmSliceParams() {
+      this.sliceParamsConfirmed = true;
+      this.showSliceDialog = false;
+      if (this.pendingConvert) {
+        this.pendingConvert = false;
+        this.doSaveAndConvert();
+      }
+    },
     handleSaveAndConvert() {
       if (!this.hasValidMapping) return;
-      this.$emit('save-and-convert', this.buildMapping());
+      if (!this.sliceParamsConfirmed) {
+        this.pendingConvert = true;
+        this.showSliceDialog = true;
+        return;
+      }
+      this.doSaveAndConvert();
+    },
+    doSaveAndConvert() {
+      this.$emit('save-and-convert', this.buildMapping(), this.buildSliceParams());
     },
   },
 };
@@ -785,5 +906,48 @@ export default {
 .action-row {
   display: flex;
   gap: 8px;
+}
+
+/* Slice Parameters Dialog */
+.slice-dialog-hint {
+  font-size: 0.82rem;
+  color: #64748b;
+  margin-bottom: 16px;
+  line-height: 1.5;
+}
+.params-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 20px;
+}
+.param-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.param-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: #334155;
+}
+.param-key {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  font-weight: 400;
+  font-family: monospace;
+}
+.param-control {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.param-unit {
+  font-size: 0.72rem;
+  color: #94a3b8;
+}
+.param-desc {
+  font-size: 0.68rem;
+  color: #94a3b8;
+  line-height: 1.3;
 }
 </style>

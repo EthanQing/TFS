@@ -568,6 +568,7 @@ export default {
                 labelLevel: 2,
                 labelSeparator: '%',
             },
+            sliceParams: null,
             showSplitDialog: false,
             splitSubmitting: false,
             splitSummary: null,
@@ -760,7 +761,8 @@ export default {
                 this.savingLabels = false;
             }
         },
-        async handleSaveAndConvert(mapping) {
+        async handleSaveAndConvert(mapping, sliceParams) {
+            this.sliceParams = sliceParams || null;
             await this.handleLabelMappingSave(mapping);
             if (!this.hasSavedMapping) return; // save failed
             await this.submitConvertWithMapping();
@@ -1098,11 +1100,15 @@ export default {
           }
           this.convertingDataset = true;
           try {
-            await convertIllegalDataset(this.datasetId, {
+            const opts = {
               labelStrategy: 'mapping',
               labelSeparator: '%',
               labelMapping: mapping,
-            });
+            };
+            if (this.sliceParams && typeof this.sliceParams === 'object') {
+              Object.assign(opts, this.sliceParams);
+            }
+            await convertIllegalDataset(this.datasetId, opts);
             this.$message.success('转换任务已提交');
             this.startConversionPolling();
           } catch (e) {
