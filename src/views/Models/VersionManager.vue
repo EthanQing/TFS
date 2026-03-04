@@ -3,13 +3,21 @@
         <!-- 顶部标题 -->
         <div class="top">
             <h3>模型版本管理</h3>
-            <el-button
-                type="primary"
-                class="custom-primary-btn"
-                @click="dialogFormVisible = true"
-            >
-                + 发布新版本
-            </el-button>
+            <div class="top-actions">
+                <el-button
+                    type="primary"
+                    class="custom-primary-btn"
+                    @click="dialogFormVisible = true"
+                >
+                    + 发布新版本
+                </el-button>
+                <el-button
+                    class="custom-info-btn"
+                    @click="goRollbackCenter"
+                >
+                    模型回滚
+                </el-button>
+            </div>
         </div>
 
         <!-- 版本列表和管理区域 -->
@@ -495,6 +503,21 @@ export default {
                     this.$message.success('新版本已发布');
                 }
             });
+        },
+        goRollbackCenter() {
+            let projectId = null;
+            try {
+                const raw = localStorage.getItem('currentProject');
+                const obj = raw ? JSON.parse(raw) : null;
+                const n = Number(obj?.project_id || obj?.id);
+                if (Number.isFinite(n) && n > 0) projectId = n;
+            } catch (_) {
+                projectId = null;
+            }
+
+            const query = { tool: 'rollback' };
+            if (projectId) query.project_id = projectId;
+            this.$router.push({ path: '/deployment', query });
         }
     }
 };
@@ -515,6 +538,12 @@ export default {
     align-items: center;
     justify-content: space-between;
     margin-bottom: 20px;
+}
+
+.top-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
 }
 
 .top h3 {
