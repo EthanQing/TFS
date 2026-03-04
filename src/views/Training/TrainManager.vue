@@ -18,6 +18,9 @@
         <div v-if="canStop" class="tm-stat action-stat">
            <el-button type="danger" size="small" icon="el-icon-video-pause" @click="handleStop" :loading="stopping">停止训练</el-button>
         </div>
+        <div class="tm-stat action-stat">
+           <el-button size="small" icon="el-icon-setting" @click="showChartConfig = true">图表设置</el-button>
+        </div>
       </div>
     </section>
 
@@ -85,6 +88,21 @@
         <i class="el-icon-connection"></i>
         <span>{{ streamNotice }}</span>
       </div>
+
+      <!-- Chart Config Dialog -->
+      <el-dialog title="图表显示设置" :visible.sync="showChartConfig" width="480px" append-to-body>
+        <div v-if="allMetricGroups.length === 0" style="color:#94a3b8;text-align:center;padding:20px 0">暂无可配置的图表</div>
+        <div v-else class="chart-config-list">
+          <div v-for="group in allMetricGroups" :key="group.key" class="chart-config-item">
+            <span class="chart-config-label">{{ group.title }}</span>
+            <el-switch v-model="chartVisibility[group.key]" active-color="#3b82f6"></el-switch>
+          </div>
+        </div>
+        <div slot="footer" class="dialog-footer">
+          <el-button size="small" @click="resetChartConfig">恢复默认</el-button>
+          <el-button size="small" type="primary" @click="handleSaveChartConfig" :loading="savingConfig">保存配置</el-button>
+        </div>
+      </el-dialog>
     </section>
   </div>
 </template>
@@ -98,6 +116,7 @@ import {
   CancelTrainingJob,
   openTrainingRunMetricsStream,
 } from "@/api/training";
+import { fetchChartConfig, saveChartConfig } from "@/api/chartConfig";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "deleted"]);
 const METRIC_ALIAS_GROUPS = [
@@ -160,7 +179,11 @@ export default {
       family: null,
       variant: null,
       evalInterval: null,
-      stopping: false
+      stopping: false,
+      showChartConfig: false,
+      chartVisibility: {},
+      savingConfig: false,
+      configLoaded: false
     };
   },
   computed: {
@@ -210,12 +233,27 @@ export default {
       if (current >= nextEvalEpoch) return "";
       return `当前每 ${interval} 轮验证一次，准确度指标将在第 ${nextEvalEpoch} 轮验证后出现。`;
     },
-    metricGroups() {
+    allMetricGroups() {
       const data = (this.metrics && this.metrics.metrics) || {};
       return buildMetricGroups(this.engine, data);
+    },
+    metricGroups() {
+      if (!this.configLoaded) return this.allMetricGroups;
+      return this.allMetricGroups.filter(g => this.chartVisibility[g.key] !== false);
     }
   },
   watch: {
+    allMetricGroups: {
+      immediate: true,
+      handler(groups) {
+        // Pre-populate visibility keys for Vue 2 reactivity
+        (groups || []).forEach(g => {
+          if (!(g.key in this.chartVisibility)) {
+            this.$set(this.chartVisibility, g.key, true);
+          }
+        });
+      }
+    },
     "$route.query.jobId": {
       immediate: true,
       handler(newJobId) {
@@ -244,6 +282,8 @@ export default {
       this.startRealtimeSession();
       return;
     }
+
+    if (!this.configLoaded) this.loadChartConfig();
 
     if (!this.isTerminalStatus() && !this.streamConnected && !this.streamController) {
       this.connectMetricsStream();
@@ -659,6 +699,34 @@ export default {
       } finally {
         this.stopping = false;
       }
+    },
+    async loadChartConfig() {
+      try {
+        const config = await fetchChartConfig("training_charts");
+        if (config && typeof config === "object" && config.visibility) {
+          this.chartVisibility = { ...config.visibility };
+        }
+        this.configLoaded = true;
+      } catch (_) {
+        this.configLoaded = true;
+      }
+    },
+    async handleSaveChartConfig() {
+      this.savingConfig = true;
+      try {
+        await saveChartConfig("training_charts", { visibility: this.chartVisibility });
+        this.$message.success("\u56fe\u8868\u914d\u7f6e\u5df2\u4fdd\u5b58");
+        this.showChartConfig = false;
+      } catch (e) {
+        this.$message.error("\u4fdd\u5b58\u5931\u8d25: " + (e.message || e));
+      } finally {
+        this.savingConfig = false;
+      }
+    },
+    resetChartConfig() {
+      const vis = {};
+      (this.allMetricGroups || []).forEach(g => { vis[g.key] = true; });
+      this.chartVisibility = vis;
     }
   },
   beforeDestroy() {
@@ -962,5 +1030,27 @@ export default {
   .metric-card.is-wide {
     grid-column: span 1;
   }
+}
+
+.chart-config-list {
+  max-height: 400px;
+  overflow-y: auto;
+}
+
+.chart-config-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 8px;
+  border-bottom: 1px solid #f1f5f9;
+}
+
+.chart-config-item:last-child {
+  border-bottom: none;
+}
+
+.chart-config-label {
+  font-size: 14px;
+  color: var(--text-main, #1e293b);
 }
 </style>

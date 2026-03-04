@@ -1,5 +1,14 @@
 <template>
   <div class="echarts-container" :class="chartType">
+    <div v-if="!isEmpty" class="chart-toolbar">
+      <el-dropdown trigger="click" @command="handleExport" size="small">
+        <i class="el-icon-download toolbar-icon" title="导出图表"></i>
+        <el-dropdown-menu slot="dropdown">
+          <el-dropdown-item command="png">导出 PNG</el-dropdown-item>
+          <el-dropdown-item command="csv">导出 CSV</el-dropdown-item>
+        </el-dropdown-menu>
+      </el-dropdown>
+    </div>
     <div v-if="isEmpty" class="chart-empty">{{ emptyText || "暂无该指标数据。" }}</div>
     <div v-show="!isEmpty" ref="chartContainer" :style="containerStyle"></div>
   </div>
@@ -418,6 +427,62 @@ export default {
     },
     resizeChart() {
       if (this.chartInstance) this.chartInstance.resize();
+    },
+    handleExport(command) {
+      if (command === "png") this.exportAsPng();
+      else if (command === "csv") this.exportAsCsv();
+    },
+    exportAsPng() {
+      if (!this.chartInstance) return;
+      try {
+        const url = this.chartInstance.getDataURL({ type: "png", pixelRatio: 2, backgroundColor: "#fff" });
+        const title = this.customTitle || this.chartType || "chart";
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${title.replace(/[\\/:*?"<>|]/g, "_")}.png`;
+        a.click();
+      } catch (e) {
+        console.error("导出 PNG 失败:", e);
+      }
+    },
+    exportAsCsv() {
+      if (!this.chartInstance) return;
+      try {
+        const option = this.chartInstance.getOption();
+        const seriesList = option.series || [];
+        if (!seriesList.length) return;
+        // Build CSV: first column is epoch, rest are series names
+        const names = seriesList.map(s => s.name || "value");
+        const header = ["轮次", ...names].join(",");
+        // Find max data length
+        let maxLen = 0;
+        seriesList.forEach(s => {
+          if (Array.isArray(s.data)) maxLen = Math.max(maxLen, s.data.length);
+        });
+        const rows = [header];
+        for (let i = 0; i < maxLen; i++) {
+          const cells = [i + 1];
+          seriesList.forEach(s => {
+            const point = Array.isArray(s.data) ? s.data[i] : null;
+            let val = "";
+            if (Array.isArray(point) && point.length >= 2) val = point[1];
+            else if (point != null) val = point;
+            cells.push(val != null && val !== "" ? val : "");
+          });
+          rows.push(cells.join(","));
+        }
+        const csvContent = "\uFEFF" + rows.join("\n"); // BOM for Excel
+        const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+        const url = URL.createObjectURL(blob);
+        const title = this.customTitle || this.chartType || "chart";
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `${title.replace(/[\\/:*?"<>|]/g, "_")}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+      } catch (e) {
+        console.error("导出 CSV 失败:", e);
+      }
     }
   }
 };
@@ -427,6 +492,34 @@ export default {
 .echarts-container {
   width: 100%;
   margin: 5px 0;
+  position: relative;
+}
+
+.chart-toolbar {
+  position: absolute;
+  top: 8px;
+  right: 12px;
+  z-index: 10;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+}
+
+.echarts-container:hover .chart-toolbar {
+  opacity: 1;
+}
+
+.toolbar-icon {
+  font-size: 18px;
+  color: #94a3b8;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  transition: all 0.15s ease;
+}
+
+.toolbar-icon:hover {
+  color: var(--color-primary, #3b82f6);
+  background: rgba(59, 130, 246, 0.08);
 }
 
 .echarts-container.metrics {
