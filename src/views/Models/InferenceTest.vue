@@ -373,6 +373,9 @@
 </template>
 
 <script>
+import { uploadInferenceFile, runSingleInference, runBatchInference, runVideoInference } from "@/api/inference";
+import { fetchModelVersionsByRunId, registerModelVersionFromRun } from "@/api/models";
+
 export default {
     name: 'ModelInferenceTest',
     data() {
@@ -383,18 +386,21 @@ export default {
             selectedResultIndex: null,
             inferenceConfig: {
                 type: 'image',
-                model: 'yolov8m',
+                model: '',
                 confidence: 0.5,
                 iou: 0.5,
                 showLabels: true,
                 showConfidence: true
             },
-            inferenceResults: []
+            inferenceResults: [],
+            jobId: null,
+            modelVersionId: null,
+            inferenceProgress: 0
         };
     },
     computed: {
         successCount() {
-            return this.inferenceResults.filter(r => r.status === '成功').length;
+            return this.inferenceResults.filter(r => r.status === '\u6210\u529f').length;
         },
         totalDetections() {
             return this.inferenceResults.reduce((sum, r) => sum + r.detections, 0);
@@ -403,7 +409,7 @@ export default {
             if (this.inferenceResults.length === 0) return '0ms';
             const total = this.inferenceResults.reduce((sum, r) => {
                 const ms = parseInt(r.time);
-                return sum + ms;
+                return sum + (isNaN(ms) ? 0 : ms);
             }, 0);
             return Math.round(total / this.inferenceResults.length) + 'ms';
         },
@@ -422,242 +428,358 @@ export default {
             return null;
         }
     },
+    mounted() {
+        this.resolveJobId();
+    },
+    activated() {
+        this.resolveJobId();
+    },
     methods: {
+        resolveJobId() {
+            const routeJobId = this.$route && this.$route.query && this.$route.query.jobId;
+            if (routeJobId) {
+                if (this.jobId !== routeJobId) this.modelVersionId = null;
+                this.jobId = routeJobId;
+            } else {
+                const stored = localStorage.getItem("currentJobId");
+                if (stored) {
+                    if (this.jobId !== stored) this.modelVersionId = null;
+                    this.jobId = stored;
+                }
+            }
+        },
+        async resolveModelVersionId() {
+            if (this.modelVersionId) return this.modelVersionId;
+            const id = String(this.jobId || "").trim();
+            if (!id) return null;
+            try {
+                const list = await fetchModelVersionsByRunId(id, 1, 5);
+                if (list && list.length) {
+                    const mv = list[0];
+                    const mvId = mv?.model_version_id || mv?.id;
+                    if (mvId != null) { this.modelVersionId = mvId; return mvId; }
+                }
+            } catch (e) {
+                console.warn("fetchModelVersionsByRunId failed:", e?.message || e);
+            }
+            // Auto-register
+            try {
+                const created = await registerModelVersionFromRun({
+                    run_id: id,
+                    version: `run-${id.slice(0, 8)}`,
+                    stage: "development",
+                    description: "Auto-created for inference test",
+                });
+                const mvId = created?.model_version_id || created?.id;
+                if (mvId != null) { this.modelVersionId = mvId; return mvId; }
+            } catch (e) {
+                console.warn("registerModelVersionFromRun failed:", e?.message || e);
+            }
+            return null;
+        },
+        // --- Utility methods ---
         getAcceptTypes() {
-            const types = {
-                image: '.jpg,.jpeg,.png,.bmp',
-                folder: '*',
-                video: '.mp4,.avi,.mov,.mkv'
-            };
+            const types = { image: '.jpg,.jpeg,.png,.bmp', folder: '*', video: '.mp4,.avi,.mov,.mkv' };
             return types[this.inferenceConfig.type] || '.*';
         },
         getUploadIcon() {
-            const icons = {
-                image: 'el-icon-picture',
-                folder: 'el-icon-folder-add',
-                video: 'el-icon-video-play'
-            };
+            const icons = { image: 'el-icon-picture', folder: 'el-icon-folder-add', video: 'el-icon-video-play' };
             return icons[this.inferenceConfig.type] || 'el-icon-upload';
         },
         getUploadText() {
-            const texts = {
-                image: '点击上传或拖拽图片到此处',
-                folder: '点击选择或拖拽文件夹到此处',
-                video: '点击上传或拖拽视频到此处'
-            };
-            return texts[this.inferenceConfig.type] || '点击上传文件';
+            const texts = { image: '\u70b9\u51fb\u4e0a\u4f20\u6216\u62d6\u62fd\u56fe\u7247\u5230\u6b64\u5904', folder: '\u70b9\u51fb\u9009\u62e9\u6216\u62d6\u62fd\u6587\u4ef6\u5939\u5230\u6b64\u5904', video: '\u70b9\u51fb\u4e0a\u4f20\u6216\u62d6\u62fd\u89c6\u9891\u5230\u6b64\u5904' };
+            return texts[this.inferenceConfig.type] || '\u70b9\u51fb\u4e0a\u4f20\u6587\u4ef6';
         },
         getUploadTip() {
-            const tips = {
-                image: '支持 JPG, PNG, BMP 等格式，每个文件最大 50MB',
-                folder: '支持整个文件夹的推理',
-                video: '支持 MP4, AVI, MOV 等格式，每个文件最大 500MB'
-            };
-            return tips[this.inferenceConfig.type] || '支持多种格式';
+            const tips = { image: '\u652f\u6301 JPG, PNG, BMP \u7b49\u683c\u5f0f\uff0c\u6bcf\u4e2a\u6587\u4ef6\u6700\u5927 50MB', folder: '\u652f\u6301\u6574\u4e2a\u6587\u4ef6\u5939\u7684\u63a8\u7406', video: '\u652f\u6301 MP4, AVI, MOV \u7b49\u683c\u5f0f\uff0c\u6bcf\u4e2a\u6587\u4ef6\u6700\u5927 500MB' };
+            return tips[this.inferenceConfig.type] || '\u652f\u6301\u591a\u79cd\u683c\u5f0f';
         },
         getFileIcon(filename) {
-            if (filename.match(/\.(jpg|jpeg|png|bmp)$/i)) {
-                return 'el-icon-picture';
-            } else if (filename.match(/\.(mp4|avi|mov|mkv)$/i)) {
-                return 'el-icon-video-play';
-            }
+            if (filename.match(/\.(jpg|jpeg|png|bmp)$/i)) return 'el-icon-picture';
+            if (filename.match(/\.(mp4|avi|mov|mkv)$/i)) return 'el-icon-video-play';
             return 'el-icon-document';
         },
-        handleTypeChange() {
-            this.selectedFiles = [];
-        },
-        selectInferenceType(type) {
-            this.inferenceConfig.type = type;
-            this.handleTypeChange();
-        },
+        handleTypeChange() { this.selectedFiles = []; },
+        selectInferenceType(type) { this.inferenceConfig.type = type; this.handleTypeChange(); },
         handleFileSelect(file, fileList) {
-            this.selectedFiles = fileList.map(f => ({
-                name: f.name,
-                raw: f.raw
-            }));
+            this.selectedFiles = fileList.map(f => ({ name: f.name, raw: f.raw }));
         },
-        removeFile(index) {
-            this.selectedFiles.splice(index, 1);
-        },
-        formatConfidence(value) {
-            return (value * 100).toFixed(0) + '%';
-        },
-        formatIOU(value) {
-            return (value * 100).toFixed(0) + '%';
-        },
-        handleStartInference() {
+        removeFile(index) { this.selectedFiles.splice(index, 1); },
+        formatConfidence(value) { return (value * 100).toFixed(0) + '%'; },
+        formatIOU(value) { return (value * 100).toFixed(0) + '%'; },
+
+        // --- Core inference methods ---
+        async handleStartInference() {
             if (this.selectedFiles.length === 0) {
-                this.$message.warning('请先选择要推理的文件');
+                this.$message.warning('\u8bf7\u5148\u9009\u62e9\u8981\u63a8\u7406\u7684\u6587\u4ef6');
+                return;
+            }
+            try {
+                await this.$confirm('\u786e\u8ba4\u5f00\u59cb\u63a8\u7406\u5417\uff1f', '\u786e\u8ba4\u64cd\u4f5c', {
+                    confirmButtonText: '\u786e\u5b9a', cancelButtonText: '\u53d6\u6d88', type: 'warning'
+                });
+            } catch (_) {
                 return;
             }
 
-            this.$confirm('确认开始推理吗？', '确认操作', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                type: 'warning'
-            }).then(() => {
-                this.isInferencing = true;
-                this.inferenceResults = [];
-                this.selectedResultIndex = null;
+            this.isInferencing = true;
+            this.inferenceResults = [];
+            this.selectedResultIndex = null;
+            this.inferenceProgress = 0;
 
-                this.$message.success('推理已启动');
-
-                // 模拟推理过程
-                this.simulateInference();
-            }).catch(() => {
-                this.$message.info('已取消操作');
-            });
-        },
-        simulateInference() {
-            let currentIndex = 0;
-            const interval = setInterval(() => {
-                if (currentIndex < this.selectedFiles.length) {
-                    const file = this.selectedFiles[currentIndex];
-                    const isSuccess = Math.random() > 0.05; // 95% 成功率
-                    
-                    if (isSuccess) {
-                        const detections = Math.floor(Math.random() * 15) + 1;
-                        const time = Math.floor(Math.random() * 200) + 50;
-                        
-                        const classes = {};
-                        const classNames = ['person', 'car', 'dog', 'cat', 'bicycle', 'truck'];
-                        let remaining = detections;
-                        for (let i = 0; i < classNames.length && remaining > 0; i++) {
-                            const count = Math.floor(Math.random() * remaining) + 1;
-                            classes[classNames[i]] = count;
-                            remaining -= count;
-                        }
-
-                        this.inferenceResults.push({
-                            name: file.name,
-                            type: this.inferenceConfig.type,
-                            detections: detections,
-                            time: time + 'ms',
-                            status: '成功',
-                            preview: this.generatePreview(detections),
-                            classes: classes
-                        });
-                    } else {
-                        this.inferenceResults.push({
-                            name: file.name,
-                            type: this.inferenceConfig.type,
-                            detections: 0,
-                            time: '-',
-                            status: '失败',
-                            preview: '',
-                            classes: {}
-                        });
-                    }
-                    currentIndex++;
-                } else {
-                    clearInterval(interval);
+            try {
+                const mvId = await this.resolveModelVersionId();
+                if (!mvId) {
+                    this.$message.error('\u672a\u627e\u5230\u6a21\u578b\u7248\u672c\uff0c\u8bf7\u786e\u4fdd\u8bad\u7ec3\u4efb\u52a1\u5df2\u5b8c\u6210');
                     this.isInferencing = false;
-                    if (this.inferenceResults.length > 0) {
-                        this.selectedResultIndex = 0;
-                    }
-                    this.$message.success('推理完成');
+                    return;
                 }
-            }, 500);
+
+                const type = this.inferenceConfig.type;
+                if (type === 'video') {
+                    await this.runVideoInferenceFlow(mvId);
+                } else {
+                    await this.runImageBatchFlow(mvId);
+                }
+
+                if (this.inferenceResults.length > 0) this.selectedResultIndex = 0;
+                this.$message.success('\u63a8\u7406\u5b8c\u6210');
+            } catch (e) {
+                this.$message.error('\u63a8\u7406\u5931\u8d25: ' + (e.message || e));
+            } finally {
+                this.isInferencing = false;
+            }
         },
-        generatePreview(detections) {
-            // 生成一个简单的 SVG 预览
-            const svg = `<svg width="200" height="150" xmlns="http://www.w3.org/2000/svg">
-                <rect width="200" height="150" fill="#f0f0f0"/>
-                <text x="100" y="75" text-anchor="middle" font-size="14" fill="#666">
-                    检测 ${detections} 个对象
-                </text>
-            </svg>`;
-            return 'data:image/svg+xml;base64,' + btoa(svg);
+
+        async runImageBatchFlow(mvId) {
+            // Upload all files first
+            this.$message.info('\u6b63\u5728\u4e0a\u4f20\u6587\u4ef6...');
+            const tokens = [];
+            for (let i = 0; i < this.selectedFiles.length; i++) {
+                const file = this.selectedFiles[i];
+                try {
+                    const res = await uploadInferenceFile(file.raw);
+                    tokens.push({ name: file.name, token: res.token, path: res.path });
+                } catch (e) {
+                    this.inferenceResults.push({
+                        name: file.name, type: 'image', detections: 0,
+                        time: '-', status: '\u5931\u8d25', preview: '', classes: {},
+                        error: '\u4e0a\u4f20\u5931\u8d25: ' + (e.message || e)
+                    });
+                }
+                this.inferenceProgress = Math.round(((i + 1) / this.selectedFiles.length) * 30);
+            }
+
+            if (tokens.length === 0) return;
+
+            if (tokens.length === 1) {
+                // Single image
+                const t = tokens[0];
+                const startMs = Date.now();
+                try {
+                    const res = await runSingleInference({
+                        model_version_id: mvId,
+                        input_path: t.token,
+                        conf: this.inferenceConfig.confidence,
+                        iou: this.inferenceConfig.iou,
+                    });
+                    const elapsed = Date.now() - startMs;
+                    this.inferenceResults.push(this.mapApiResult(t.name, 'image', res, elapsed, t.path));
+                } catch (e) {
+                    this.inferenceResults.push({
+                        name: t.name, type: 'image', detections: 0,
+                        time: '-', status: '\u5931\u8d25', preview: '', classes: {},
+                        error: e.message || String(e)
+                    });
+                }
+            } else {
+                // Batch inference
+                this.$message.info('\u6b63\u5728\u6279\u91cf\u63a8\u7406...');
+                try {
+                    const res = await runBatchInference({
+                        model_version_id: mvId,
+                        input_tokens: tokens.map(t => t.token),
+                        conf: this.inferenceConfig.confidence,
+                        iou: this.inferenceConfig.iou,
+                    });
+                    const tokenMap = {};
+                    tokens.forEach(t => { tokenMap[t.token] = t; });
+                    (res.results || []).forEach(item => {
+                        const info = tokenMap[item.token] || { name: item.filename, path: '' };
+                        this.inferenceResults.push(this.mapApiResult(
+                            info.name, 'image', { output: item.output, error_message: item.error_message },
+                            item.inference_time_ms, info.path
+                        ));
+                    });
+                } catch (e) {
+                    tokens.forEach(t => {
+                        this.inferenceResults.push({
+                            name: t.name, type: 'image', detections: 0,
+                            time: '-', status: '\u5931\u8d25', preview: '', classes: {},
+                            error: e.message || String(e)
+                        });
+                    });
+                }
+            }
+            this.inferenceProgress = 100;
         },
-        selectResult(index) {
-            this.selectedResultIndex = index;
+
+        async runVideoInferenceFlow(mvId) {
+            if (this.selectedFiles.length === 0) return;
+            const file = this.selectedFiles[0];
+
+            this.$message.info('\u6b63\u5728\u4e0a\u4f20\u89c6\u9891...');
+            let uploaded;
+            try {
+                uploaded = await uploadInferenceFile(file.raw);
+            } catch (e) {
+                throw new Error('\u89c6\u9891\u4e0a\u4f20\u5931\u8d25: ' + (e.message || e));
+            }
+            this.inferenceProgress = 20;
+
+            this.$message.info('\u6b63\u5728\u8fdb\u884c\u89c6\u9891\u63a8\u7406\uff0c\u8bf7\u7a0d\u7b49...');
+            const res = await runVideoInference({
+                model_version_id: mvId,
+                video_token: uploaded.token,
+                conf: this.inferenceConfig.confidence,
+                iou: this.inferenceConfig.iou,
+                frame_interval: 5, // process every 5th frame
+            });
+            this.inferenceProgress = 90;
+
+            // Map frame results
+            (res.results || []).forEach(frameResult => {
+                const name = `${file.name} - \u5e27 ${frameResult.frame_index}`;
+                this.inferenceResults.push(this.mapApiResult(
+                    name, 'video',
+                    { output: frameResult.output, error_message: frameResult.error_message },
+                    0, ''
+                ));
+            });
+
+            // Add summary info 
+            if (res.total_time_ms) {
+                const avg = Math.round(res.total_time_ms / Math.max(1, res.processed_frames));
+                this.inferenceResults.forEach(r => {
+                    if (r.time === '0ms') r.time = avg + 'ms';
+                });
+            }
+            this.inferenceProgress = 100;
         },
+
+        mapApiResult(name, type, apiRes, elapsedMs, previewPath) {
+            const output = apiRes?.output || {};
+            const predictions = output?.predictions || [];
+            const errorMsg = apiRes?.error_message || null;
+
+            const classes = {};
+            let detections = predictions.length;
+            predictions.forEach(p => {
+                const cls = p.class_name || `class_${p.class_id}`;
+                classes[cls] = (classes[cls] || 0) + 1;
+            });
+
+            return {
+                name,
+                type,
+                detections,
+                time: elapsedMs ? Math.round(elapsedMs) + 'ms' : '0ms',
+                status: errorMsg ? '\u5931\u8d25' : '\u6210\u529f',
+                preview: previewPath || '',
+                classes,
+                error: errorMsg || null,
+                predictions
+            };
+        },
+
+        // --- Result actions ---
+        selectResult(index) { this.selectedResultIndex = index; },
+
         handleDownloadResult() {
             if (!this.currentResult) {
-                this.$message.warning('请先选择一个结果');
+                this.$message.warning('\u8bf7\u5148\u9009\u62e9\u4e00\u4e2a\u7ed3\u679c');
                 return;
             }
-
-            const resultData = {
-                filename: this.currentResult.name,
-                type: this.currentResult.type,
-                detections: this.currentResult.detections,
-                inferenceTime: this.currentResult.time,
-                model: this.inferenceConfig.model,
+            const r = this.currentResult;
+            const data = {
+                filename: r.name,
+                type: r.type,
+                detections: r.detections,
+                inferenceTime: r.time,
                 confidence: this.inferenceConfig.confidence,
-                classes: this.currentResult.classes,
+                iou: this.inferenceConfig.iou,
+                classes: r.classes,
+                predictions: r.predictions || [],
                 timestamp: new Date().toLocaleString()
             };
-
-            const blob = new Blob([JSON.stringify(resultData, null, 2)], { type: 'application/json' });
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
             const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `inference_result_${Date.now()}.json`;
-            link.click();
-
-            this.$message.success('结果已下载');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `inference_result_${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+            this.$message.success('\u7ed3\u679c\u5df2\u4e0b\u8f7d');
         },
+
         handleExportReport() {
             if (this.inferenceResults.length === 0) {
-                this.$message.warning('暂无结果可导出');
+                this.$message.warning('\u6682\u65e0\u7ed3\u679c\u53ef\u5bfc\u51fa');
                 return;
             }
 
-            const report = {
-                timestamp: new Date().toLocaleString(),
-                inferenceType: this.inferenceConfig.type,
-                model: this.inferenceConfig.model,
-                parameters: {
-                    confidence: this.inferenceConfig.confidence,
-                    iou: this.inferenceConfig.iou
-                },
-                summary: {
-                    totalProcessed: this.inferenceResults.length,
-                    successful: this.successCount,
-                    totalDetections: this.totalDetections,
-                    averageTime: this.averageTime
-                },
-                results: this.inferenceResults.map(r => ({
-                    filename: r.name,
-                    status: r.status,
-                    detections: r.detections,
-                    time: r.time,
-                    classes: r.classes
-                }))
-            };
+            // Build CSV
+            const allClasses = new Set();
+            this.inferenceResults.forEach(r => {
+                Object.keys(r.classes || {}).forEach(c => allClasses.add(c));
+            });
+            const classArr = [...allClasses].sort();
+            const header = ['\u6587\u4ef6\u540d', '\u72b6\u6001', '\u68c0\u6d4b\u5bf9\u8c61\u6570', '\u63a8\u7406\u8017\u65f6', ...classArr].join(',');
+            const rows = [header];
+            this.inferenceResults.forEach(r => {
+                const cells = [
+                    `"${r.name.replace(/"/g, '""')}"`,
+                    r.status,
+                    r.detections,
+                    `"${r.time}"`,
+                    ...classArr.map(c => (r.classes || {})[c] || 0)
+                ];
+                rows.push(cells.join(','));
+            });
 
-            const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
+            // Add summary row
+            rows.push('');
+            rows.push(`"\u603b\u8ba1",,"${this.totalDetections}","${this.averageTime}"`);
+            rows.push(`"\u6210\u529f\u7387","${this.successCount}/${this.inferenceResults.length}"`);
+
+            const csvContent = "\uFEFF" + rows.join("\n");
+            const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
-            const link = document.createElement('a');
-            link.href = url;
-            link.download = `inference_report_${Date.now()}.json`;
-            link.click();
-
-            this.$message.success('报告已导出');
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `inference_report_${Date.now()}.csv`;
+            a.click();
+            URL.revokeObjectURL(url);
+            this.$message.success('\u62a5\u544a\u5df2\u5bfc\u51fa\u4e3a CSV');
         },
+
         handleClearResults() {
-            this.$confirm('确认清空所有结果吗？', '确认操作', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                type: 'warning'
+            this.$confirm('\u786e\u8ba4\u6e05\u7a7a\u6240\u6709\u7ed3\u679c\u5417\uff1f', '\u786e\u8ba4\u64cd\u4f5c', {
+                confirmButtonText: '\u786e\u5b9a', cancelButtonText: '\u53d6\u6d88', type: 'warning'
             }).then(() => {
                 this.inferenceResults = [];
                 this.selectedResultIndex = null;
-                this.$message.success('结果已清空');
+                this.$message.success('\u7ed3\u679c\u5df2\u6e05\u7a7a');
             });
         },
+
         handleReset() {
             this.selectedFiles = [];
             this.inferenceConfig = {
-                type: 'image',
-                model: 'yolov8m',
-                confidence: 0.5,
-                iou: 0.5,
-                showLabels: true,
-                showConfidence: true
+                type: 'image', model: '', confidence: 0.5, iou: 0.5,
+                showLabels: true, showConfidence: true
             };
-            this.$message.info('配置已重置');
+            this.$message.info('\u914d\u7f6e\u5df2\u91cd\u7f6e');
         }
     }
 };

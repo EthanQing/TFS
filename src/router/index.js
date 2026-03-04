@@ -34,7 +34,6 @@ const BaseChart = () => import('@/components/Chart/BaseChart.vue') // Kept as ro
 const AlarmRule = () => import('@/views/Configuration/AlarmRule.vue')
 const DataConversion = () => import('@/views/Datasets/components/DataConversion.vue')
 const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
-const InferenceTest = () => import('@/views/Models/InferenceTest.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
 const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
 
@@ -88,7 +87,7 @@ export default new VueRouter({
             redirect: { path: '/deployment' }
         }, {
             path: '/modelinferencetest',
-            component: InferenceTest
+            redirect: { path: '/deployment', query: { tool: 'inference-test' } }
         }, {
             path: '/dataconversiontool',
             component: DataConversion
