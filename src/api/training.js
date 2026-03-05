@@ -1,4 +1,5 @@
 import { API_BASE, WS_BASE } from "@/utils/request";
+import { resolveFramework } from "@/utils/trainingFramework";
 
 async function safeJson(res) {
   try {
@@ -165,6 +166,25 @@ async function mapTrainingRunToJob(run) {
 
   const architecture = archId != null && archMap.has(archId) ? archMap.get(archId) : null;
   const project = projectId != null && projMap.has(projectId) ? projMap.get(projectId) : null;
+  const rawEngine =
+    architecture?.engine ??
+    obj.engine ??
+    obj.architecture?.engine ??
+    "";
+  const engine = normalizeVariant(rawEngine) || null;
+  const { frameworkKey, frameworkLabel } = resolveFramework(engine);
+  const family =
+    architecture?.family ||
+    architecture?.model_family ||
+    obj.family ||
+    obj.architecture?.family ||
+    null;
+  const variant =
+    architecture?.variant ||
+    architecture?.model_variant ||
+    obj.variant ||
+    obj.architecture?.variant ||
+    null;
 
   const modelSizeMb =
     (obj.result && obj.result.model_size_mb != null ? Number(obj.result.model_size_mb) : null) ??
@@ -182,6 +202,13 @@ async function mapTrainingRunToJob(run) {
     // Helpful nested objects for display
     architecture,
     project,
+
+    // Framework metadata for compare filtering.
+    engine,
+    framework_key: obj.framework_key || frameworkKey,
+    framework_label: obj.framework_label || frameworkLabel,
+    family,
+    variant,
   };
 }
 
@@ -364,9 +391,9 @@ export async function FetchTrainingJobsStatus(jobId) {
       current_epoch: job.current_epoch ?? 0,
       total_epochs: job.total_epochs ?? job.parameters?.epochs ?? null,
       progress: job.progress ?? 0,
-      engine: job.architecture?.engine || null,
-      family: job.architecture?.family || job.architecture?.model_family || null,
-      variant: job.architecture?.variant || job.architecture?.model_variant || null,
+      engine: job.engine || job.architecture?.engine || null,
+      family: job.family || job.architecture?.family || job.architecture?.model_family || null,
+      variant: job.variant || job.architecture?.variant || job.architecture?.model_variant || null,
       eval_interval: inferEvalInterval(job.parameters),
     };
   } catch (error) {
@@ -714,7 +741,12 @@ export async function CompareTrainingRuns(runIds) {
       body: JSON.stringify(payload),
     });
     const data = await safeJson(res);
-    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    if (!res.ok) {
+      const err = new Error(toErrorMessage(data, res));
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
     return data;
   } catch (error) {
     console.error("对比训练任务失败:", error);

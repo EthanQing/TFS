@@ -22,7 +22,12 @@
                         :key="task.id"
                         :label="task.name"
                         :value="task.id"
+                        :disabled="isTaskOptionDisabled(task)"
                     >
+                        <div class="task-option-row">
+                            <span class="task-option-name">{{ task.name }}</span>
+                            <el-tag size="mini" effect="plain">{{ task.frameworkLabel }}</el-tag>
+                        </div>
                     </el-option>
                 </el-select>
                 <el-button 
@@ -32,6 +37,16 @@
                     :disabled="selectedTasks.length < 2"
                 >
                     开始对比
+                </el-button>
+                <el-button
+                    type="primary"
+                    plain
+                    class="custom-primary-btn"
+                    :loading="exporting"
+                    :disabled="!canExport"
+                    @click="handleExportCompare"
+                >
+                    导出对比结果
                 </el-button>
             </div>
         </div>
@@ -166,6 +181,8 @@ import {
     CompareTrainingRuns, 
     FetchTrainingJobsMetrics_detailed 
 } from '@/api/training';
+import { resolveFramework } from '@/utils/trainingFramework';
+import { buildWorkbook, downloadWorkbook } from '@/utils/trainingCompareExport';
 
 import TrainingChart from '@/components/Chart/TrainingChart.vue';
 
@@ -175,6 +192,7 @@ export default {
     data() {
         return {
             loading: false,
+            exporting: false,
             selectedTasks: [],
             comparingTasks: [],
             activeChart: 'loss',
@@ -199,6 +217,10 @@ export default {
                  });
             });
             return max || 100;
+        },
+        canExport() {
+            if (!this.comparingTasks.length) return false;
+            return this.parameterData.length > 0 || this.metricsData.length > 0 || Object.keys(this.curveDataMap || {}).length > 0;
         },
         currentChartTitle() {
             const map = { loss: 'Loss 对比', accuracy: '指标对比', mAP: 'mAP 对比' };
@@ -264,32 +286,169 @@ export default {
         this.loadAvailableTasks();
     },
     methods: {
+        findTaskById(taskId) {
+            const key = String(taskId ?? '');
+            return this.availableTasks.find(t => String(t.id) === key) || null;
+        },
+        extractCompareRuns(data) {
+            if (Array.isArray(data)) return data;
+            if (Array.isArray(data?.runs)) return data.runs;
+            if (Array.isArray(data?.items)) return data.items;
+            return [];
+        },
+        validateFrameworkSelection(ids = []) {
+            const picked = (Array.isArray(ids) ? ids : [])
+                .map(id => this.findTaskById(id))
+                .filter(Boolean);
+            if (picked.length < 2) return { ok: true };
+            const groups = {};
+            picked.forEach(task => {
+                const key = task.frameworkKey || 'engine:unknown';
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(task.id);
+            });
+            const keys = Object.keys(groups);
+            if (keys.length <= 1) return { ok: true };
+            const labels = keys
+                .map(k => this.availableTasks.find(t => t.frameworkKey === k)?.frameworkLabel || k)
+                .join(' / ');
+            return {
+                ok: false,
+                message: `仅支持同框架任务对比，当前选择包含：${labels}`,
+                groups,
+            };
+        },
+        getLockedFrameworkKey() {
+            if (!this.selectedTasks.length) return null;
+            const first = this.findTaskById(this.selectedTasks[0]);
+            return first?.frameworkKey || null;
+        },
+        isTaskOptionDisabled(task) {
+            if (!task) return false;
+            if (this.selectedTasks.includes(task.id)) return false;
+            const lockKey = this.getLockedFrameworkKey();
+            if (!lockKey) return false;
+            return task.frameworkKey !== lockKey;
+        },
+        buildTimestampToken() {
+            const now = new Date();
+            const pad = (n) => String(n).padStart(2, '0');
+            return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
+        },
+        buildExportFilename(prefix, frameworkLabel) {
+            const fw = String(frameworkLabel || 'mixed')
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, '_')
+                .replace(/^_+|_+$/g, '') || 'mixed';
+            return `${prefix}_${fw}_${this.buildTimestampToken()}.xlsx`;
+        },
+        mapComparingRunsForExport() {
+            return this.comparingTasks.map((task) => {
+                const meta = this.findTaskById(task.id) || {};
+                const resolved = resolveFramework(meta.engine);
+                return {
+                    runId: task.id,
+                    name: task.name,
+                    status: meta.status || '',
+                    engine: meta.engine || '',
+                    frameworkKey: meta.frameworkKey || resolved.frameworkKey,
+                    frameworkLabel: meta.frameworkLabel || resolved.frameworkLabel,
+                };
+            });
+        },
+        pickCurveValues(dataObj, primaryKey, fallbackKeys = []) {
+            if (!dataObj || typeof dataObj !== 'object') return [];
+            if (Array.isArray(dataObj[primaryKey])) return dataObj[primaryKey];
+            for (const key of fallbackKeys) {
+                if (Array.isArray(dataObj[key])) return dataObj[key];
+            }
+            return [];
+        },
+        buildCurveSheetsForExport(runs) {
+            const defs = [
+                { name: 'Loss', key: 'val/box_loss', fallback: ['train/box_loss', 'box_loss'] },
+                { name: 'Accuracy-Metrics', key: 'metrics/precision(B)', fallback: ['metrics/recall(B)', 'metrics/mAP50(B)'] },
+                { name: 'mAP', key: 'metrics/mAP50-95(B)', fallback: ['metrics/mAP50(B)'] },
+            ];
+            return defs.map((def) => ({
+                name: def.name,
+                series: runs.map((run) => {
+                    const dataObj = this.curveDataMap[run.runId] || {};
+                    return {
+                        runId: run.runId,
+                        runName: run.name,
+                        values: this.pickCurveValues(dataObj, def.key, def.fallback).slice(),
+                    };
+                }),
+            }));
+        },
+        async handleExportCompare() {
+            if (!this.canExport) {
+                this.$message.warning('暂无可导出的对比结果');
+                return;
+            }
+            this.exporting = true;
+            try {
+                const runs = this.mapComparingRunsForExport();
+                const parameterRows = this.parameterData.map((row) => ({
+                    key: row.name,
+                    valuesByRun: { ...(row.values || {}) },
+                    isDiff: false,
+                }));
+                const metricRows = this.metricsData.map((row) => ({
+                    key: row.name,
+                    valuesByRun: { ...(row.values || {}) },
+                    best: row.best,
+                }));
+                const curveSheets = this.buildCurveSheetsForExport(runs);
+                const frameworkLabel = runs[0]?.frameworkLabel || 'Framework';
+                const workbook = await buildWorkbook({
+                    source: 'training',
+                    frameworkLabel,
+                    exportedAt: new Date().toISOString(),
+                    runs,
+                    parameterRows,
+                    metricRows,
+                    curveSheets,
+                });
+                const filename = this.buildExportFilename('training_task_comparison', frameworkLabel);
+                await downloadWorkbook(workbook, filename);
+                this.$message.success('对比结果已导出');
+            } catch (error) {
+                console.error(error);
+                this.$message.error('导出失败: ' + (error?.message || error));
+            } finally {
+                this.exporting = false;
+            }
+        },
         async loadAvailableTasks() {
             try {
-                // Determine context: global or project-specific?
-                // The URL is usually /trainingtaskcomparison or linked from project
-                // For now, fetch all or filter by project if query param exists
-                const projectId = this.$route.query.projectId;
-                const filters = projectId ? { project_id: projectId } : {};
-                
                 const tasks = await fetchTrainingJobs(1, 100); // Fetch top 100 recent
-                // Client-side filter if needed, though fetchTrainingJobs (API) might not support all filters yet
-                // Filter to keep only completed/running tasks that have metrics potential?
-                // Or just show all.
-                
                 this.availableTasks = tasks.map(t => ({
                     id: t.job_id,
                     name: t.job_name || t.name,
                     status: t.status,
                     created_at: t.created_at,
-                    epochs: t.parameters && t.parameters.epochs ? `${t.parameters.epochs}` : '-'
+                    epochs: t.parameters && t.parameters.epochs ? `${t.parameters.epochs}` : '-',
+                    engine: t.engine || t.architecture?.engine || null,
+                    frameworkKey: t.framework_key || resolveFramework(t.engine || t.architecture?.engine).frameworkKey,
+                    frameworkLabel: t.framework_label || resolveFramework(t.engine || t.architecture?.engine).frameworkLabel,
                 }));
 
                 // Handle pre-selection from route query
                 const preSelect = this.$route.query.compareIds;
                 if (preSelect) {
-                    const ids = preSelect.split(',');
+                    const ids = preSelect
+                        .split(',')
+                        .map(x => String(x || '').trim())
+                        .filter(Boolean)
+                        .filter(id => !!this.findTaskById(id));
                     this.selectedTasks = ids;
+                    const validation = this.validateFrameworkSelection(ids);
+                    if (!validation.ok) {
+                        this.$message.warning(validation.message);
+                        return;
+                    }
                     if (ids.length >= 2) {
                         this.handleCompare();
                     }
@@ -299,15 +458,35 @@ export default {
                 console.error(error);
             }
         },
-        handleTaskSelect() {
-            if (this.selectedTasks.length > 4) {
+        handleTaskSelect(ids) {
+            const next = Array.isArray(ids) ? [...ids] : [...this.selectedTasks];
+            const dedup = [];
+            next.forEach(id => {
+                if (!dedup.includes(id)) dedup.push(id);
+            });
+            if (dedup.length > 4) {
                 this.$message.warning('最多只能选择4个任务进行对比');
-                this.selectedTasks.pop();
+                dedup.splice(4);
             }
+            const validation = this.validateFrameworkSelection(dedup);
+            if (!validation.ok) {
+                this.$message.warning(validation.message);
+                const first = this.findTaskById(dedup[0]);
+                this.selectedTasks = first
+                    ? dedup.filter(id => this.findTaskById(id)?.frameworkKey === first.frameworkKey)
+                    : [];
+                return;
+            }
+            this.selectedTasks = dedup;
         },
         async handleCompare() {
             if (this.selectedTasks.length < 2) {
                 this.$message.warning('请至少选择2个任务进行对比');
+                return;
+            }
+            const validation = this.validateFrameworkSelection(this.selectedTasks);
+            if (!validation.ok) {
+                this.$message.warning(validation.message);
                 return;
             }
 
@@ -345,7 +524,12 @@ export default {
 
                 this.$message.success(`已加载对比数据`);
             } catch (error) {
-                this.$message.error('对比失败: ' + error.message);
+                if (Number(error?.status) === 409) {
+                    const detail = error?.data?.detail || error?.data || {};
+                    this.$message.error(detail?.message || '仅支持同框架任务对比');
+                } else {
+                    this.$message.error('对比失败: ' + error.message);
+                }
                 console.error(error);
             } finally {
                 this.loading = false;
@@ -357,7 +541,7 @@ export default {
             // Actually `CompareTrainingRuns` in api/training.js returns `data` directly.
             // If backend returns map, we iterate keys.
             
-            const runs = Array.isArray(data) ? data : (data.items || Object.values(data));
+            const runs = this.extractCompareRuns(data);
             if (!runs.length) return;
 
             // Collect all parameter keys
@@ -390,7 +574,7 @@ export default {
             });
         },
         processMetricsData(data) {
-            const runs = Array.isArray(data) ? data : (data.items || Object.values(data));
+            const runs = this.extractCompareRuns(data);
             // Define metrics of interest
             const metricsOfInterest = [
                 { key: 'metrics/mAP50-95(B)', label: 'mAP50-95', importance: 'high' },
@@ -404,7 +588,6 @@ export default {
             this.metricsData = metricsOfInterest.map(m => {
                 const values = {};
                 let maxVal = -Infinity;
-                let minVal = Infinity; // For loss, lower is better usually, but "Best" column logic logic needs care.
                 // For simplicty, let's treat "Best" as Max for metrics and Min for loss? 
                 // Or just show Max for now.
                 
@@ -462,6 +645,8 @@ export default {
         isHighestValue(values, taskId) {
             // String comparison might be enough for params
             // For numeric params it should be parsed
+            void values;
+            void taskId;
             return false; 
         },
         isBestMetric(values, taskId) {
@@ -522,6 +707,17 @@ export default {
 .task-select {
     flex: 1;
     max-width: 400px;
+}
+.task-option-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+}
+.task-option-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .custom-primary-btn {

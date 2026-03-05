@@ -164,3 +164,84 @@ export async function FetchProjectsModelsSize(projectIds = []) {
         throw error;
     }
 }
+
+export async function fetchProjectCompareBaseline(projectId, frameworkKey) {
+    try {
+        const pid = Number(projectId);
+        const fw = String(frameworkKey || '').trim();
+        if (!Number.isFinite(pid)) throw new Error('无效的 projectId');
+        if (!fw) throw new Error('framework_key is required');
+
+        const url = `${API_BASE}/api/v2/projects/${encodeURIComponent(pid)}/compare-baseline?framework_key=${encodeURIComponent(fw)}`;
+        const response = await fetch(url);
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            const err = new Error(msg);
+            err.status = response.status;
+            err.data = data;
+            throw err;
+        }
+        return data;
+    } catch (error) {
+        console.error('获取对比基准失败:', error);
+        throw error;
+    }
+}
+
+export async function setProjectCompareBaseline(projectId, payload = {}) {
+    try {
+        const pid = Number(projectId);
+        if (!Number.isFinite(pid)) throw new Error('无效的 projectId');
+
+        const body = {
+            framework_key: String(payload.framework_key || '').trim(),
+            baseline_run_id: String(payload.baseline_run_id || '').trim(),
+        };
+        if (!body.framework_key) throw new Error('framework_key is required');
+        if (!body.baseline_run_id) throw new Error('baseline_run_id is required');
+
+        const response = await fetch(`${API_BASE}/api/v2/projects/${encodeURIComponent(pid)}/compare-baseline`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body),
+        });
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            const err = new Error(msg);
+            err.status = response.status;
+            err.data = data;
+            throw err;
+        }
+        return data;
+    } catch (error) {
+        console.error('设置对比基准失败:', error);
+        throw error;
+    }
+}
+
+export async function clearProjectCompareBaseline(projectId, frameworkKey) {
+    try {
+        const pid = Number(projectId);
+        const fw = String(frameworkKey || '').trim();
+        if (!Number.isFinite(pid)) throw new Error('无效的 projectId');
+        if (!fw) throw new Error('framework_key is required');
+
+        const response = await fetch(`${API_BASE}/api/v2/projects/${encodeURIComponent(pid)}/compare-baseline?framework_key=${encodeURIComponent(fw)}`, {
+            method: 'DELETE',
+        });
+        const data = await safeJson(response);
+        if (!response.ok) {
+            const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
+            const err = new Error(msg);
+            err.status = response.status;
+            err.data = data;
+            throw err;
+        }
+        return data;
+    } catch (error) {
+        console.error('清除对比基准失败:', error);
+        throw error;
+    }
+}

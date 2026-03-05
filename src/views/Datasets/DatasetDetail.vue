@@ -52,6 +52,32 @@
               <div v-if="conversionError" class="illegal-error">
                 <i class="el-icon-error"></i> {{ conversionError }}
               </div>
+              <div v-if="showConversionProgress" class="conversion-progress">
+                <div class="conversion-progress-row">
+                  <div class="conversion-progress-label">
+                    总进度：{{ conversionOverallProgress.processed }}/{{ conversionOverallProgress.total || '-' }}
+                  </div>
+                  <el-progress
+                    :stroke-width="10"
+                    :percentage="conversionOverallProgress.percent"
+                    :show-text="true"
+                  />
+                </div>
+                <div class="conversion-progress-row">
+                  <div class="conversion-progress-label">
+                    单图进度（{{ conversionPhaseLabel }}）：{{ conversionImageProgress.processed }}/{{ conversionImageProgress.total || '-' }}
+                  </div>
+                  <el-progress
+                    :stroke-width="10"
+                    :percentage="conversionImageProgress.percent"
+                    :show-text="true"
+                    status="success"
+                  />
+                </div>
+                <div v-if="conversionRealtimeHint" class="conversion-reconnect-hint">
+                  <i class="el-icon-loading"></i> {{ conversionRealtimeHint }}
+                </div>
+              </div>
             </div>
             <div class="illegal-actions" v-if="!conversionSupported">
               <el-button size="medium" disabled>暂不支持转换</el-button>
@@ -178,6 +204,15 @@
                   @click="openSplitDialog"
                 >
                   数据集划分
+                </el-button>
+                <el-button
+                  v-if="showAugmentationButton"
+                  size="small"
+                  type="success"
+                  plain
+                  @click="openAugmentationDialog"
+                >
+                  <i class="el-icon-magic-stick"></i> 样本扩增
                 </el-button>
                 <div v-if="allowAppendUpload" class="action-card">
                     <el-select
@@ -335,6 +370,21 @@
       </div>
     </el-dialog>
 
+    <el-dialog
+      title="样本扩增"
+      :visible.sync="showAugmentationDialog"
+      width="1000px"
+      :append-to-body="true"
+      class="augmentation-dialog preview-enabled"
+    >
+      <ManualAugmentationPanel
+        v-if="showAugmentationDialog"
+        :dataset-id="datasetId"
+        :default-version-id="selectedVersionId"
+        :version-options="versionOptions"
+        @published="handleAugmentationPublished"
+      />
+    </el-dialog>
 
     <!-- Upload Dialog -->
     <el-dialog
@@ -513,12 +563,13 @@
 </template>
 
 <script>
-import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, fetchDatasetSplitSummary, splitDataset, fetchIllegalDatasetLabels, updateIllegalDatasetLabels, renameDatasetClasses } from '@/api/datasets';
+import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, openIllegalConversionStream, fetchDatasetSplitSummary, splitDataset, fetchIllegalDatasetLabels, updateIllegalDatasetLabels, renameDatasetClasses } from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
 import LabelMappingPanel from '@/components/LabelMappingPanel.vue';
+import ManualAugmentationPanel from '@/views/Datasets/components/ManualAugmentationPanel.vue';
 export default {
     name: 'DataDetail',
-    components: { UploadZip, LabelMappingPanel },
+    components: { UploadZip, LabelMappingPanel, ManualAugmentationPanel },
     data() {
         return {
             datasetId: '',
@@ -562,7 +613,9 @@ export default {
             // Illegal dataset conversion
             showConvertDialog: false,
             convertingDataset: false,
-            conversionTimer: null,
+            conversionStream: null,
+            conversionStreamJobId: '',
+            conversionStreamHint: '',
             convertForm: {
                 labelStrategy: 'leaf',
                 labelLevel: 2,
@@ -570,6 +623,7 @@ export default {
             },
             sliceParams: null,
             showSplitDialog: false,
+            showAugmentationDialog: false,
             splitSubmitting: false,
             splitSummary: null,
             splitLoading: false,
@@ -610,7 +664,7 @@ export default {
     },
     beforeDestroy() {
         document.removeEventListener('keydown', this.handleKeydown);
-        this.stopConversionPolling();
+        this.stopConversionStream();
     },
     computed: {
         classList() {
@@ -651,10 +705,18 @@ export default {
             const meta = ver && ver.meta;
             return meta && meta.illegal_reason ? String(meta.illegal_reason) : '';
         },
-        conversionStatus() {
+        conversionMeta() {
             const ver = this.datasetDetail && this.datasetDetail.active_version;
             const meta = ver && ver.meta;
             const conv = meta && meta.conversion;
+            return conv && typeof conv === 'object' ? conv : null;
+        },
+        conversionJobId() {
+            const conv = this.conversionMeta;
+            return conv && conv.job_id ? String(conv.job_id) : '';
+        },
+        conversionStatus() {
+            const conv = this.conversionMeta;
             return conv ? (conv.status || '') : '';
         },
         conversionSupported() {
@@ -687,8 +749,13 @@ export default {
             if (this.splitSummary && this.hasSplit) return false;
             return true;
         },
+        showAugmentationButton() {
+            if (!this.isDetectionDataset) return false;
+            if (this.isIllegalDataset || this.isDatasetEmpty) return false;
+            return true;
+        },
         showPanelActions() {
-            return this.showSplitButton || this.allowAppendUpload;
+            return this.showSplitButton || this.showAugmentationButton || this.allowAppendUpload;
         },
         conversionStatusText() {
             const status = this.conversionStatus;
@@ -696,10 +763,55 @@ export default {
             return status ? (map[status] || status) : '';
         },
         conversionError() {
-            const ver = this.datasetDetail && this.datasetDetail.active_version;
-            const meta = ver && ver.meta;
-            const conv = meta && meta.conversion;
+            const conv = this.conversionMeta;
             return conv && conv.error_message ? conv.error_message : '';
+        },
+        conversionOverallProgress() {
+            const conv = this.conversionMeta;
+            const progress = conv && conv.progress && typeof conv.progress === 'object' ? conv.progress : {};
+            const overall = progress && progress.overall && typeof progress.overall === 'object' ? progress.overall : {};
+            return {
+                processed: Math.max(0, Number(overall.processed_images) || 0),
+                total: Math.max(0, Number(overall.total_images) || 0),
+                currentImageIndex: Math.max(0, Number(overall.current_image_index) || 0),
+                currentImageName: overall.current_image_name ? String(overall.current_image_name) : '',
+                percent: Math.max(0, Math.min(100, Number(overall.percent) || 0)),
+            };
+        },
+        conversionImageProgress() {
+            const conv = this.conversionMeta;
+            const progress = conv && conv.progress && typeof conv.progress === 'object' ? conv.progress : {};
+            const image = progress && progress.image && typeof progress.image === 'object' ? progress.image : {};
+            return {
+                phase: image.phase ? String(image.phase) : (conv && conv.phase ? String(conv.phase) : 'scanning'),
+                processed: Math.max(0, Number(image.processed_slices) || 0),
+                total: Math.max(0, Number(image.total_slices) || 0),
+                percent: Math.max(0, Math.min(100, Number(image.percent) || 0)),
+            };
+        },
+        conversionPhaseLabel() {
+            const phase = String(this.conversionImageProgress.phase || '').toLowerCase();
+            const map = {
+                scanning: '扫描中',
+                assign_labels: '标注分配',
+                save_slices: '切片保存',
+                finalizing: '收尾中',
+                skipped: '已跳过',
+                done: '已完成',
+                failed: '已失败',
+            };
+            return map[phase] || phase || '扫描中';
+        },
+        showConversionProgress() {
+            if (!this.conversionSupported) return false;
+            const status = String(this.conversionStatus || '').toLowerCase();
+            if (status === 'queued' || status === 'running') return true;
+            const overall = this.conversionOverallProgress;
+            const image = this.conversionImageProgress;
+            return overall.total > 0 || image.total > 0;
+        },
+        conversionRealtimeHint() {
+            return this.conversionStreamHint || '';
         },
 
     },
@@ -882,7 +994,7 @@ export default {
         }
         this.renameSaving = true;
         try {
-          const result = await renameDatasetClasses(this.datasetId, { [oldName]: newName });
+          await renameDatasetClasses(this.datasetId, { [oldName]: newName });
           this.$message.success(`已重命名: ${oldName} → ${newName}`);
           this.cancelEditClass();
           // 刷新数据集详情以反映新的类别名
@@ -895,6 +1007,7 @@ export default {
       },
 
         async loadDataFromRoute() {
+            this.stopConversionStream();
             this.datasetId = this.$route.query.datasetId || '';
             this.datasetName = this.$route.query.datasetName || '';
             this.datasetType = this.$route.query.datasetType || '';
@@ -905,6 +1018,7 @@ export default {
             this.versionOptions = [];
             this.splitSummary = null;
             this.splitLoading = false;
+            this.showAugmentationDialog = false;
             this.savedLabelMapping = this.loadLocalLabelMapping();
             this.hasSavedMapping = !!(this.savedLabelMapping && Object.keys(this.savedLabelMapping).length > 0);
             await this.refreshVersionsAndDetail({ forceLatest: true });
@@ -1075,6 +1189,16 @@ export default {
           this.splitForm = { train: 90, val: 7, test: 3 };
           this.showSplitDialog = true;
         },
+        openAugmentationDialog() {
+          if (!this.showAugmentationButton) return;
+          this.showAugmentationDialog = true;
+        },
+        async handleAugmentationPublished(out) {
+          const v = out && out.version ? `v${out.version}` : '';
+          this.$message.success(`扩增结果已发布 ${v}`.trim());
+          this.showAugmentationDialog = false;
+          await this.refreshVersionsAndDetail({ forceLatest: true });
+        },
         handleConvertClick() {
           if (this.hasSavedMapping) {
             // Mapping already saved, convert directly using it
@@ -1108,9 +1232,10 @@ export default {
             if (this.sliceParams && typeof this.sliceParams === 'object') {
               Object.assign(opts, this.sliceParams);
             }
-            await convertIllegalDataset(this.datasetId, opts);
+            const result = await convertIllegalDataset(this.datasetId, opts);
             this.$message.success('转换任务已提交');
-            this.startConversionPolling();
+            const jobId = result && result.job_id ? String(result.job_id) : this.conversionJobId;
+            if (jobId) this.startConversionStream(jobId);
           } catch (e) {
             const msg = e && e.message ? String(e.message) : '转换失败';
             this.$message.error(`转换失败: ${msg}`);
@@ -1156,14 +1281,15 @@ export default {
           }
           this.convertingDataset = true;
           try {
-            await convertIllegalDataset(this.datasetId, {
+            const result = await convertIllegalDataset(this.datasetId, {
               labelStrategy: strategy,
               labelLevel: this.convertForm.labelLevel,
               labelSeparator: this.convertForm.labelSeparator,
             });
             this.$message.success('转换任务已提交');
             this.showConvertDialog = false;
-            this.startConversionPolling();
+            const jobId = result && result.job_id ? String(result.job_id) : this.conversionJobId;
+            if (jobId) this.startConversionStream(jobId);
           } catch (e) {
             const msg = e && e.message ? String(e.message) : '转换失败';
             this.$message.error(`转换失败: ${msg}`);
@@ -1171,76 +1297,130 @@ export default {
             this.convertingDataset = false;
           }
         },
-        startConversionPolling() {
-          if (this.conversionTimer) {
-            clearInterval(this.conversionTimer);
-            this.conversionTimer = null;
-          }
-          // Track the version ID before conversion to detect change
-          const startVersionId = this.datasetDetail?.active_version?.version_id;
-          const startTime = Date.now();
-          const TIMEOUT_MS = 120000; // 2 minutes timeout
-          
-          console.log('[Conversion] Starting poll, initial version:', startVersionId);
-          
-          this.conversionTimer = setInterval(async () => {
-            // Check timeout
-            if (Date.now() - startTime > TIMEOUT_MS) {
-              this.stopConversionPolling();
-              console.log('[Conversion] Polling timed out, forcing page reload...');
-              this.$message.warning('转换超时，正在刷新页面...');
-              setTimeout(() => window.location.reload(), 500);
-              return;
-            }
-            
-            try {
-              // Fetch WITHOUT version ID to get the current active version
-              const detail = await FetchDatasetDetail(this.datasetId, {
-                versionId: null, // Important: don't use selectedVersionId
-                filesLimit: 1,
-              });
-              
-              const ver = detail && detail.active_version;
-              const meta = ver && ver.meta;
-              const conv = meta && meta.conversion;
-              const status = conv ? (conv.status || '') : '';
-              const currentVersionId = ver?.version_id;
-              const isNewVersion = startVersionId && currentVersionId && currentVersionId !== startVersionId;
-              const isIllegal = !!(meta && meta.illegal);
-              
-              console.log('[Conversion] Poll result:', { 
-                status, 
-                currentVersionId, 
-                isNewVersion, 
-                verStatus: ver?.status,
-                isIllegal,
-                elapsed: Math.round((Date.now() - startTime) / 1000) + 's'
-              });
-              
-              if (status === 'failed') {
-                this.stopConversionPolling();
-                const err = (conv && conv.error_message) || '转换失败';
-                this.$message.error(`转换失败: ${err}`);
-                return;
-              }
-              
-              // Success: new version is active (version ID changed and new version is finalized and not illegal)
-              if (isNewVersion && ver.status === 'finalized' && !isIllegal) {
-                this.stopConversionPolling();
-                this.$message.success('转换完成，正在刷新页面...');
-                console.log('[Conversion] Success detected, reloading page...');
-                setTimeout(() => window.location.reload(), 500);
-              }
-            } catch (e) {
-              console.error('[Conversion] Poll error:', e);
-            }
-          }, 4000);
+        _emptyConversionProgress() {
+          return {
+            overall: {
+              processed_images: 0,
+              total_images: 0,
+              current_image_index: 0,
+              current_image_name: '',
+              percent: 0,
+            },
+            image: {
+              phase: 'scanning',
+              processed_slices: 0,
+              total_slices: 0,
+              percent: 0,
+            },
+          };
         },
-        stopConversionPolling() {
-          if (this.conversionTimer) {
-            clearInterval(this.conversionTimer);
-            this.conversionTimer = null;
+        _applyConversionPayload(payload) {
+          if (!this.datasetDetail || !this.datasetDetail.active_version) return;
+
+          const activeVersion = this.datasetDetail.active_version;
+          if (!activeVersion.meta || typeof activeVersion.meta !== 'object') {
+            this.$set(activeVersion, 'meta', {});
           }
+          const meta = activeVersion.meta;
+          const current = meta.conversion && typeof meta.conversion === 'object' ? meta.conversion : {};
+          const next = { ...current };
+
+          if (payload && typeof payload === 'object') {
+            ['job_id', 'status', 'seq', 'updated_at', 'phase', 'error_message', 'output_version_id', 'message'].forEach((key) => {
+              if (payload[key] !== undefined && payload[key] !== null) {
+                next[key] = payload[key];
+              }
+            });
+
+            if (payload.progress && typeof payload.progress === 'object') {
+              const currentProgress = current.progress && typeof current.progress === 'object'
+                ? current.progress
+                : this._emptyConversionProgress();
+              const incomingOverall = payload.progress.overall && typeof payload.progress.overall === 'object'
+                ? payload.progress.overall
+                : {};
+              const incomingImage = payload.progress.image && typeof payload.progress.image === 'object'
+                ? payload.progress.image
+                : {};
+
+              next.progress = {
+                overall: { ...(currentProgress.overall || {}), ...incomingOverall },
+                image: { ...(currentProgress.image || {}), ...incomingImage },
+              };
+            }
+          }
+
+          if (!next.progress || typeof next.progress !== 'object') {
+            next.progress = this._emptyConversionProgress();
+          }
+          if (!next.phase) {
+            const image = next.progress.image && typeof next.progress.image === 'object' ? next.progress.image : {};
+            if (image.phase) next.phase = image.phase;
+          }
+          this.$set(meta, 'conversion', next);
+        },
+        startConversionStream(jobId) {
+          const normalizedJobId = String(jobId || '').trim();
+          if (!this.datasetId || !normalizedJobId) return;
+          if (this.conversionStream && this.conversionStreamJobId === normalizedJobId) return;
+
+          this.stopConversionStream({ clearHint: true });
+          this.conversionStreamJobId = normalizedJobId;
+
+          this.conversionStream = openIllegalConversionStream(
+            this.datasetId,
+            normalizedJobId,
+            {
+              onOpen: () => {
+                this.conversionStreamHint = '';
+              },
+              onSnapshot: (payload) => {
+                this._applyConversionPayload(payload || {});
+              },
+              onProgress: (payload) => {
+                this._applyConversionPayload(payload || {});
+              },
+              onDone: async (payload) => {
+                this._applyConversionPayload(payload || {});
+                const status = String(payload?.status || '').toLowerCase();
+                const errorMessage = payload?.error_message || '';
+                this.stopConversionStream({ clearHint: true });
+                if (status === 'completed') {
+                  this.$message.success('Conversion completed');
+                  await this.refreshVersionsAndDetail({ forceLatest: true });
+                } else if (status === 'failed') {
+                  this.$message.error(`Conversion failed: ${errorMessage || 'unknown error'}`);
+                }
+              },
+              onError: (err) => {
+                if (err && typeof err === 'string') {
+                  this.conversionStreamHint = `Realtime stream error: ${err}`;
+                }
+              },
+              onClose: () => {
+                if (this.conversionStatus === 'queued' || this.conversionStatus === 'running') {
+                  this.conversionStreamHint = 'Realtime stream disconnected, reconnecting...';
+                }
+              },
+              onReconnect: ({ attempt, delayMs } = {}) => {
+                const sec = Math.max(1, Math.round((Number(delayMs) || 0) / 1000));
+                this.conversionStreamHint = `Realtime stream reconnecting (attempt ${attempt || 1}, ~${sec}s)`;
+              },
+            },
+            {
+              minDelayMs: 1000,
+              maxDelayMs: 15000,
+              reconnectFactor: 2,
+            }
+          );
+        },
+        stopConversionStream({ clearHint = true } = {}) {
+          if (this.conversionStream) {
+            try { this.conversionStream.close(); } catch (_) { /* ignore */ }
+            this.conversionStream = null;
+          }
+          this.conversionStreamJobId = '';
+          if (clearHint) this.conversionStreamHint = '';
         },
 
         formatUploadErrorMessage(errorMsg) {
@@ -1349,10 +1529,11 @@ export default {
                 await this.fetchSplitSummary();
 
                 const status = this.conversionStatus;
-                if (this.isIllegalDataset && (status === 'queued' || status === 'running')) {
-                    if (!this.conversionTimer) this.startConversionPolling();
+                const jobId = this.conversionJobId;
+                if (this.isIllegalDataset && (status === 'queued' || status === 'running') && jobId) {
+                    this.startConversionStream(jobId);
                 } else {
-                    this.stopConversionPolling();
+                    this.stopConversionStream();
                 }
 
             } catch (error) {
@@ -2168,6 +2349,10 @@ export default {
   padding: 1.25rem 1.5rem 1.5rem;
 }
 
+.augmentation-dialog ::v-deep .el-dialog__body {
+  padding-top: 10px;
+}
+
 .split-body {
   display: flex;
   flex-direction: column;
@@ -2484,6 +2669,28 @@ export default {
   font-size: 0.85rem;
   color: #ef4444;
   margin-bottom: 8px;
+}
+.conversion-progress {
+  margin-top: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.conversion-progress-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.conversion-progress-label {
+  font-size: 0.82rem;
+  color: #92400e;
+}
+.conversion-reconnect-hint {
+  font-size: 0.8rem;
+  color: #b45309;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 .illegal-actions {
   display: flex;

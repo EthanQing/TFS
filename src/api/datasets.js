@@ -1,4 +1,4 @@
-import { API_BASE } from '@/utils/request';
+import { API_BASE, WS_BASE } from '@/utils/request';
 
 async function safeJson(res) {
     try {
@@ -870,6 +870,146 @@ export async function convertIllegalDataset(
     return data;
 }
 
+function buildIllegalConversionWsUrl(datasetId, jobId, query = {}) {
+    const dsId = encodeURIComponent(String(datasetId || '').trim());
+    const jId = encodeURIComponent(String(jobId || '').trim());
+    const qs = new URLSearchParams();
+    Object.keys(query || {}).forEach((k) => {
+        const v = query[k];
+        if (v === null || v === undefined) return;
+        const s = String(v).trim();
+        if (!s) return;
+        qs.set(k, s);
+    });
+    const base = String(WS_BASE || API_BASE || '').replace(/\/+$/, '');
+    const tail = qs.toString();
+    return `${base}/api/v2/datasets/${dsId}/convert/${jId}/stream${tail ? `?${tail}` : ''}`;
+}
+
+export function openIllegalConversionStream(datasetId, jobId, handlers = {}, options = {}) {
+    const onSnapshot = typeof handlers.onSnapshot === 'function' ? handlers.onSnapshot : () => {};
+    const onProgress = typeof handlers.onProgress === 'function' ? handlers.onProgress : () => {};
+    const onDone = typeof handlers.onDone === 'function' ? handlers.onDone : () => {};
+    const onError = typeof handlers.onError === 'function' ? handlers.onError : () => {};
+    const onOpen = typeof handlers.onOpen === 'function' ? handlers.onOpen : () => {};
+    const onClose = typeof handlers.onClose === 'function' ? handlers.onClose : () => {};
+    const onReconnect = typeof handlers.onReconnect === 'function' ? handlers.onReconnect : () => {};
+
+    const minDelayMs = Math.max(300, Number(options.minDelayMs ?? 1000) || 1000);
+    const maxDelayMs = Math.max(minDelayMs, Number(options.maxDelayMs ?? 15000) || 15000);
+    const reconnectFactor = Math.max(1.1, Number(options.reconnectFactor ?? 2) || 2);
+    const jitterMs = Math.max(0, Number(options.jitterMs ?? 250) || 0);
+
+    let ws = null;
+    let closedManually = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer = null;
+    let fromSeq = options.fromSeq ?? null;
+
+    const clearReconnectTimer = () => {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+    };
+
+    const scheduleReconnect = () => {
+        if (closedManually) return;
+        reconnectAttempt += 1;
+        const baseDelay = Math.min(maxDelayMs, Math.round(minDelayMs * Math.pow(reconnectFactor, reconnectAttempt - 1)));
+        const delay = baseDelay + (jitterMs ? Math.floor(Math.random() * jitterMs) : 0);
+        onReconnect({ attempt: reconnectAttempt, delayMs: delay });
+        clearReconnectTimer();
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+        }, delay);
+    };
+
+    const connect = () => {
+        if (closedManually) return;
+        clearReconnectTimer();
+        const url = buildIllegalConversionWsUrl(datasetId, jobId, { from_seq: fromSeq });
+        try {
+            ws = new WebSocket(url);
+        } catch (e) {
+            onError(e);
+            scheduleReconnect();
+            return;
+        }
+
+        ws.onopen = () => {
+            reconnectAttempt = 0;
+            onOpen({ url });
+        };
+
+        ws.onmessage = (evt) => {
+            let payload = null;
+            try {
+                payload = JSON.parse(evt.data || '{}');
+            } catch (_) {
+                return;
+            }
+            const type = String(payload?.type || '');
+            const data = payload?.data || {};
+            if (type === 'snapshot') {
+                if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
+                onSnapshot(data);
+                return;
+            }
+            if (type === 'progress') {
+                if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
+                onProgress(data);
+                return;
+            }
+            if (type === 'done') {
+                if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
+                onDone(data);
+                closedManually = true;
+                clearReconnectTimer();
+                try { if (ws) ws.close(); } catch (_) { /* ignore */ }
+                return;
+            }
+            if (type === 'error') {
+                onError(data?.message || 'stream error');
+            }
+        };
+
+        ws.onerror = (err) => {
+            onError(err);
+        };
+
+        ws.onclose = (evt) => {
+            onClose(evt);
+            if (!closedManually) scheduleReconnect();
+        };
+    };
+
+    connect();
+
+    return {
+        close() {
+            closedManually = true;
+            clearReconnectTimer();
+            if (ws) {
+                try { ws.close(); } catch (_) { /* ignore */ }
+                ws = null;
+            }
+        },
+        reconnect() {
+            if (closedManually) return;
+            if (ws) {
+                try { ws.close(); } catch (_) { /* ignore */ }
+            } else {
+                scheduleReconnect();
+            }
+        },
+        setCursor({ seq } = {}) {
+            if (seq !== undefined && seq !== null && Number.isFinite(Number(seq))) fromSeq = Number(seq);
+        },
+    };
+}
+
 /**
  * Rename class labels in a converted YOLO dataset.
  * @param {number|string} datasetId
@@ -889,4 +1029,216 @@ export async function renameDatasetClasses(datasetId, renameMap) {
     const data = await safeJson(res);
     if (!res.ok) throw new Error(pickErrorMessage(data, res));
     return data;
+}
+
+// -------------------------------
+// Manual dataset augmentation APIs
+// -------------------------------
+function buildDatasetAugmentationWsUrl(datasetId, jobId, query = {}) {
+    const dsId = encodeURIComponent(String(datasetId || '').trim());
+    const jId = encodeURIComponent(String(jobId || '').trim());
+    const qs = new URLSearchParams();
+    Object.keys(query || {}).forEach((k) => {
+        const v = query[k];
+        if (v === null || v === undefined) return;
+        const s = String(v).trim();
+        if (!s) return;
+        qs.set(k, s);
+    });
+    const base = String(WS_BASE || API_BASE || '').replace(/\/+$/, '');
+    const tail = qs.toString();
+    return `${base}/api/v2/datasets/${dsId}/augmentations/${jId}/stream${tail ? `?${tail}` : ''}`;
+}
+
+export async function previewDatasetAugmentation(datasetId, payload = {}) {
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/augmentations/preview`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || null;
+}
+
+export async function createDatasetAugmentationJob(datasetId, payload = {}) {
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/augmentations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload || {}),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || null;
+}
+
+export async function fetchDatasetAugmentationJob(datasetId, jobId) {
+    const res = await fetch(
+        `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/augmentations/${encodeURIComponent(jobId)}`
+    );
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || null;
+}
+
+export async function cancelDatasetAugmentationJob(datasetId, jobId) {
+    const res = await fetch(
+        `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/augmentations/${encodeURIComponent(jobId)}/cancel`,
+        { method: 'POST', headers: { 'Content-Type': 'application/json' } }
+    );
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || null;
+}
+
+export async function publishDatasetAugmentationJob(datasetId, jobId, payload = {}) {
+    const res = await fetch(
+        `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/augmentations/${encodeURIComponent(jobId)}/publish`,
+        {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload || {}),
+        }
+    );
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || null;
+}
+
+export function openDatasetAugmentationStream(datasetId, jobId, handlers = {}, options = {}) {
+    const onSnapshot = typeof handlers.onSnapshot === 'function' ? handlers.onSnapshot : () => {};
+    const onProgress = typeof handlers.onProgress === 'function' ? handlers.onProgress : () => {};
+    const onItem = typeof handlers.onItem === 'function' ? handlers.onItem : () => {};
+    const onDone = typeof handlers.onDone === 'function' ? handlers.onDone : () => {};
+    const onError = typeof handlers.onError === 'function' ? handlers.onError : () => {};
+    const onOpen = typeof handlers.onOpen === 'function' ? handlers.onOpen : () => {};
+    const onClose = typeof handlers.onClose === 'function' ? handlers.onClose : () => {};
+    const onReconnect = typeof handlers.onReconnect === 'function' ? handlers.onReconnect : () => {};
+
+    const minDelayMs = Math.max(300, Number(options.minDelayMs ?? 1000) || 1000);
+    const maxDelayMs = Math.max(minDelayMs, Number(options.maxDelayMs ?? 30000) || 30000);
+    const reconnectFactor = Math.max(1.1, Number(options.reconnectFactor ?? 1.8) || 1.8);
+    const jitterMs = Math.max(0, Number(options.jitterMs ?? 300) || 0);
+
+    let ws = null;
+    let closedManually = false;
+    let reconnectAttempt = 0;
+    let reconnectTimer = null;
+    let fromSeq = options.fromSeq ?? null;
+    let fromResultId = options.fromResultId ?? null;
+
+    const clearReconnectTimer = () => {
+        if (reconnectTimer) {
+            clearTimeout(reconnectTimer);
+            reconnectTimer = null;
+        }
+    };
+
+    const scheduleReconnect = () => {
+        if (closedManually) return;
+        reconnectAttempt += 1;
+        const baseDelay = Math.min(maxDelayMs, Math.round(minDelayMs * Math.pow(reconnectFactor, reconnectAttempt - 1)));
+        const delay = baseDelay + (jitterMs ? Math.floor(Math.random() * jitterMs) : 0);
+        onReconnect({ attempt: reconnectAttempt, delayMs: delay });
+        clearReconnectTimer();
+        reconnectTimer = setTimeout(() => {
+            reconnectTimer = null;
+            connect();
+        }, delay);
+    };
+
+    const connect = () => {
+        if (closedManually) return;
+        clearReconnectTimer();
+        const url = buildDatasetAugmentationWsUrl(datasetId, jobId, {
+            from_seq: fromSeq,
+            from_result_id: fromResultId,
+        });
+        try {
+            ws = new WebSocket(url);
+        } catch (e) {
+            onError(e);
+            scheduleReconnect();
+            return;
+        }
+
+        ws.onopen = () => {
+            reconnectAttempt = 0;
+            onOpen({ url });
+        };
+
+        ws.onmessage = (evt) => {
+            let payload = null;
+            try {
+                payload = JSON.parse(evt.data || '{}');
+            } catch (_) {
+                return;
+            }
+            const type = String(payload?.type || '');
+            const data = payload?.data || {};
+            if (type === 'snapshot') {
+                if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
+                if (Number.isFinite(Number(data.last_result_id))) fromResultId = Number(data.last_result_id);
+                onSnapshot(data);
+                return;
+            }
+            if (type === 'progress') {
+                if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
+                if (Number.isFinite(Number(data.last_result_id))) fromResultId = Number(data.last_result_id);
+                onProgress(data);
+                return;
+            }
+            if (type === 'item') {
+                if (Number.isFinite(Number(data.result_id))) fromResultId = Number(data.result_id);
+                onItem(data);
+                return;
+            }
+            if (type === 'done') {
+                onDone(data);
+                closedManually = true;
+                clearReconnectTimer();
+                try { if (ws) ws.close(); } catch (_) { /* ignore */ }
+                return;
+            }
+            if (type === 'error') {
+                onError(data?.message || 'stream error');
+            }
+        };
+
+        ws.onerror = (err) => {
+            onError(err);
+        };
+
+        ws.onclose = (evt) => {
+            onClose(evt);
+            if (!closedManually) scheduleReconnect();
+        };
+    };
+
+    connect();
+
+    return {
+        close() {
+            closedManually = true;
+            clearReconnectTimer();
+            if (ws) {
+                try { ws.close(); } catch (_) { /* ignore */ }
+                ws = null;
+            }
+        },
+        reconnect() {
+            if (closedManually) return;
+            if (ws) {
+                try { ws.close(); } catch (_) { /* ignore */ }
+            } else {
+                scheduleReconnect();
+            }
+        },
+        setCursor({ seq, resultId } = {}) {
+            if (seq !== undefined && seq !== null && Number.isFinite(Number(seq))) fromSeq = Number(seq);
+            if (resultId !== undefined && resultId !== null && Number.isFinite(Number(resultId))) {
+                fromResultId = Number(resultId);
+            }
+        },
+    };
 }
