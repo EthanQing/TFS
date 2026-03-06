@@ -87,7 +87,14 @@
                     :class="{ active: activeTab === 'params' }"
                     @click="activeTab = 'params'"
                 >
-                    <i class="el-icon-s-grid"></i> 参数对比
+                    <i class="el-icon-s-grid"></i> {{ metricCompareTabLabel }}
+                </div>
+                <div
+                    class="tab-item"
+                    :class="{ active: activeTab === 'training-params' }"
+                    @click="activeTab = 'training-params'"
+                >
+                    <i class="el-icon-document-copy"></i> 训练参数对比
                 </div>
             </div>
 
@@ -135,8 +142,8 @@
             <!-- Parameters Tab -->
             <div class="tab-content" v-show="activeTab === 'params'">
                 <div class="params-table-wrapper glass-panel-sm" v-loading="loadingParams">
-                     <el-table ref="paramsTable" :data="paramRows" row-key="key" border style="width: 100%" height="100%">
-                        <el-table-column prop="key" label="参数" width="180" fixed></el-table-column>
+                     <el-table ref="paramsTable" :data="metricRows" row-key="key" border style="width: 100%" height="100%">
+                        <el-table-column prop="key" label="指标" width="180" fixed></el-table-column>
                          <el-table-column 
                             v-for="run in selectedRuns" 
                             :key="getRunId(run)" 
@@ -187,6 +194,24 @@
                             </template>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <div class="tab-content" v-show="activeTab === 'training-params'">
+                <div class="params-table-wrapper glass-panel-sm" v-loading="loadingTrainingParams">
+                    <el-table ref="trainingParamsTable" :data="trainingParamRows" row-key="key" border style="width: 100%" height="100%">
+                        <el-table-column prop="key" label="训练参数" width="220" fixed></el-table-column>
+                        <el-table-column
+                            v-for="run in selectedRuns"
+                            :key="`param-${getRunId(run)}`"
+                            :label="getRunLabel(run)"
+                            min-width="170"
+                        >
+                            <template slot-scope="scope">
+                                <span>{{ formatVal(scope.row[getRunId(run)]) }}</span>
+                            </template>
+                        </el-table-column>
+                    </el-table>
                 </div>
             </div>
         </div>
@@ -269,7 +294,7 @@ import {
     setProjectCompareBaseline,
     clearProjectCompareBaseline,
 } from "@/api/projects";
-import { fetchTrainingJobsPage, FetchTrainingJobsMetrics_detailed, CompareTrainingRuns } from "@/api/training";
+import { fetchTrainingJobsPage, FetchTrainingJobsMetrics_detailed, CompareTrainingRuns, FetchTrainingJobParameters } from "@/api/training";
 import { resolveFramework, isFrameworkCompatible } from "@/utils/trainingFramework";
 import { buildWorkbook, downloadWorkbook } from "@/utils/trainingCompareExport";
 
@@ -278,10 +303,12 @@ export default {
     data() {
         return {
             activeTab: 'curves',
+            metricCompareTabLabel: '\u6307\u6807\u5bf9\u6bd4',
             showSelector: false,
             loadingList: false,
             loadingCurves: false,
             loadingParams: false,
+            loadingTrainingParams: false,
             exporting: false,
             
             // Selector State
@@ -299,6 +326,8 @@ export default {
             selectedRuns: [],
             compareData: null,
             metricsData: {}, // map run_id -> series data
+            trainingParamsByRun: {},
+            trainingParamsRequestSeq: 0,
             lockedDatasetId: null,
             lockedFrameworkKey: null,
             baselineRunId: null,
@@ -313,75 +342,38 @@ export default {
         };
     },
     computed: {
-        paramRows() {
+        metricRows() {
             if (!this.compareData || !this.compareData.runs) return [];
+            const runsMap = this.buildCompareRunsMap();
             
-            // Build a map from compareData.runs using both job_id and run_id as possible keys
-            const runsMap = {};
-            this.compareData.runs.forEach(r => {
-                const key = r.job_id || r.run_id;
-                runsMap[key] = r;
-                // Also map by lowercase for case-insensitive matching
-                if (key) runsMap[key.toLowerCase()] = r;
-            });
-            
-            // Collect all unique keys from parameters
-            const keySet = new Set();
-            const runs = this.compareData.runs;
-            runs.forEach(r => {
-                if (r.parameters) {
-                    Object.keys(r.parameters).forEach(k => keySet.add(k));
-                }
-            });
-            // Also add metrics summary
-            keySet.add('best_mAP_50');
-            keySet.add('best_mAP_50_95');
-            keySet.add('model_size_mb');
+            const metricDefs = [
+                { key: 'best_mAP_50', metricKey: 'metrics/mAP50(B)' },
+                { key: 'best_mAP_50_95', metricKey: 'metrics/mAP50-95(B)' },
+                { key: 'best_precision', metricKey: 'metrics/precision(B)' },
+                { key: 'best_recall', metricKey: 'metrics/recall(B)' },
+                { key: 'model_size_mb', metricKey: null },
+                { key: 'inference_time_ms', metricKey: null },
+            ];
 
             const rows = [];
-            Array.from(keySet).sort().forEach(key => {
+            metricDefs.forEach(({ key, metricKey }) => {
                 const row = { key };
                 const values = [];
                 
-                // Use selectedRuns to ensure we match metricsData keys
                 this.selectedRuns.forEach(selectedRun => {
                     let val = null;
-                    const rid = selectedRun.job_id || selectedRun.run_id;
+                    const rid = this.getRunId(selectedRun);
+                    const ridKey = String(rid || '');
                     
-                    // Find corresponding run data from compareData
-                    const r = runsMap[rid] || runsMap[rid?.toLowerCase()] || {};
+                    const r = runsMap[ridKey] || runsMap[ridKey.toLowerCase()] || null;
 
-                    if (key === 'model_size_mb') val = r.model_size_mb;
-                    else if (key === 'best_mAP_50') {
-                        // Try API provided best_metrics first
-                        val = r.best_metrics?.['metrics/mAP50(B)'];
-                        // Fallback: calculate from curves with fuzzy key matching
-                        if ((val === null || val === undefined)) {
-                            const dataObj = this.metricsData[rid];
-                            if (dataObj) {
-                                const foundKey = Object.keys(dataObj).find(k => k.includes('mAP50') && !k.includes('mAP50-95'));
-                                if (foundKey) {
-                                    const arr = dataObj[foundKey];
-                                    if (arr && arr.length) val = Math.max(...arr.filter(n => typeof n === 'number'));
-                                }
-                            }
-                        }
-                    } 
-                    else if (key === 'best_mAP_50_95') {
-                        val = r.best_metrics?.['metrics/mAP50-95(B)'];
-                        // Fallback: calculate from curves with fuzzy key matching
-                        if ((val === null || val === undefined)) {
-                            const dataObj = this.metricsData[rid];
-                            if (dataObj) {
-                                const foundKey = Object.keys(dataObj).find(k => k.includes('mAP50-95'));
-                                if (foundKey) {
-                                    const arr = dataObj[foundKey];
-                                    if (arr && arr.length) val = Math.max(...arr.filter(n => typeof n === 'number'));
-                                }
-                            }
-                        }
+                    if (key === 'model_size_mb') {
+                        val = this.toFiniteNumber(r?.model_size_mb);
+                    } else if (key === 'inference_time_ms') {
+                        val = this.toFiniteNumber(r?.inference_time_ms);
+                    } else if (metricKey) {
+                        val = this.pickMetricValue(r, rid, metricKey);
                     }
-                    else val = r.parameters?.[key];
                     
                     row[rid] = val;
                     values.push(JSON.stringify(val));
@@ -392,8 +384,30 @@ export default {
                 rows.push(row);
             });
             
-            // Sort: alphabetically by key name
             return rows.sort((a, b) => a.key.localeCompare(b.key));
+        },
+        trainingParamRows() {
+            const keySet = new Set();
+            this.selectedRuns.forEach((run) => {
+                const rid = this.getRunId(run);
+                const params = this.trainingParamsByRun[rid] || {};
+                Object.keys(params).forEach((k) => keySet.add(k));
+            });
+
+            return Array.from(keySet)
+                .sort((a, b) => String(a).localeCompare(String(b)))
+                .map((key) => {
+                    const row = { key };
+                    const values = [];
+                    this.selectedRuns.forEach((run) => {
+                        const rid = this.getRunId(run);
+                        const val = (this.trainingParamsByRun[rid] || {})[key];
+                        row[rid] = val;
+                        values.push(JSON.stringify(val));
+                    });
+                    row.isDiff = new Set(values).size > 1;
+                    return row;
+                });
         },
         currentProjectId() {
             if (!this.selectedRuns.length) return null;
@@ -419,11 +433,8 @@ export default {
         baselineDiffRows() {
             const baselineId = this.baselineRunId;
             if (!baselineId || !this.compareData?.runs?.length) return [];
-            const runMap = {};
-            this.compareData.runs.forEach((run) => {
-                runMap[String(run.run_id || '').toLowerCase()] = run;
-            });
-            const baseline = runMap[String(baselineId).toLowerCase()];
+            const runMap = this.buildCompareRunsMap();
+            const baseline = runMap[String(baselineId)] || runMap[String(baselineId).toLowerCase()];
             if (!baseline) return [];
 
             const defs = [
@@ -435,28 +446,18 @@ export default {
                 { key: 'inference_time_ms', label: 'Inference Time (ms)', higherBetter: false },
             ];
 
-            const pickMetric = (run, key) => {
-                if (!run) return null;
-                if (key === 'model_size_mb' || key === 'inference_time_ms') {
-                    const n = Number(run[key]);
-                    return Number.isFinite(n) ? n : null;
-                }
-                const best = run.best_metrics && typeof run.best_metrics === 'object' ? run.best_metrics : {};
-                const final = run.final_metrics && typeof run.final_metrics === 'object' ? run.final_metrics : {};
-                const raw = best[key] ?? final[key];
-                const n = Number(raw);
-                return Number.isFinite(n) ? n : null;
-            };
+            const pickMetric = (run, runId, key) => this.pickMetricValue(run, runId, key);
 
             return defs.map((def) => {
-                const baselineValue = pickMetric(baseline, def.key);
+                const baselineValue = pickMetric(baseline, baselineId, def.key);
                 const valuesByRun = {};
                 const deltaByRun = {};
                 const trendByRun = {};
                 this.selectedRuns.forEach((selected) => {
                     const runId = this.getRunId(selected);
-                    const item = runMap[String(runId).toLowerCase()];
-                    const value = pickMetric(item, def.key);
+                    const runKey = String(runId || '');
+                    const item = runMap[runKey] || runMap[runKey.toLowerCase()];
+                    const value = pickMetric(item, runId, def.key);
                     valuesByRun[runId] = value;
                     if (!Number.isFinite(value) || !Number.isFinite(baselineValue)) {
                         deltaByRun[runId] = { delta_abs: null, delta_percent: null };
@@ -486,26 +487,16 @@ export default {
         },
         scenarioRecommendations() {
             if (!this.compareData?.runs?.length) return [];
-            const runMap = {};
-            this.compareData.runs.forEach((run) => {
-                runMap[String(run.run_id || '').toLowerCase()] = run;
-            });
+            const runMap = this.buildCompareRunsMap();
             const candidates = this.selectedRuns
-                .map((run) => runMap[String(this.getRunId(run)).toLowerCase()])
+                .map((run) => {
+                    const runKey = String(this.getRunId(run) || '');
+                    return runMap[runKey] || runMap[runKey.toLowerCase()];
+                })
                 .filter(Boolean);
             if (!candidates.length) return [];
 
-            const pickMetric = (run, key) => {
-                if (key === 'model_size_mb' || key === 'inference_time_ms') {
-                    const n = Number(run?.[key]);
-                    return Number.isFinite(n) ? n : null;
-                }
-                const best = run?.best_metrics && typeof run.best_metrics === 'object' ? run.best_metrics : {};
-                const final = run?.final_metrics && typeof run.final_metrics === 'object' ? run.final_metrics : {};
-                const raw = best[key] ?? final[key];
-                const n = Number(raw);
-                return Number.isFinite(n) ? n : null;
-            };
+            const pickMetric = (run, key) => this.pickMetricValue(run, run?.run_id || run?.job_id, key);
 
             const normalizeMap = (metricKey, higherBetter) => {
                 const values = candidates
@@ -633,15 +624,21 @@ export default {
                 this.$nextTick(() => {
                     this.reflowParamsTable();
                 });
+            } else if (val === 'training-params') {
+                this.$nextTick(() => {
+                    this.reflowTrainingParamsTable();
+                });
             }
         },
         selectedRuns() {
             if (this.selectedRuns.length) {
                 this.syncBaselineAfterSelectionChange();
                 this.loadComparisonData();
+                this.loadTrainingParamsFromRuns();
             } else {
                 this.compareData = null;
                 this.metricsData = {};
+                this.trainingParamsByRun = {};
                 this.baselineRunId = null;
                 this.baselineCandidateRunId = null;
                 this.persistedBaselineRunId = null;
@@ -680,8 +677,68 @@ export default {
         getRunLabel(run) {
             return run?.name || run?.job_name || this.getRunId(run) || '-';
         },
+        buildCompareRunsMap() {
+            const map = {};
+            (this.compareData?.runs || []).forEach((run) => {
+                const keys = [run?.run_id, run?.job_id];
+                keys.forEach((raw) => {
+                    const key = String(raw || '').trim();
+                    if (!key) return;
+                    map[key] = run;
+                    map[key.toLowerCase()] = run;
+                });
+            });
+            return map;
+        },
+        toFiniteNumber(v) {
+            const n = Number(v);
+            return Number.isFinite(n) ? n : null;
+        },
+        getMetricSeriesValues(runId, metricKey) {
+            const rid = String(runId || '').trim();
+            if (!rid) return [];
+            const dataObj = this.metricsData[rid] || this.metricsData[rid.toLowerCase()];
+            const resolvedKey = this.resolveMetricSeriesKey(dataObj, metricKey);
+            const values = resolvedKey && Array.isArray(dataObj?.[resolvedKey]) ? dataObj[resolvedKey] : [];
+            return values.map((item) => this.toFiniteNumber(item)).filter((item) => item !== null);
+        },
+        pickMetricValue(run, runId, metricKey) {
+            if (!run && !runId) return null;
+            if (metricKey === 'model_size_mb' || metricKey === 'inference_time_ms') {
+                const direct = this.toFiniteNumber(run?.[metricKey]);
+                if (direct !== null) return direct;
+                return null;
+            }
+
+            const best = run?.best_metrics && typeof run.best_metrics === 'object' ? run.best_metrics : {};
+            const final = run?.final_metrics && typeof run.final_metrics === 'object' ? run.final_metrics : {};
+            const summaryBest =
+                run?.metric_summary?.best && typeof run.metric_summary.best === 'object' ? run.metric_summary.best : {};
+            const summaryFinal =
+                run?.metric_summary?.final && typeof run.metric_summary.final === 'object' ? run.metric_summary.final : {};
+            const candidates = [
+                best?.[metricKey],
+                final?.[metricKey],
+                summaryBest?.[metricKey],
+                summaryFinal?.[metricKey],
+            ];
+            for (const candidate of candidates) {
+                const parsed = this.toFiniteNumber(candidate);
+                if (parsed !== null) return parsed;
+            }
+
+            const seriesValues = this.getMetricSeriesValues(runId, metricKey);
+            if (!seriesValues.length) return null;
+            return Math.max(...seriesValues);
+        },
         reflowParamsTable() {
             const table = this.$refs.paramsTable;
+            if (table && typeof table.doLayout === 'function') {
+                table.doLayout();
+            }
+        },
+        reflowTrainingParamsTable() {
+            const table = this.$refs.trainingParamsTable;
             if (table && typeof table.doLayout === 'function') {
                 table.doLayout();
             }
@@ -698,6 +755,43 @@ export default {
         formatDate(d) {
             if (!d) return '-';
             return new Date(d).toLocaleString();
+        },
+        async loadTrainingParamsFromRuns() {
+            const requestSeq = ++this.trainingParamsRequestSeq;
+            const runIds = this.selectedRuns
+                .map((run) => String(this.getRunId(run) || '').trim())
+                .filter(Boolean);
+            if (!runIds.length) {
+                this.trainingParamsByRun = {};
+                return;
+            }
+
+            this.loadingTrainingParams = true;
+            try {
+                const entries = await Promise.all(
+                    runIds.map(async (runId) => {
+                        try {
+                            const params = await FetchTrainingJobParameters(runId);
+                            return [runId, params && typeof params === 'object' ? params : {}];
+                        } catch (error) {
+                            return [runId, { __error__: error?.message || 'Failed to load training parameters' }];
+                        }
+                    })
+                );
+                if (requestSeq !== this.trainingParamsRequestSeq) return;
+                const nextMap = {};
+                entries.forEach(([runId, params]) => {
+                    nextMap[runId] = params;
+                });
+                this.trainingParamsByRun = nextMap;
+                this.$nextTick(() => {
+                    this.reflowTrainingParamsTable();
+                });
+            } finally {
+                if (requestSeq === this.trainingParamsRequestSeq) {
+                    this.loadingTrainingParams = false;
+                }
+            }
         },
         formatDelta(v) {
             const n = Number(v);
@@ -879,8 +973,14 @@ export default {
                 if (!item) return;
                 const bestMetrics = item.best_metrics && typeof item.best_metrics === 'object' ? item.best_metrics : {};
                 const finalMetrics = item.final_metrics && typeof item.final_metrics === 'object' ? item.final_metrics : {};
+                const summaryBest =
+                    item.metric_summary?.best && typeof item.metric_summary.best === 'object' ? item.metric_summary.best : {};
+                const summaryFinal =
+                    item.metric_summary?.final && typeof item.metric_summary.final === 'object' ? item.metric_summary.final : {};
                 Object.keys(bestMetrics).forEach((k) => putMetric(`best/${k}`, runId, bestMetrics[k]));
                 Object.keys(finalMetrics).forEach((k) => putMetric(`final/${k}`, runId, finalMetrics[k]));
+                Object.keys(summaryBest).forEach((k) => putMetric(`best/${k}`, runId, summaryBest[k]));
+                Object.keys(summaryFinal).forEach((k) => putMetric(`final/${k}`, runId, summaryFinal[k]));
                 putMetric('model_size_mb', runId, item.model_size_mb);
                 putMetric('inference_time_ms', runId, item.inference_time_ms);
             });
@@ -904,14 +1004,37 @@ export default {
         },
         resolveMetricSeriesKey(dataObj, metricKey) {
             if (!dataObj || typeof dataObj !== 'object') return null;
-            if (dataObj[metricKey]) return metricKey;
-            if (['box_loss', 'cls_loss', 'dfl_loss'].includes(metricKey)) {
-                const keys = Object.keys(dataObj);
-                const candidates = keys.filter((k) => k.endsWith(`/${metricKey}`) || k === metricKey);
-                const trainKey = candidates.find((k) => k.startsWith('train/'));
-                return trainKey || candidates[0] || null;
+            if (Object.prototype.hasOwnProperty.call(dataObj, metricKey)) return metricKey;
+
+            const aliases = {
+                'metrics/mAP50(B)': ['metrics/mAP50(B)', 'AP50', 'mAP50', 'eval/bbox_AP50', 'eval/bbox_ap50'],
+                'metrics/mAP50-95(B)': ['metrics/mAP50-95(B)', 'mAP', 'eval/bbox_mAP', 'eval/bbox_map'],
+                'metrics/precision(B)': ['metrics/precision(B)', 'precision', 'eval/bbox_precision'],
+                'metrics/recall(B)': ['metrics/recall(B)', 'recall', 'eval/bbox_recall'],
+                box_loss: ['box_loss'],
+                cls_loss: ['cls_loss'],
+                dfl_loss: ['dfl_loss'],
+            };
+
+            const keys = Object.keys(dataObj);
+            const aliasList = aliases[metricKey] || [metricKey];
+
+            for (const alias of aliasList) {
+                const exact = keys.find((k) => k === alias);
+                if (exact) return exact;
             }
-            return null;
+
+            const fuzzyMatches = [];
+            aliasList.forEach((alias) => {
+                keys.forEach((k) => {
+                    if (k === alias || k.endsWith(`/${alias}`)) {
+                        fuzzyMatches.push(k);
+                    }
+                });
+            });
+            if (!fuzzyMatches.length) return null;
+            const trainKey = fuzzyMatches.find((k) => k.startsWith('train/'));
+            return trainKey || fuzzyMatches[0];
         },
         collectCurveSheetsForExport(runs) {
             const defs = [
@@ -945,7 +1068,7 @@ export default {
             this.exporting = true;
             try {
                 const runs = this.mapSelectedRunsForExport();
-                const parameterRows = this.paramRows.map((row) => {
+                const parameterRows = this.trainingParamRows.map((row) => {
                     const valuesByRun = {};
                     runs.forEach((run) => {
                         valuesByRun[run.runId] = row[run.runId];
@@ -1200,35 +1323,35 @@ export default {
             }
             
             const runNames = {};
-            this.compareData?.runs.forEach(r => runNames[r.run_id] = r.name);
+            this.compareData?.runs.forEach((r) => {
+                const keys = [r?.run_id, r?.job_id];
+                keys.forEach((raw) => {
+                    const key = String(raw || '').trim();
+                    if (!key) return;
+                    runNames[key] = r.name;
+                    runNames[key.toLowerCase()] = r.name;
+                });
+            });
             
             // Helper to build series
             const getSeries = (metricKey) => {
                 return this.selectedRuns.map(run => {
-                    const rid = run.job_id || run.run_id;
-                    const dataObj = this.metricsData[rid] || {};
-                    // Strict match first
-                    let finalKey = metricKey;
-                    
-                    // If metricKey is a specific known suffix (like 'box_loss'), try to fuzzy find
-                    if (!dataObj[finalKey] && ['box_loss', 'cls_loss', 'dfl_loss'].includes(metricKey)) {
-                         // Try finding keys ending with /metricKey or exactly metricKey
-                         const candidates = Object.keys(dataObj).filter(k => k.endsWith(`/${metricKey}`) || k === metricKey);
-                         // Prefer 'train/' prefix
-                         const trainKey = candidates.find(k => k.startsWith('train/'));
-                         if (trainKey) finalKey = trainKey;
-                         else if (candidates.length > 0) finalKey = candidates[0];
-                    }
-                    
-                    const data = dataObj[finalKey] || [];
-                    console.log(`Series ${metricKey} (resolved: ${finalKey}) for ${rid}:`, data.length);
+                    const rid = this.getRunId(run);
+                    const ridKey = String(rid || '');
+                    const dataObj = this.metricsData[ridKey] || this.metricsData[ridKey.toLowerCase()] || {};
+                    const finalKey = this.resolveMetricSeriesKey(dataObj, metricKey);
+                    const data = finalKey ? (Array.isArray(dataObj[finalKey]) ? dataObj[finalKey] : []) : [];
+                    console.log(`Series ${metricKey} (resolved: ${finalKey || '-'}) for ${ridKey}:`, data.length);
                     
                     return {
-                        name: runNames[rid] || run.name,
+                        name: runNames[ridKey] || run.name,
                         type: 'line',
                         smooth: true,
                         showSymbol: false,
-                        data: data.map(v => v === null ? 0 : v) 
+                        data: data.map((v) => {
+                            const numeric = this.toFiniteNumber(v);
+                            return numeric === null ? 0 : numeric;
+                        })
                     };
                 });
             };

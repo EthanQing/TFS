@@ -801,8 +801,32 @@ export async function updateIllegalDatasetLabels(datasetId, labelMapping) {
     return data;
 }
 
+export async function fetchIllegalLabelPresets() {
+    const res = await fetch(`${API_BASE}/api/v2/datasets/illegal-label-presets`, {
+        method: 'GET',
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || { detection: [], classification: [], updated_at: null };
+}
 
-// convertIllegalDataset ?????????
+export async function saveIllegalLabelPresets(payload = {}) {
+    const body = {
+        detection: Array.isArray(payload.detection) ? payload.detection : [],
+        classification: Array.isArray(payload.classification) ? payload.classification : [],
+    };
+    const res = await fetch(`${API_BASE}/api/v2/datasets/illegal-label-presets`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || { detection: [], classification: [], updated_at: null };
+}
+
+
+// convertIllegalDataset ?????????  
 export async function convertIllegalDataset(
     datasetId,
     {

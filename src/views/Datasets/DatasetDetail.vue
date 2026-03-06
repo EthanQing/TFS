@@ -85,7 +85,43 @@
           </div>
 
           <!-- Inline Label Mapping Panel -->
+          <div
+            v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
+            class="preset-toolbar"
+          >
+            <div class="preset-toolbar-left">
+              <el-select v-model="presetApplyMode" size="small" class="preset-mode-select">
+                <el-option
+                  v-for="opt in presetApplyOptions"
+                  :key="opt.value"
+                  :label="opt.label"
+                  :value="opt.value"
+                />
+              </el-select>
+              <el-button
+                size="small"
+                :loading="mappingPresetsLoading"
+                @click="applyPresetToCurrentMapping"
+              >
+                应用预设到当前映射
+              </el-button>
+              <el-button
+                size="small"
+                type="primary"
+                plain
+                @click="openPresetDialog"
+              >
+                预设映射表管理
+              </el-button>
+            </div>
+            <div class="preset-toolbar-right">
+              <span>检测: {{ presetDetectionCount }}</span>
+              <span>分类: {{ presetClassificationCount }}</span>
+              <span>更新时间: {{ presetUpdatedAtText }}</span>
+            </div>
+          </div>
           <LabelMappingPanel
+            ref="labelMappingPanel"
             v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
             :labels="illegalLabels"
             :loading="loadingLabels"
@@ -338,6 +374,85 @@
     </el-dialog>
 
     <el-dialog
+      title="非法标签映射预设管理"
+      :visible.sync="showPresetDialog"
+      width="980px"
+      :append-to-body="true"
+      class="preset-dialog"
+    >
+      <div class="preset-dialog-toolbar">
+        <div class="preset-dialog-stats">
+          <span>检测映射 {{ presetDetectionCount }} 条</span>
+          <span>分类映射 {{ presetClassificationCount }} 条</span>
+          <span>更新时间 {{ presetUpdatedAtText }}</span>
+        </div>
+        <div class="preset-dialog-actions">
+          <input
+            ref="presetFileInput"
+            type="file"
+            accept=".xlsx,.xls"
+            style="display: none;"
+            @change="handlePresetFileChange"
+          />
+          <el-button size="small" @click="triggerPresetFileUpload">导入 XLSX</el-button>
+          <el-button size="small" @click="addDetectionPresetRow">新增检测行</el-button>
+          <el-button size="small" @click="addClassificationPresetRow">新增分类行</el-button>
+        </div>
+      </div>
+
+      <el-tabs>
+        <el-tab-pane :label="`检测映射 (${presetDetectionCount})`">
+          <el-table :data="presetData.detection" border height="280" size="mini">
+            <el-table-column label="原始标签路径" min-width="340">
+              <template slot-scope="scope">
+                <el-input v-model="scope.row.source_label" size="mini" placeholder="例如：A%B%C" />
+              </template>
+            </el-table-column>
+            <el-table-column label="映射标签" min-width="200">
+              <template slot-scope="scope">
+                <el-input v-model="scope.row.target_label" size="mini" placeholder="例如：轿车" />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="90">
+              <template slot-scope="scope">
+                <el-button type="text" size="mini" @click="removeDetectionPresetRow(scope.$index)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+        <el-tab-pane :label="`分类映射 (${presetClassificationCount})`">
+          <el-table :data="presetData.classification" border height="280" size="mini">
+            <el-table-column label="分类组" min-width="160">
+              <template slot-scope="scope">
+                <el-input v-model="scope.row.category" size="mini" placeholder="例如：小型车辆" />
+              </template>
+            </el-table-column>
+            <el-table-column label="原始标签路径" min-width="280">
+              <template slot-scope="scope">
+                <el-input v-model="scope.row.source_label" size="mini" placeholder="例如：A%B%C" />
+              </template>
+            </el-table-column>
+            <el-table-column label="映射标签(可选)" min-width="180">
+              <template slot-scope="scope">
+                <el-input v-model="scope.row.target_label" size="mini" placeholder="默认同分类组" />
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="90">
+              <template slot-scope="scope">
+                <el-button type="text" size="mini" @click="removeClassificationPresetRow(scope.$index)">删除</el-button>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+      </el-tabs>
+
+      <div slot="footer" class="dialog-footer">
+        <el-button :disabled="mappingPresetsSaving" @click="showPresetDialog = false">关闭</el-button>
+        <el-button type="primary" :loading="mappingPresetsSaving" @click="savePresetDialogData">保存预设</el-button>
+      </div>
+    </el-dialog>
+
+    <el-dialog
       title="数据集划分"
       :visible.sync="showSplitDialog"
       width="420px"
@@ -563,7 +678,22 @@
 </template>
 
 <script>
-import { FetchDatasetDetail, FetchDatasetView, fetchDatasetVersions, uploadDatasetImages, appendDatasetArchive, convertIllegalDataset, openIllegalConversionStream, fetchDatasetSplitSummary, splitDataset, fetchIllegalDatasetLabels, updateIllegalDatasetLabels, renameDatasetClasses } from '@/api/datasets';
+import {
+  FetchDatasetDetail,
+  FetchDatasetView,
+  fetchDatasetVersions,
+  uploadDatasetImages,
+  appendDatasetArchive,
+  convertIllegalDataset,
+  openIllegalConversionStream,
+  fetchDatasetSplitSummary,
+  splitDataset,
+  fetchIllegalDatasetLabels,
+  updateIllegalDatasetLabels,
+  fetchIllegalLabelPresets,
+  saveIllegalLabelPresets,
+  renameDatasetClasses,
+} from '@/api/datasets';
 import UploadZip from '@/components/Upload/index.vue';
 import LabelMappingPanel from '@/components/LabelMappingPanel.vue';
 import ManualAugmentationPanel from '@/views/Datasets/components/ManualAugmentationPanel.vue';
@@ -639,6 +769,15 @@ export default {
             illegalLabels: [],
             hasSavedMapping: false,
             savedLabelMapping: null,
+            mappingPresetsLoading: false,
+            mappingPresetsSaving: false,
+            showPresetDialog: false,
+            presetApplyMode: 'detection',
+            presetData: {
+              detection: [],
+              classification: [],
+              updated_at: null,
+            },
 
             // 类别重命名
             editingClassIdx: null,
@@ -727,6 +866,25 @@ export default {
                 return conv.supported;
             }
             return this.illegalReason === 'labelme_json';
+        },
+        presetApplyOptions() {
+            return [
+              { value: 'detection', label: '检测映射预设' },
+              { value: 'classification', label: '分类映射预设' },
+            ];
+        },
+        presetDetectionCount() {
+            return Array.isArray(this.presetData && this.presetData.detection) ? this.presetData.detection.length : 0;
+        },
+        presetClassificationCount() {
+            return Array.isArray(this.presetData && this.presetData.classification) ? this.presetData.classification.length : 0;
+        },
+        presetUpdatedAtText() {
+            const raw = this.presetData && this.presetData.updated_at;
+            if (!raw) return '未保存';
+            const d = new Date(raw);
+            if (Number.isNaN(d.getTime())) return String(raw);
+            return d.toLocaleString();
         },
         splitSum() {
             const t = Number(this.splitForm.train) || 0;
@@ -850,6 +1008,264 @@ export default {
                 console.error('Auto-load illegal labels failed:', e);
             } finally {
                 this.loadingLabels = false;
+            }
+        },
+        normalizePresetDetectionRows(rows) {
+            const list = Array.isArray(rows) ? rows : [];
+            const out = [];
+            const dedup = new Map();
+            list.forEach((item) => {
+              if (!item || typeof item !== 'object') return;
+              const source = String(item.source_label || item.source || '').trim();
+              if (!source) return;
+              const target = String(item.target_label || item.target || '').trim() || this.getLeafLabel(source);
+              dedup.set(source, target);
+            });
+            dedup.forEach((target, source) => {
+              out.push({ source_label: source, target_label: target });
+            });
+            return out;
+        },
+        normalizePresetClassificationRows(rows) {
+            const list = Array.isArray(rows) ? rows : [];
+            const out = [];
+            const dedup = new Map();
+            list.forEach((item) => {
+              if (!item || typeof item !== 'object') return;
+              const category = String(item.category || item.group || '').trim();
+              const source = String(item.source_label || item.source || '').trim();
+              if (!category || !source) return;
+              const target = String(item.target_label || item.target || '').trim() || category;
+              dedup.set(`${category}::${source}`, { category, source_label: source, target_label: target });
+            });
+            dedup.forEach((row) => out.push(row));
+            return out;
+        },
+        normalizePresetPayload(payload) {
+            const data = payload && typeof payload === 'object' ? payload : {};
+            return {
+              detection: this.normalizePresetDetectionRows(data.detection),
+              classification: this.normalizePresetClassificationRows(data.classification),
+              updated_at: data.updated_at ? String(data.updated_at) : null,
+            };
+        },
+        getLeafLabel(label) {
+            const parts = String(label || '').split('%').map((p) => p.trim()).filter(Boolean);
+            return parts.length ? parts[parts.length - 1] : String(label || '').trim();
+        },
+        async loadIllegalLabelPresets() {
+            this.mappingPresetsLoading = true;
+            try {
+              const data = await fetchIllegalLabelPresets();
+              this.presetData = this.normalizePresetPayload(data);
+            } catch (e) {
+              console.error('Failed to load illegal label presets:', e);
+              this.$message.warning(`预设映射加载失败: ${e && e.message ? e.message : e}`);
+            } finally {
+              this.mappingPresetsLoading = false;
+            }
+        },
+        openPresetDialog() {
+            this.showPresetDialog = true;
+            if (!this.presetDetectionCount && !this.presetClassificationCount) {
+              this.loadIllegalLabelPresets();
+            }
+        },
+        addDetectionPresetRow() {
+            this.presetData.detection.push({ source_label: '', target_label: '' });
+        },
+        removeDetectionPresetRow(index) {
+            this.presetData.detection.splice(index, 1);
+        },
+        addClassificationPresetRow() {
+            this.presetData.classification.push({ category: '', source_label: '', target_label: '' });
+        },
+        removeClassificationPresetRow(index) {
+            this.presetData.classification.splice(index, 1);
+        },
+        triggerPresetFileUpload() {
+            if (this.$refs.presetFileInput) {
+              this.$refs.presetFileInput.value = '';
+              this.$refs.presetFileInput.click();
+            }
+        },
+        async handlePresetFileChange(event) {
+            const file = event && event.target && event.target.files ? event.target.files[0] : null;
+            if (!file) return;
+            try {
+              const parsed = await this.parsePresetWorkbook(file);
+              const hasDetection = parsed.detection && parsed.detection.length > 0;
+              const hasClassification = parsed.classification && parsed.classification.length > 0;
+              if (!hasDetection && !hasClassification) {
+                this.$message.warning('未从 XLSX 中识别到检测/分类映射数据');
+                return;
+              }
+              if (hasDetection) this.presetData.detection = parsed.detection;
+              if (hasClassification) this.presetData.classification = parsed.classification;
+              this.$message.success('XLSX 导入成功，请检查后保存');
+            } catch (e) {
+              this.$message.error(`XLSX 导入失败: ${e && e.message ? e.message : e}`);
+            } finally {
+              if (event && event.target) event.target.value = '';
+            }
+        },
+        async parsePresetWorkbook(file) {
+            const xlsxModule = await import('xlsx');
+            const XLSX = xlsxModule.default || xlsxModule;
+            const buffer = await file.arrayBuffer();
+            const workbook = XLSX.read(buffer, { type: 'array' });
+            const sheets = Array.isArray(workbook.SheetNames) ? workbook.SheetNames : [];
+            if (!sheets.length) throw new Error('工作簿为空');
+
+            const findSheetName = (keywords) => {
+              return sheets.find((name) => {
+                const n = String(name || '').toLowerCase();
+                return keywords.some((k) => n.includes(String(k).toLowerCase()));
+              });
+            };
+
+            const detectionSheetName = findSheetName(['检测', 'detection', 'det']) || sheets[0] || null;
+            const classificationSheetName = findSheetName(['分类', 'classification', 'class']) || sheets[1] || null;
+
+            const readSheetRows = (sheetName) => {
+              if (!sheetName) return [];
+              const sheet = workbook.Sheets[sheetName];
+              if (!sheet) return [];
+              const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+              return Array.isArray(matrix) ? matrix : [];
+            };
+
+            const detectionRows = this.parseDetectionPresetSheet(readSheetRows(detectionSheetName));
+            const classificationRows = this.parseClassificationPresetSheet(readSheetRows(classificationSheetName));
+
+            return {
+              detection: this.normalizePresetDetectionRows(detectionRows),
+              classification: this.normalizePresetClassificationRows(classificationRows),
+            };
+        },
+        parseDetectionPresetSheet(matrix) {
+            const rows = Array.isArray(matrix) ? matrix : [];
+            if (!rows.length) return [];
+            const normalizedHeader = (rows[0] || []).map((x) => String(x || '').trim().toLowerCase());
+            const sourceHeaderTokens = ['source', 'source_label', '原始标签', '源标签', '标签路径'];
+            const targetHeaderTokens = ['target', 'target_label', '映射标签', '目标标签', '分类'];
+            const findHeaderIndex = (tokens) => normalizedHeader.findIndex((h) => tokens.some((t) => h.includes(t)));
+            const sourceIdx = findHeaderIndex(sourceHeaderTokens);
+            const targetIdx = findHeaderIndex(targetHeaderTokens);
+            const hasHeader = sourceIdx >= 0 || targetIdx >= 0;
+            const srcCol = sourceIdx >= 0 ? sourceIdx : 0;
+            const tgtCol = targetIdx >= 0 ? targetIdx : (rows[0].length > 1 ? 1 : -1);
+            const startIndex = hasHeader ? 1 : 0;
+            const out = [];
+            for (let i = startIndex; i < rows.length; i += 1) {
+              const row = Array.isArray(rows[i]) ? rows[i] : [];
+              const source = String(row[srcCol] || '').trim();
+              if (!source) continue;
+              const targetRaw = tgtCol >= 0 ? row[tgtCol] : '';
+              const target = String(targetRaw || '').trim() || this.getLeafLabel(source);
+              out.push({ source_label: source, target_label: target });
+            }
+            return out;
+        },
+        parseClassificationPresetSheet(matrix) {
+            const rows = Array.isArray(matrix) ? matrix : [];
+            if (!rows.length) return [];
+
+            const normalizedHeader = (rows[0] || []).map((x) => String(x || '').trim().toLowerCase());
+            const categoryHeaderTokens = ['category', 'group', '分类', '类别'];
+            const sourceHeaderTokens = ['source', 'source_label', '原始标签', '源标签', '标签路径'];
+            const targetHeaderTokens = ['target', 'target_label', '映射标签', '目标标签'];
+            const findHeaderIndex = (tokens) => normalizedHeader.findIndex((h) => tokens.some((t) => h.includes(t)));
+
+            const categoryIdx = findHeaderIndex(categoryHeaderTokens);
+            const sourceIdx = findHeaderIndex(sourceHeaderTokens);
+            const targetIdx = findHeaderIndex(targetHeaderTokens);
+
+            const out = [];
+            if (sourceIdx >= 0 && categoryIdx >= 0) {
+              for (let i = 1; i < rows.length; i += 1) {
+                const row = Array.isArray(rows[i]) ? rows[i] : [];
+                const category = String(row[categoryIdx] || '').trim();
+                const source = String(row[sourceIdx] || '').trim();
+                if (!category || !source) continue;
+                const target = targetIdx >= 0 ? String(row[targetIdx] || '').trim() : '';
+                out.push({ category, source_label: source, target_label: target || category });
+              }
+              return out;
+            }
+
+            // Fallback: first row as category columns, each subsequent row contains sources.
+            const categoryColumns = (rows[0] || []).map((cell) => String(cell || '').trim());
+            const validColumns = categoryColumns
+              .map((name, idx) => ({ name, idx }))
+              .filter((item) => !!item.name);
+            if (!validColumns.length) return out;
+
+            for (let r = 1; r < rows.length; r += 1) {
+              const row = Array.isArray(rows[r]) ? rows[r] : [];
+              validColumns.forEach((column) => {
+                const source = String(row[column.idx] || '').trim();
+                if (!source) return;
+                out.push({ category: column.name, source_label: source, target_label: column.name });
+              });
+            }
+
+            return out;
+        },
+        buildPresetMapping(mode) {
+            const key = mode === 'classification' ? 'classification' : 'detection';
+            if (key === 'detection') {
+              const rows = this.normalizePresetDetectionRows(this.presetData.detection);
+              return rows.reduce((acc, row) => {
+                acc[row.source_label] = row.target_label || this.getLeafLabel(row.source_label);
+                return acc;
+              }, {});
+            }
+            const rows = this.normalizePresetClassificationRows(this.presetData.classification);
+            return rows.reduce((acc, row) => {
+              const target = String(row.target_label || '').trim() || String(row.category || '').trim();
+              if (!row.source_label || !target) return acc;
+              acc[row.source_label] = target;
+              return acc;
+            }, {});
+        },
+        async applyPresetToCurrentMapping() {
+            if (!this.isIllegalDataset) return;
+            if (!this.presetDetectionCount && !this.presetClassificationCount) {
+              await this.loadIllegalLabelPresets();
+            }
+            const map = this.buildPresetMapping(this.presetApplyMode);
+            if (!map || Object.keys(map).length === 0) {
+              this.$message.warning('当前预设为空，请先编辑并保存预设映射');
+              return;
+            }
+            this.$nextTick(() => {
+              const panel = this.$refs.labelMappingPanel;
+              if (!panel || typeof panel.applyExternalMapping !== 'function') {
+                this.$message.warning('当前映射面板未就绪，请稍后重试');
+                return;
+              }
+              const result = panel.applyExternalMapping(map);
+              const matched = Number(result && result.matched) || 0;
+              const total = Number(result && result.total) || 0;
+              this.$message.success(`已应用预设映射，匹配 ${matched}/${total} 条标签`);
+            });
+        },
+        async savePresetDialogData() {
+            this.mappingPresetsSaving = true;
+            try {
+              const payload = {
+                detection: this.normalizePresetDetectionRows(this.presetData.detection),
+                classification: this.normalizePresetClassificationRows(this.presetData.classification),
+              };
+              const saved = await saveIllegalLabelPresets(payload);
+              this.presetData = this.normalizePresetPayload(saved);
+              this.$message.success('预设映射保存成功');
+              this.showPresetDialog = false;
+            } catch (e) {
+              this.$message.error(`保存预设失败: ${e && e.message ? e.message : e}`);
+            } finally {
+              this.mappingPresetsSaving = false;
             }
         },
         async handleLabelMappingSave(mapping) {
@@ -1214,6 +1630,19 @@ export default {
           }
           this.showConvertDialog = true;
         },
+        openLabelEditor() {
+          this.$nextTick(() => {
+            const panel = this.$refs.labelMappingPanel;
+            const el = panel && panel.$el ? panel.$el : null;
+            if (el && typeof el.scrollIntoView === 'function') {
+              try {
+                el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              } catch (_) {
+                el.scrollIntoView();
+              }
+            }
+          });
+        },
         async submitConvertWithMapping() {
           if (!this.datasetId) return;
           const mapping = this.savedLabelMapping || this.loadLocalLabelMapping();
@@ -1491,6 +1920,7 @@ export default {
                     this.selectedImages = [];
                     // Auto-load illegal labels for inline mapping panel
                     this.autoLoadIllegalLabels();
+                    this.loadIllegalLabelPresets();
                 } else {
                     // Then get view data with categories and images
                     try {
@@ -2691,6 +3121,56 @@ export default {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+}
+.preset-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: var(--radius-sm);
+  background: rgba(248, 250, 252, 0.8);
+}
+.preset-toolbar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.preset-toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+}
+.preset-mode-select {
+  width: 150px;
+}
+.preset-dialog-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.preset-dialog-stats {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+  flex-wrap: wrap;
+}
+.preset-dialog-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
 }
 .illegal-actions {
   display: flex;

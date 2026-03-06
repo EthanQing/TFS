@@ -327,7 +327,6 @@ export default {
     /** Build a trie (prefix tree) from all source labels */
     trie() {
       var root = { children: {}, directRows: [] };
-      var sep = this.separator;
       for (var i = 0; i < this.rows.length; i++) {
         var row = this.rows[i];
         var parts = this.splitLabel(row.sourceLabel);
@@ -619,6 +618,54 @@ export default {
     },
     doSaveAndConvert() {
       this.$emit('save-and-convert', this.buildMapping(), this.buildSliceParams());
+    },
+    normalizeMappingKey(value) {
+      if (value === null || value === undefined) return '';
+      var s = String(value);
+      s = s.replace(/\uFF05/g, '%').replace(/\u3000/g, ' ');
+      ['\u200b', '\u200c', '\u200d', '\ufeff'].forEach(function(ch) {
+        s = s.split(ch).join('');
+      });
+      return s.trim();
+    },
+    applyExternalMapping(mapping) {
+      if (!mapping || typeof mapping !== 'object') {
+        return { total: this.rows.length, matched: 0, unmatched: this.rows.length };
+      }
+      var direct = {};
+      var normalized = {};
+      Object.keys(mapping).forEach(function(key) {
+        var k = String(key || '').trim();
+        if (!k) return;
+        direct[k] = mapping[key];
+        var nk = this.normalizeMappingKey(k);
+        if (nk) normalized[nk] = mapping[key];
+      }.bind(this));
+
+      var matched = 0;
+      this.rows.forEach(function(row) {
+        var src = String(row.sourceLabel || '').trim();
+        var hit = Object.prototype.hasOwnProperty.call(direct, src)
+          ? direct[src]
+          : normalized[this.normalizeMappingKey(src)];
+        if (hit === undefined) return;
+        matched += 1;
+        if (hit === '__DISCARD__' || String(hit).trim() === '') {
+          row.discarded = true;
+          row.targetLabel = '';
+          row.manuallyEdited = true;
+          return;
+        }
+        row.discarded = false;
+        row.targetLabel = String(hit).trim();
+        row.manuallyEdited = true;
+      }.bind(this));
+
+      return {
+        total: this.rows.length,
+        matched: matched,
+        unmatched: Math.max(0, this.rows.length - matched),
+      };
     },
   },
 };

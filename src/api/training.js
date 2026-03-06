@@ -753,3 +753,28 @@ export async function CompareTrainingRuns(runIds) {
     throw error;
   }
 }
+
+export async function benchmarkTrainingRunsInferenceTime(runIds, options = {}) {
+  try {
+    const payload = {
+      run_ids: Array.isArray(runIds) ? runIds : [],
+      force: !!options.force,
+    };
+    const res = await fetch(`${API_BASE}/api/v2/training-runs/benchmark-inference-time`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) {
+      const err = new Error(toErrorMessage(data, res));
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data && typeof data === "object" ? data : { items: [] };
+  } catch (error) {
+    console.error("推理时延基准测量失败:", error);
+    throw error;
+  }
+}
