@@ -9,7 +9,7 @@
       <div class="hero-right">
         <div class="stat-card">
           <div class="stat-label">工具数量</div>
-          <div class="stat-value">5</div>
+          <div class="stat-value">3</div>
         </div>
       </div>
     </header>
@@ -18,13 +18,13 @@
       <aside class="deploy-sidebar glass-panel">
         <div class="sidebar-header">工具箱</div>
         <ul class="tool-list">
-          <li :class="{ active: activeTool === 'deploy-service' }" @click="setActiveTool('deploy-service')">
+          <!-- <li :class="{ active: activeTool === 'deploy-service' }" @click="setActiveTool('deploy-service')">
             <i class="el-icon-s-operation"></i>
             <div class="tool-info">
               <span class="tool-name">模型部署服务</span>
               <span class="tool-desc">流水线·进度·日志·重试</span>
             </div>
-          </li>
+          </li> -->
           <li :class="{ active: activeTool === 'conversion' }" @click="setActiveTool('conversion')">
             <i class="el-icon-refresh"></i>
             <div class="tool-info">
@@ -46,13 +46,13 @@
               <span class="tool-desc">单图 / 批量 / 视频</span>
             </div>
           </li>
-          <li :class="{ active: activeTool === 'rollback' }" @click="setActiveTool('rollback')">
+          <!-- <li :class="{ active: activeTool === 'rollback' }" @click="setActiveTool('rollback')">
             <i class="el-icon-refresh-left"></i>
             <div class="tool-info">
               <span class="tool-name">模型回滚</span>
               <span class="tool-desc">切换生效的部署版本</span>
             </div>
-          </li>
+          </li> -->
         </ul>
       </aside>
 
@@ -83,7 +83,7 @@ export default {
   components: { DeploymentServiceTool, FormatConversion, ModelComparison, ModelInferenceTest, ModelRollbackTool },
   data() {
     return {
-      activeTool: "deploy-service",
+      activeTool: "conversion",
       formatConversionState: null,
     };
   },

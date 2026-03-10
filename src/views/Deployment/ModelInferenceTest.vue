@@ -831,15 +831,14 @@ export default {
   border: 1px solid #e2e8f0;
   transition: all 0.4s ease;
   position: relative;
-  overflow: hidden;
 }
-.status-monitor::before {
+/* .status-monitor::before {
   content: "";
   position: absolute;
   top: 0; left: 0; width: 4px; height: 100%;
   background: #cbd5e1;
   transition: background 0.4s;
-}
+} */
 .status-monitor.running { background: #eff6ff; border-color: #bfdbfe; }
 .status-monitor.running::before { background: #3b82f6; }
 .status-monitor.completed { background: #f0fdf4; border-color: #bbf7d0; }

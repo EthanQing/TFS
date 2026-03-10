@@ -18,6 +18,9 @@
         <div v-if="canStop" class="tm-stat action-stat">
            <el-button type="danger" size="small" icon="el-icon-video-pause" @click="handleStop" :loading="stopping">停止训练</el-button>
         </div>
+        <div v-else class="tm-stat action-stat">
+           <el-button type="primary" size="small" icon="el-icon-video-pause" @click="handleContinue" :loading="continueing">继续训练</el-button>
+        </div>
         <div class="tm-stat action-stat">
            <el-button size="small" icon="el-icon-setting" @click="showChartConfig = true">图表设置</el-button>
         </div>
@@ -114,6 +117,7 @@ import {
   FetchTrainingJobsStatus,
   FetchTrainingJobsMetrics_detailed,
   CancelTrainingJob,
+  ResumeTrainingJob,
   openTrainingRunMetricsStream,
 } from "@/api/training";
 import { fetchChartConfig, saveChartConfig } from "@/api/chartConfig";
@@ -180,6 +184,7 @@ export default {
       variant: null,
       evalInterval: null,
       stopping: false,
+      continueing: false,
       showChartConfig: false,
       chartVisibility: {},
       savingConfig: false,
@@ -698,6 +703,26 @@ export default {
         }
       } finally {
         this.stopping = false;
+      }
+    },
+    async handleContinue() {
+      try {
+        await this.$confirm('确定要继续当前训练任务吗？', '确认继续', {
+          confirmButtonText: '继续',
+          cancelButtonText: '取消',
+          type: 'info'
+        });
+        
+        this.continueing = true;
+        await ResumeTrainingJob(this.jobId);
+        this.$message.success('已发送继续请求');
+        await this.syncSnapshot({ withStatus: true, withMetrics: false });
+      } catch (e) {
+        if (e !== 'cancel' && e !== 'close') {
+          this.$message.error('继续失败: ' + (e.message || e));
+        }
+      } finally {
+        this.continueing = false;
       }
     },
     async loadChartConfig() {

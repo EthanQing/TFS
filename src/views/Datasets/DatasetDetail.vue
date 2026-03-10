@@ -85,7 +85,7 @@
           </div>
 
           <!-- Inline Label Mapping Panel -->
-          <div
+          <!-- <div
             v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
             class="preset-toolbar"
           >
@@ -119,7 +119,7 @@
               <span>分类: {{ presetClassificationCount }}</span>
               <span>更新时间: {{ presetUpdatedAtText }}</span>
             </div>
-          </div>
+          </div> -->
           <LabelMappingPanel
             ref="labelMappingPanel"
             v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
@@ -241,7 +241,7 @@
                 >
                   数据集划分
                 </el-button>
-                <el-button
+                <!-- <el-button
                   v-if="showAugmentationButton"
                   size="small"
                   type="success"
@@ -249,7 +249,7 @@
                   @click="openAugmentationDialog"
                 >
                   <i class="el-icon-magic-stick"></i> 样本扩增
-                </el-button>
+                </el-button> -->
                 <div v-if="allowAppendUpload" class="action-card">
                     <el-select
                       v-model="selectedVersionId"
@@ -2315,7 +2315,6 @@ export default {
 }
 
 .meta-pill {
-  padding: 0.25rem 0.75rem;
   border-radius: var(--radius-full);
   background: rgba(255, 255, 255, 0.9);
   color: var(--color-primary-dark);

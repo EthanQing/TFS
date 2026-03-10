@@ -6,18 +6,18 @@
           <i class="el-icon-arrow-left"></i> 返回项目列表
         </button>
         <div class="pd-content">
-            <div class="pd-eyebrow">项目概览</div>
-            <h1 class="pd-title">{{ projectInfo?.project_name || '项目详情' }}</h1>
-            <div class="pd-meta">
+          <div class="pd-eyebrow">项目概览</div>
+          <h1 class="pd-title">{{ projectInfo?.project_name || '项目详情' }}</h1>
+          <div class="pd-meta">
             <span class="meta-chip">
-                <i class="el-icon-time"></i>
-                {{ updateTimeText }}
+              <i class="el-icon-time"></i>
+              {{ updateTimeText }}
             </span>
             <span v-if="projectInfo?.dataset" class="meta-chip">
-                <i class="el-icon-folder"></i>
-                数据集: {{ projectInfo.dataset.dataset_name }}
+              <i class="el-icon-folder"></i>
+              数据集: {{ projectInfo.dataset.dataset_name }}
             </span>
-            </div>
+          </div>
         </div>
       </div>
       <div class="pd-hero-right">
@@ -30,7 +30,7 @@
           <div class="pd-stat-value">{{ totalSize }}</div>
         </div>
         <el-button type="primary" class="primary-action" @click="openCreateJob">
-            新建训练任务
+          新建训练任务
         </el-button>
       </div>
     </header>
@@ -39,16 +39,15 @@
       <header class="pd-toolbar">
         <div class="search-shell">
           <i class="el-icon-search"></i>
-          <el-input
-            v-model="searchQuery"
-            placeholder="搜索训练任务"
-            class="search-input"
-            clearable
-          ></el-input>
+          <el-input v-model="searchQuery" placeholder="搜索训练任务" class="search-input" clearable></el-input>
         </div>
         <div class="pd-summary">
           {{ filteredModels.length }} 个任务
         </div>
+        <!-- <template v-if="selectedJobIds.length > 0">
+          <span class="batch-info"> · 已选中 {{ selectedJobIds.length }} 个</span>
+          <el-button type="danger" size="mini" :loading="batchDeleting" @click="batchDeleteConfirm">批量删除</el-button>
+        </template> -->
       </header>
 
       <div class="pd-list">
@@ -61,12 +60,7 @@
           <span>暂无训练任务</span>
         </div>
         <div v-else class="job-grid">
-          <div
-            v-for="model in filteredModels"
-            :key="model.job_id"
-            class="job-card"
-            @click="goProjectsCharts(model)"
-          >
+          <div v-for="model in filteredModels" :key="model.job_id" class="job-card" @click="goProjectsCharts(model)">
             <div class="job-status-indicator" :class="statusClass(model.status)"></div>
             <div class="job-main">
               <div class="job-header">
@@ -75,65 +69,52 @@
               </div>
               <div class="job-meta-grid">
                 <div class="meta-item">
-                    <span class="label">状态</span>
-                    <span class="value status-text" :class="statusClass(model.status)">{{ model.status || 'unknown' }}</span>
+                  <span class="label">状态</span>
+                  <span class="value status-text" :class="statusClass(model.status)">{{ model.status || 'unknown'
+                  }}</span>
                 </div>
                 <div class="meta-item">
-                    <span class="label">进度</span>
-                    <span class="value">{{ formatProgress(model) }}</span>
+                  <span class="label">进度</span>
+                  <span class="value">{{ formatProgress(model) }}</span>
                 </div>
                 <div class="meta-item">
-                    <span class="label">大小</span>
-                    <span class="value">{{ formatModelSize(model.model_size_mb) }}</span>
+                  <span class="label">大小</span>
+                  <span class="value">{{ formatModelSize(model.model_size_mb) }}</span>
                 </div>
                 <div class="meta-item">
-                    <span class="label">创建时间</span>
-                    <span class="value">{{ formatCreateTime(model.created_at) }}</span>
+                  <span class="label">创建时间</span>
+                  <span class="value">{{ formatCreateTime(model.created_at) }}</span>
                 </div>
               </div>
             </div>
             <div class="job-actions" @click.stop>
-              <el-button
-                v-if="model.status === 'pending'"
-                type="success"
-                size="mini"
-                :loading="startingJobs && startingJobs[model.job_id]"
-                class="action-btn"
-                @click.stop="startJob(model.job_id)"
-              >开始</el-button>
-              <el-button
-                v-else-if="model.status === 'queued'"
-                type="warning"
-                size="mini"
-                :loading="stoppingJobs && stoppingJobs[model.job_id]"
-                class="action-btn"
-                @click.stop="stopJob(model.job_id)"
-              >取消排队</el-button>
-              <el-button
-                v-else-if="model.status === 'running'"
-                type="danger"
-                size="mini"
-                :loading="stoppingJobs && stoppingJobs[model.job_id]"
-                class="action-btn"
-                @click.stop="stopJob(model.job_id)"
-              >停止</el-button>
-              <el-button
-                v-else-if="['cancelled'].includes((model.status || '').toLowerCase())"
-                type="primary"
-                size="mini"
-                :loading="startingJobs && startingJobs[model.job_id]"
-                class="action-btn"
-                @click.stop="resumeJob(model.job_id)"
-              >继续</el-button>
-              <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
-                <span class="more-btn">
-                  <i class="el-icon-more"></i>
-                </span>
-                <el-dropdown-menu slot="dropdown">
-                  <el-dropdown-item command="delete" icon="el-icon-delete" class="danger-text">删除</el-dropdown-item>
-                  <el-dropdown-item command="export" icon="el-icon-download">导出</el-dropdown-item>
-                </el-dropdown-menu>
-              </el-dropdown>
+              <!-- <div>
+                <el-checkbox @change="checkedChange"></el-checkbox>
+              </div> -->
+              <div>
+                <el-button v-if="model.status === 'pending'" type="success" size="mini"
+                  :loading="startingJobs && startingJobs[model.job_id]" class="action-btn"
+                  @click.stop="startJob(model.job_id)">开始</el-button>
+                <el-button v-else-if="model.status === 'queued'" type="warning" size="mini"
+                  :loading="stoppingJobs && stoppingJobs[model.job_id]" class="action-btn"
+                  @click.stop="stopJob(model.job_id)">取消排队</el-button>
+                <el-button v-else-if="model.status === 'running'" type="danger" size="mini"
+                  :loading="stoppingJobs && stoppingJobs[model.job_id]" class="action-btn"
+                  @click.stop="stopJob(model.job_id)">停止</el-button>
+                <el-button v-else-if="['cancelled'].includes((model.status || '').toLowerCase())" type="primary"
+                  size="mini" :loading="startingJobs && startingJobs[model.job_id]" class="action-btn"
+                  @click.stop="resumeJob(model.job_id)">继续</el-button>
+                <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
+                  <span class="more-btn">
+                    <i class="el-icon-more"></i>
+                  </span>
+                  <el-dropdown-menu slot="dropdown">
+                    <!-- <el-dropdown-item v-if="model.status === 'completed'" command="setbaseline">设为基准</el-dropdown-item> -->
+                    <el-dropdown-item command="delete" icon="el-icon-delete" class="danger-text">删除</el-dropdown-item>
+                    <el-dropdown-item command="export" icon="el-icon-download">导出</el-dropdown-item>
+                  </el-dropdown-menu>
+                </el-dropdown>
+              </div>
             </div>
           </div>
         </div>
@@ -141,55 +122,42 @@
     </section>
 
     <!-- Create Dialog -->
-    <el-dialog
-      title="创建训练任务"
-      :visible.sync="dialogVisible"
-      :width="dialogWidth"
-      :close-on-click-modal="true"
-      append-to-body
-      custom-class="glass-dialog"
-    >
-      <ModelsStep2
-        :project="projectInfo"
-        @task-added="onTaskAdded"
-        @close="dialogVisible = false"
-      />
+    <el-dialog title="创建训练任务" :visible.sync="dialogVisible" :width="dialogWidth" :close-on-click-modal="true"
+      append-to-body custom-class="glass-dialog">
+      <ModelsStep2 :project="projectInfo" @task-added="onTaskAdded" @close="dialogVisible = false" />
     </el-dialog>
 
     <!-- Export Dialog -->
-    <el-dialog
-      title="导出模型"
-      :visible.sync="exportDialogVisible"
-      width="480px"
-      append-to-body
-      custom-class="glass-dialog"
-    >
+    <el-dialog title="导出模型" :visible.sync="exportDialogVisible" width="480px" append-to-body
+      custom-class="glass-dialog">
       <div class="export-form">
         <el-form label-position="top">
-            <el-form-item label="Format">
-                <el-radio-group v-model="exportForm.format" :disabled="exporting">
-                    <el-radio label="pt">Original (.pt)</el-radio>
-                    <el-radio label="onnx">ONNX (YOLOv8)</el-radio>
-                </el-radio-group>
-            </el-form-item>
-             <el-form-item label="Weights">
-                <el-select v-model="exportForm.weights" :disabled="exporting" style="width: 100%;">
-                    <el-option label="best.pt" value="best" />
-                    <el-option label="last.pt" value="last" />
-                </el-select>
-             </el-form-item>
+          <el-form-item label="Format">
+            <el-radio-group v-model="exportForm.format" :disabled="exporting">
+              <el-radio label="pt">Original (.pt)</el-radio>
+              <el-radio label="onnx">ONNX (YOLOv8)</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item label="Weights">
+            <el-select v-model="exportForm.weights" :disabled="exporting" style="width: 100%;">
+              <el-option label="best.pt" value="best" />
+              <el-option label="last.pt" value="last" />
+            </el-select>
+          </el-form-item>
 
-            <template v-if="exportForm.format === 'onnx'">
-                <el-form-item label="Opset">
-                     <el-input-number v-model="exportForm.opset" :min="9" :max="20" :disabled="exporting" controls-position="right" style="width: 100%" />
-                </el-form-item>
-                <el-form-item label="Dynamic Shape">
-                    <el-switch v-model="exportForm.dynamic" :disabled="exporting" />
-                </el-form-item>
-                 <el-form-item label="Image Size (imgsz)">
-                     <el-input-number v-model="exportForm.imgsz" :min="32" :max="4096" :step="32" :disabled="exporting" controls-position="right" style="width: 100%" />
-                </el-form-item>
-            </template>
+          <template v-if="exportForm.format === 'onnx'">
+            <el-form-item label="Opset">
+              <el-input-number v-model="exportForm.opset" :min="9" :max="20" :disabled="exporting"
+                controls-position="right" style="width: 100%" />
+            </el-form-item>
+            <el-form-item label="Dynamic Shape">
+              <el-switch v-model="exportForm.dynamic" :disabled="exporting" />
+            </el-form-item>
+            <el-form-item label="Image Size (imgsz)">
+              <el-input-number v-model="exportForm.imgsz" :min="32" :max="4096" :step="32" :disabled="exporting"
+                controls-position="right" style="width: 100%" />
+            </el-form-item>
+          </template>
         </el-form>
       </div>
 
@@ -243,6 +211,9 @@ export default {
         dynamic: true,
         imgsz: 640,
       },
+      selected: false,
+      selectedJobIds: [],          // 存放被勾选的 job_id 数组
+      batchDeleting: false,        // 批量删除时的 loading 状态
     };
   },
   computed: {
@@ -294,9 +265,9 @@ export default {
         return (m.job_name || '').toLowerCase().includes(query);
       });
       return list.sort((a, b) => {
-          const tA = new Date(a.created_at || 0).getTime();
-          const tB = new Date(b.created_at || 0).getTime();
-          return tB - tA;
+        const tA = new Date(a.created_at || 0).getTime();
+        const tB = new Date(b.created_at || 0).getTime();
+        return tB - tA;
       });
     }
   },
@@ -384,12 +355,13 @@ export default {
           this.$message.error('恢复训练失败: ' + (e.message || e));
         }
       } finally {
-         this.$set(this.startingJobs, jobId, false);
+        this.$set(this.startingJobs, jobId, false);
       }
     },
     handlePDCommand(command, jobId) {
       if (command === 'delete') this.deletePDJob(jobId);
       if (command === 'export') this.openExportDialog(jobId);
+      if (command === 'setbaseline') this.$message.info('设为基准功能待实现');
     },
     openExportDialog(jobId) {
       this.exportTargetJobId = jobId;
@@ -405,7 +377,7 @@ export default {
         const res = await ExportModel(jobId, this.exportForm);
         const raw = res && (res.download_url || res.url || res.file_url || res.path || res.link);
         if (!raw) throw new Error('No download URL returned');
-        
+
         const href = String(raw).startsWith('http') ? raw : `${API_BASE}${raw}`;
         const a = document.createElement('a');
         a.href = href;
@@ -448,6 +420,62 @@ export default {
         this.$message.error('删除失败: ' + (e.message || e));
       }
     },
+    checkedChange(e) {
+      const jobId = e.target.value;
+      console.log('Checkbox changed for jobId:', jobId, 'Checked:', e.target.checked);
+      // if (e.target.checked) {
+      //   if (!this.selectedJobIds.includes(jobId)) {
+      //     this.selectedJobIds.push(jobId);
+      //   }
+      // } else {
+      //   this.selectedJobIds = this.selectedJobIds.filter(id => id !== jobId);
+      // }
+    },
+    //批量删除
+    async batchDeleteConfirm() {
+      if (this.selectedJobIds.length === 0) return;
+
+      try {
+        await this.$confirm(
+          `确定要删除选中的 ${this.selectedJobIds.length} 个训练任务吗？此操作不可恢复。`,
+          '批量删除确认',
+          {
+            confirmButtonText: '删除',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        );
+      } catch {
+        return; // 用户取消
+      }
+
+      this.batchDeleting = true;
+
+      try {
+        for (const jobId of this.selectedJobIds) {
+          try {
+            await DeleteTrainingJob(jobId, { force: false });
+          } catch (err) {
+            // 可以记录失败的，但不中断其他删除
+            console.warn(`删除任务 ${jobId} 失败`, err);
+            // 可选：收集失败的任务 id，最后提示
+          }
+        }
+
+        this.$message.success(`已完成批量删除操作`);
+
+        // 清空选中 & 刷新列表
+        this.selectedJobIds = [];
+        const pid = this.projectInfo?.project_id || this.$route.query.projectId;
+        if (pid) await this.loadProjectDetails(pid);
+
+      } catch (e) {
+        this.$message.error('批量删除过程中发生错误');
+        console.error(e);
+      } finally {
+        this.batchDeleting = false;
+      }
+    },
     isDeleteConflict(error) {
       if (error && error.status === 409) return true;
       const msg = String((error && error.message) || '').toLowerCase();
@@ -463,10 +491,10 @@ export default {
         try {
           const s = await FetchTrainingJobsStatus(job.job_id);
           if (s) {
-              if (s.current_epoch !== undefined) this.$set(job, 'current_epoch', s.current_epoch);
-              if (s.status) this.$set(job, 'status', s.status);
+            if (s.current_epoch !== undefined) this.$set(job, 'current_epoch', s.current_epoch);
+            if (s.status) this.$set(job, 'status', s.status);
           }
-        } catch (_) {}
+        } catch (_) { }
       }));
     },
     initProjectInfo() {
@@ -476,10 +504,10 @@ export default {
       } else {
         const stored = localStorage.getItem('currentProject');
         if (stored) {
-            try {
-                this.projectInfo = JSON.parse(stored);
-                this.loadProjectDetails(this.projectInfo.project_id);
-            } catch(e) {}
+          try {
+            this.projectInfo = JSON.parse(stored);
+            this.loadProjectDetails(this.projectInfo.project_id);
+          } catch (e) { }
         }
       }
     },
@@ -492,37 +520,37 @@ export default {
 
         // Enhance dataset info - use multiple fallback sources
         try {
-            // First, preserve any dataset info that might already be in the API response
-            if (!this.projectInfo.dataset && this.projectInfo.dataset_name) {
-              this.projectInfo.dataset = { dataset_name: this.projectInfo.dataset_name };
-            }
-            
-            // Try to enhance with full dataset info from referenceStore
-            await loadDatasets();
-            const ds = referenceStore.datasets.find(d => d.dataset_id === this.projectInfo.dataset_id);
-            if (ds) {
-              this.projectInfo.dataset = { 
-                dataset_id: ds.dataset_id,
-                dataset_name: ds.dataset_name 
-              };
-            }
-        } catch(e) {
-            console.warn('Failed to enhance dataset info:', e);
-            // Fallback: if we have dataset_id but no dataset object, try to create a minimal one
-            if (this.projectInfo.dataset_id && !this.projectInfo.dataset) {
-              this.projectInfo.dataset = { 
-                dataset_id: this.projectInfo.dataset_id,
-                dataset_name: `Dataset #${this.projectInfo.dataset_id}` 
-              };
-            }
+          // First, preserve any dataset info that might already be in the API response
+          if (!this.projectInfo.dataset && this.projectInfo.dataset_name) {
+            this.projectInfo.dataset = { dataset_name: this.projectInfo.dataset_name };
+          }
+
+          // Try to enhance with full dataset info from referenceStore
+          await loadDatasets();
+          const ds = referenceStore.datasets.find(d => d.dataset_id === this.projectInfo.dataset_id);
+          if (ds) {
+            this.projectInfo.dataset = {
+              dataset_id: ds.dataset_id,
+              dataset_name: ds.dataset_name
+            };
+          }
+        } catch (e) {
+          console.warn('Failed to enhance dataset info:', e);
+          // Fallback: if we have dataset_id but no dataset object, try to create a minimal one
+          if (this.projectInfo.dataset_id && !this.projectInfo.dataset) {
+            this.projectInfo.dataset = {
+              dataset_id: this.projectInfo.dataset_id,
+              dataset_name: `Dataset #${this.projectInfo.dataset_id}`
+            };
+          }
         }
 
         if (Array.isArray(detail.training_jobs)) {
           this.projectModels = detail.training_jobs;
         } else {
-            // Fallback
-             const all = await fetchTrainingJobs();
-             this.projectModels = all.filter(j => j.project_id == projectId);
+          // Fallback
+          const all = await fetchTrainingJobs();
+          this.projectModels = all.filter(j => j.project_id == projectId);
         }
         await this.fetchCompletedModelSizes();
         localStorage.setItem('currentProject', JSON.stringify(this.projectInfo));
@@ -533,7 +561,7 @@ export default {
       }
     },
     async fetchCompletedModelSizes() {
-        // Implementation kept same
+      // Implementation kept same
     },
     formatProgress(model) {
       const s = (model.status || '').toLowerCase();
@@ -546,19 +574,19 @@ export default {
       return '-';
     },
     formatCreateTime(dateStr) {
-       if(!dateStr) return '-';
-       return new Date(dateStr).toLocaleDateString();
+      if (!dateStr) return '-';
+      return new Date(dateStr).toLocaleDateString();
     },
     statusClass(status) {
       if (!status) return 'status-pending';
       const s = String(status).toLowerCase();
-      
+
       const map = {
-          completed: 'status-success',
-          running: 'status-running',
-          queued: 'status-warning',
-          failed: 'status-error',
-          error: 'status-error'
+        completed: 'status-success',
+        running: 'status-running',
+        queued: 'status-warning',
+        failed: 'status-error',
+        error: 'status-error'
       }
       return map[s] || 'status-pending';
     },
@@ -624,9 +652,16 @@ export default {
   gap: 0.25rem;
 }
 
-.back-link:hover { background: #f3f4f6; color: var(--text-main); }
+.back-link:hover {
+  background: #f3f4f6;
+  color: var(--text-main);
+}
 
-.pd-content { display: flex; flex-direction: column; gap: 0.25rem; }
+.pd-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
 
 .pd-eyebrow {
   text-transform: uppercase;
@@ -679,8 +714,17 @@ export default {
   text-align: center;
 }
 
-.pd-stat-label { font-size: 0.7rem; color: var(--text-secondary); }
-.pd-stat-value { font-size: 1.125rem; font-weight: 700; color: var(--color-primary); margin-top: 0.25rem; }
+.pd-stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.pd-stat-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--color-primary);
+  margin-top: 0.25rem;
+}
 
 .primary-action {
   border-radius: var(--radius-full) !important;
@@ -710,7 +754,7 @@ export default {
   padding: 0.4rem 1rem;
   background: rgba(255, 255, 255, 0.5);
   border-radius: var(--radius-full);
-  border: 1px solid rgba(0,0,0,0.05);
+  border: 1px solid rgba(0, 0, 0, 0.05);
 }
 
 .search-input ::v-deep .el-input__inner {
@@ -720,7 +764,10 @@ export default {
   height: auto;
 }
 
-.pd-summary { color: var(--text-secondary); font-size: 0.875rem; }
+.pd-summary {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
 
 .pd-list {
   flex: 1;
@@ -729,16 +776,19 @@ export default {
 }
 
 .state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    padding: 3rem;
-    color: var(--text-secondary);
-    gap: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3rem;
+  color: var(--text-secondary);
+  gap: 0.5rem;
 }
 
-.state i { font-size: 2rem; opacity: 0.5; }
+.state i {
+  font-size: 2rem;
+  opacity: 0.5;
+}
 
 /* Job Grid */
 .job-grid {
@@ -769,55 +819,111 @@ export default {
 }
 
 .job-status-indicator {
-    position: absolute;
-    top: 0;
-    left: 0;
-    bottom: 0;
-    width: 4px;
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 4px;
 }
 
-.job-status-indicator.status-success { background: #10b981; }
-.job-status-indicator.status-running { background: #3b82f6; }
-.job-status-indicator.status-warning { background: #f59e0b; }
-.job-status-indicator.status-error { background: #ef4444; }
-.job-status-indicator.status-pending { background: #cbd5e1; }
+.job-status-indicator.status-success {
+  background: #10b981;
+}
 
-.job-header { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem; }
-.job-title { font-weight: 700; color: var(--text-main); font-size: 1rem; }
-.job-sub { font-size: 0.75rem; color: var(--text-secondary); }
+.job-status-indicator.status-running {
+  background: #3b82f6;
+}
+
+.job-status-indicator.status-warning {
+  background: #f59e0b;
+}
+
+.job-status-indicator.status-error {
+  background: #ef4444;
+}
+
+.job-status-indicator.status-pending {
+  background: #cbd5e1;
+}
+
+.job-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.job-title {
+  font-weight: 700;
+  color: var(--text-main);
+  font-size: 1rem;
+}
+
+.job-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
 
 .job-meta-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.5rem;
-    font-size: 0.75rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.5rem;
+  font-size: 0.75rem;
 }
 
-.meta-item { display: flex; flex-direction: column; gap: 0.1rem; }
-.meta-item .label { color: var(--text-secondary); font-size: 0.7rem; }
-.meta-item .value { color: var(--text-main); font-weight: 500; }
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
 
-.status-text.status-success { color: #059669; }
-.status-text.status-running { color: #2563eb; }
-.status-text.status-error { color: #dc2626; }
+.meta-item .label {
+  color: var(--text-secondary);
+  font-size: 0.7rem;
+}
+
+.meta-item .value {
+  color: var(--text-main);
+  font-weight: 500;
+}
+
+.status-text.status-success {
+  color: #059669;
+}
+
+.status-text.status-running {
+  color: #2563eb;
+}
+
+.status-text.status-error {
+  color: #dc2626;
+}
 
 .job-actions {
-    margin-top: auto;
-    display: flex;
-    justify-content: flex-end;
-    align-items: center;
-    gap: 0.5rem;
-    border-top: 1px solid rgba(0,0,0,0.05);
-    padding-top: 0.75rem;
+  margin-top: auto;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.5rem;
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  padding-top: 0.75rem;
 }
 
 .more-btn {
-    padding: 0.25rem 0.5rem;
-    cursor: pointer;
-    color: var(--text-secondary);
+  padding: 0.25rem 0.5rem;
+  cursor: pointer;
+  color: var(--text-secondary);
 }
-.more-btn:hover { color: var(--text-main); }
-.danger-text { color: #ef4444; }
 
-.action-btn { font-weight: 600; }
+.more-btn:hover {
+  color: var(--text-main);
+}
+
+.danger-text {
+  color: #ef4444;
+}
+
+.action-btn {
+  font-weight: 600;
+}
 </style>
