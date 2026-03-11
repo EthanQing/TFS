@@ -21,20 +21,34 @@
         <span>{{ archError }}</span>
         <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
       </div>
-      <div v-else class="arch-groups">
-        <div v-for="group in architectureGroups" :key="group.family" class="arch-group">
-          <div class="group-title">{{ group.family }}</div>
-          <div class="group-list">
-            <button
-              v-for="arch in group.items"
-              :key="arch.arch_id || arch.model_variant"
-              :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
-              @click="onSelectArchitecture(arch)"
-            >
-              {{ formatVariant(arch.model_variant) }}
-            </button>
-          </div>
+      <div v-else-if="architectureGroups.length" class="arch-tabbed">
+        <!-- Family tabs -->
+        <div class="family-tabs">
+          <button
+            v-for="group in architectureGroups"
+            :key="group.family"
+            :class="['family-tab', { active: selectedFamily === group.family }]"
+            @click="onSelectFamily(group.family)"
+          >
+            {{ group.family }}
+            <span class="tab-count">{{ group.items.length }}</span>
+          </button>
         </div>
+        <!-- Variant chips for selected family -->
+        <div class="variant-chips">
+          <button
+            v-for="arch in selectedFamilyItems"
+            :key="arch.arch_id || arch.model_variant"
+            :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
+            @click="onSelectArchitecture(arch)"
+          >
+            {{ formatVariantShort(arch.model_variant) }}
+          </button>
+        </div>
+      </div>
+      <div v-else class="arch-state">
+        <i class="el-icon-info"></i>
+        <span>暂无可用架构</span>
       </div>
     </div>
 
@@ -164,6 +178,7 @@ export default {
       ref: referenceStore,
       selectedModel: null,
       selectedArchitectureId: null,
+      selectedFamily: null,
       isRotated: false,
       epochs: "100",
       imgSize: "640",
@@ -184,17 +199,47 @@ export default {
       uploadingPretrain: false,
       pretrainUploadError: "",
       modelMetrics: {
-        YOLO11n: { accuracy: 35.0, speedMs: 6.1 },
-        YOLO11s: { accuracy: 41.3, speedMs: 8.7 },
-        YOLO11m: { accuracy: 45.9, speedMs: 12.4 },
-        YOLO11l: { accuracy: 49.8, speedMs: 18.9 },
-        YOLO11x: { accuracy: 51.2, speedMs: 24.7 },
+        // YOLO26 series (COCO mAP@50-95 / T4 TensorRT10 FP16 ms)
+        YOLO26n: { accuracy: 40.5, speedMs: 1.7 },
+        YOLO26s: { accuracy: 48.0, speedMs: 2.9 },
+        YOLO26m: { accuracy: 52.5, speedMs: 4.7 },
+        YOLO26l: { accuracy: 54.6, speedMs: 7.0 },
+        YOLO26x: { accuracy: 56.9, speedMs: 11.8 },
+        // YOLO12 series (COCO mAP@50-95 / T4 TensorRT10 FP16 ms)
+        YOLO12n: { accuracy: 40.6, speedMs: 1.6 },
+        YOLO12s: { accuracy: 48.0, speedMs: 2.6 },
+        YOLO12m: { accuracy: 52.5, speedMs: 4.9 },
+        YOLO12l: { accuracy: 53.7, speedMs: 6.8 },
+        YOLO12x: { accuracy: 55.2, speedMs: 11.2 },
+        // YOLO11 series (COCO mAP@50-95 / T4 TensorRT10 FP16 ms)
+        YOLO11n: { accuracy: 39.5, speedMs: 1.5 },
+        YOLO11s: { accuracy: 47.0, speedMs: 2.5 },
+        YOLO11m: { accuracy: 51.5, speedMs: 4.7 },
+        YOLO11l: { accuracy: 53.4, speedMs: 6.2 },
+        YOLO11x: { accuracy: 54.7, speedMs: 11.3 },
+        // YOLOv10 series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
+        YOLOv10n: { accuracy: 38.5, speedMs: 1.8 },
+        YOLOv10s: { accuracy: 46.3, speedMs: 2.5 },
+        YOLOv10m: { accuracy: 51.1, speedMs: 4.7 },
+        YOLOv10l: { accuracy: 53.2, speedMs: 7.3 },
+        YOLOv10x: { accuracy: 54.4, speedMs: 10.7 },
+        YOLOv10b: { accuracy: 52.5, speedMs: 5.7 },
+        // YOLOv9 series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
+        YOLOv9s: { accuracy: 46.8, speedMs: 3.5 },
+        YOLOv9m: { accuracy: 51.4, speedMs: 6.4 },
+        YOLOv9c: { accuracy: 53.0, speedMs: 7.2 },
+        YOLOv9e: { accuracy: 55.6, speedMs: 15.8 },
+        YOLOv9t: { accuracy: 38.3, speedMs: 2.3 },
+        // YOLOv8 series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
         YOLOv8n: { accuracy: 37.3, speedMs: 7.2 },
-        YOLOv8s: { accuracy: 43.5, speedMs: 10.8 },
-        YOLOv8m: { accuracy: 47.6, speedMs: 15.9 },
-        YOLOv8l: { accuracy: 50.4, speedMs: 22.5 },
-        YOLOv8x: { accuracy: 52.1, speedMs: 29.8 },
-        // Add simple segmentation metrics key placeholders if needed
+        YOLOv8s: { accuracy: 44.9, speedMs: 10.8 },
+        YOLOv8m: { accuracy: 50.2, speedMs: 15.9 },
+        YOLOv8l: { accuracy: 52.9, speedMs: 22.5 },
+        YOLOv8x: { accuracy: 53.9, speedMs: 29.8 },
+        // RT-DETR series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
+        "RT-DETR-l": { accuracy: 53.0, speedMs: 8.7 },
+        "RT-DETR-x": { accuracy: 54.8, speedMs: 13.5 },
+        // YOLOv8-seg series
         "YOLOv8n-seg": { accuracy: 30.5, speedMs: 8.1 },
         "YOLOv8s-seg": { accuracy: 36.8, speedMs: 12.3 },
         "YOLOv8m-seg": { accuracy: 40.2, speedMs: 20.4 },
@@ -264,17 +309,29 @@ export default {
         (map[fam] = map[fam] || []).push(it);
       });
 
-      const sizeOrder = { n: 0, s: 1, m: 2, l: 3, x: 4 };
+      const sizeOrder = { t: 0, n: 1, s: 2, m: 3, b: 4, l: 5, x: 6, c: 7, e: 8 };
       const sizeRank = (variant = "") => {
-        const base = String(variant || "").replace(/-(cls|seg)$/i, "");
+        const base = String(variant || "").toLowerCase().replace(/-(cls|seg)$/i, "");
+        const rtDetr = base.match(/^rtdetr-([a-z0-9]+)$/);
+        if (rtDetr && rtDetr[1] in sizeOrder) return sizeOrder[rtDetr[1]];
         const letter = base.slice(-1).toLowerCase();
         return letter in sizeOrder ? sizeOrder[letter] : 999;
+      };
+
+      // Version-based family order
+      const familyOrder = ['YOLOv8', 'YOLOv9', 'YOLOv10', 'YOLO11', 'YOLO12', 'YOLO26', 'RT-DETR'];
+      const familyRank = (name) => {
+        const idx = familyOrder.indexOf(name);
+        return idx >= 0 ? idx : 999;
       };
 
       return Object.entries(map)
         .sort((a, b) => {
           if (a[0] === "Uncategorized") return 1;
           if (b[0] === "Uncategorized") return -1;
+          const ra = familyRank(a[0]);
+          const rb = familyRank(b[0]);
+          if (ra !== rb) return ra - rb;
           return String(a[0]).localeCompare(String(b[0]), "en");
         })
         .map(([family, arr]) => ({
@@ -287,6 +344,11 @@ export default {
           })
         }));
     },
+    selectedFamilyItems() {
+      if (!this.selectedFamily) return [];
+      const group = this.architectureGroups.find(g => g.family === this.selectedFamily);
+      return group ? group.items : [];
+    },
     metrics() {
       const def = { accuracy: 37.3, speedMs: 80.4 };
       if (!this.selectedModel) return def;
@@ -295,8 +357,10 @@ export default {
     },
     currentSeriesKey() {
       const m = this.formatVariantKey(this.selectedModel);
-      if (/^YOLO11/.test(m)) return "YOLO11";
-      if (/^YOLOv8/.test(m)) return "YOLOv8";
+      const prefixes = ["YOLO26", "YOLO12", "YOLO11", "YOLOv10", "YOLOv9", "YOLOv8", "RT-DETR"];
+      for (const prefix of prefixes) {
+        if (m.startsWith(prefix)) return prefix;
+      }
       return null;
     },
     seriesModelEntries() {
@@ -376,6 +440,7 @@ export default {
           // Clear current selection and re-select default
           this.selectedModel = null;
           this.selectedArchitectureId = null;
+          this.selectedFamily = null;
           this.ensureDefaultModel();
       }
     },
@@ -451,9 +516,16 @@ export default {
       this.emitConfigChange();
     },
     ensureDefaultModel() {
+      // Ensure selectedFamily is set
+      if (!this.selectedFamily && this.architectureGroups.length) {
+        this.selectedFamily = this.architectureGroups[0].family;
+      }
       if (this.selectedModel) return;
       const first = this.architectureGroups?.[0]?.items?.[0];
       if (first) this.onSelectArchitecture(first);
+    },
+    onSelectFamily(family) {
+      this.selectedFamily = family;
     },
     onSelectArchitecture(arch) {
       this.selectedArchitectureId = arch?.arch_id || arch?.architecture_id || arch?.id || null;
@@ -463,9 +535,38 @@ export default {
       const s = String(v || "").trim();
       if (!s) return "";
       return s
+        .replace(/^rtdetr-/i, "RT-DETR-")
         .replace(/^ppyoloe/i, "PP-YOLOE")
         .replace(/^picodet/i, "PicoDet")
+        .replace(/^yolov8/i, "YOLOv8")
+        .replace(/^yolov9/i, "YOLOv9")
+        .replace(/^yolov10/i, "YOLOv10")
+        .replace(/^yolo11/i, "YOLO11")
+        .replace(/^yolo12/i, "YOLO12")
+        .replace(/^yolo26/i, "YOLO26")
         .replace(/^yolo/i, "YOLO");
+    },
+    formatVariantShort(v) {
+      const full = this.formatVariantKey(v);
+      const family = this.selectedFamily || '';
+      const sizeNames = {
+        't': 'Tiny', 'n': 'Nano', 's': 'Small', 'm': 'Medium',
+        'b': 'Base', 'l': 'Large', 'x': 'Extra', 'c': 'Compact', 'e': 'Extreme'
+      };
+      if (full.startsWith(family)) {
+        const suffix = full.slice(family.length);
+        // e.g. suffix = "n", "s", "m", "l", "x", "-seg", "n-seg"
+        const baseSuffix = suffix.replace(/-(seg|cls)$/i, '');
+        const taskSuffix = suffix.includes('-seg') ? ' Seg' : suffix.includes('-cls') ? ' Cls' : '';
+        const sizeName = sizeNames[baseSuffix.toLowerCase()];
+        if (sizeName) return sizeName + taskSuffix;
+        // For RT-DETR variants like "-l", "-x"
+        if (baseSuffix.startsWith('-') && sizeNames[baseSuffix.slice(1).toLowerCase()]) {
+          return sizeNames[baseSuffix.slice(1).toLowerCase()] + taskSuffix;
+        }
+        return suffix || full;
+      }
+      return full;
     },
     formatVariant(v) {
       const k = this.formatVariantKey(v);
@@ -573,7 +674,7 @@ export default {
 .arch-section {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .section-title {
@@ -594,53 +695,101 @@ export default {
   color: #d64545;
 }
 
-.arch-groups {
+.arch-tabbed {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
 }
 
-.arch-group {
+/* Family tab bar */
+.family-tabs {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.family-tabs::-webkit-scrollbar {
+  display: none;
 }
 
-.group-title {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 1px;
+.family-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 14px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 13px;
+  font-weight: 500;
   color: #6a7482;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
-.group-list {
+.family-tab:hover {
+  background: #f0f2f8;
+  color: #3e4a5b;
+}
+
+.family-tab.active {
+  background: linear-gradient(135deg, #eef0ff 0%, #e4e8ff 100%);
+  border-color: #c5cdff;
+  color: #2b3a67;
+  font-weight: 600;
+}
+
+.tab-count {
+  font-size: 10px;
+  background: #e4e7ee;
+  color: #6a7482;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-weight: 600;
+  line-height: 1.4;
+}
+
+.family-tab.active .tab-count {
+  background: rgba(79, 99, 199, 0.2);
+  color: #3b4fb8;
+}
+
+/* Variant chips row */
+.variant-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
 }
 
 .arch-chip {
   border: 1px solid #e4e7ee;
   background: #f6f7fb;
-  padding: 8px 14px;
+  padding: 8px 18px;
   border-radius: 999px;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 500;
   color: #3e4a5b;
   cursor: pointer;
   transition: all 0.2s ease;
+  letter-spacing: 0.5px;
 }
 
 .arch-chip:hover {
   border-color: #9bb0ff;
   color: #2b3a67;
+  background: #eef1ff;
 }
 
 .arch-chip.active {
-  background: rgba(79, 99, 199, 0.18);
+  background: linear-gradient(135deg, rgba(79, 99, 199, 0.18), rgba(79, 99, 199, 0.12));
   border-color: #4f63c7;
   color: #2b3a67;
-  box-shadow: 0 6px 14px rgba(79, 99, 199, 0.2);
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(79, 99, 199, 0.18);
 }
 
 .metric-grid {

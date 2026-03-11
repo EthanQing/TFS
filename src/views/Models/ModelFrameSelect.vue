@@ -21,11 +21,11 @@
             <div class="left-panel section-card">
                 <div class="panel-header">
                     <h4><i class="el-icon-box"></i> 可用框架</h4>
-                    <span class="badge">{{ frameworks.length }}</span>
+                    <span class="badge">{{ visibleFrameworks.length }}</span>
                 </div>
                 <div class="frame-grid">
                     <div
-                        v-for="frame in frameworks"
+                        v-for="frame in visibleFrameworks"
                         :key="frame.id"
                         class="frame-card"
                         :class="{ active: frame.id === selectedFrameworkId }"
@@ -349,8 +349,11 @@ export default {
         };
     },
     computed: {
+        visibleFrameworks() {
+            return this.frameworks.filter((frame) => frame.id !== 'paddlepaddle');
+        },
         selectedFrame() {
-            return this.frameworks.find(f => f.id === this.selectedFrameworkId) || null;
+            return this.visibleFrameworks.find(f => f.id === this.selectedFrameworkId) || null;
         },
         availablePrecisions() {
             if (!this.selectedFrame) return ['FP32'];

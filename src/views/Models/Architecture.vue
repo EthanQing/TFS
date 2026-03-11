@@ -95,22 +95,37 @@ export default {
         const fam = it.model_family || 'Uncategorized';
         (map[fam] = map[fam] || []).push(it);
       });
-      const sizeOrder = { n:0, s:1, m:2, l:3, x:4 };
+      const sizeOrder = { t:0, n:1, s:2, m:3, b:4, l:5, x:6, c:7, e:8 };
       const taskOrder = (variant='') => {
         if (variant.endsWith('-seg')) return 2;
         if (variant.endsWith('-cls')) return 1;
         return 0;
       };
       const sizeRank = (variant='') => {
-        const base = variant.replace(/-(cls|seg)$/,'');
+        const base = String(variant || '').toLowerCase().replace(/-(cls|seg)$/,'');
+        const rtDetr = base.match(/^rtdetr-([a-z0-9]+)$/);
+        if (rtDetr && rtDetr[1] in sizeOrder) return sizeOrder[rtDetr[1]];
         const letter = base.slice(-1);
         return letter in sizeOrder ? sizeOrder[letter] : 999;
       };
+      // Version-based family order
+      const familyOrder = ['YOLOv8', 'YOLOv9', 'YOLOv10', 'YOLO11', 'YOLO12', 'YOLO26', 'RT-DETR'];
+      const familyRank = (name) => {
+        const idx = familyOrder.indexOf(name);
+        return idx >= 0 ? idx : 999;
+      };
       return Object.entries(map)
-        .sort((a,b)=> a[0] === 'Uncategorized' ? 1 : b[0] === 'Uncategorized' ? -1 : a[0].localeCompare(b[0]))
+        .sort((a, b) => {
+          if (a[0] === 'Uncategorized') return 1;
+          if (b[0] === 'Uncategorized') return -1;
+          const ra = familyRank(a[0]);
+          const rb = familyRank(b[0]);
+          if (ra !== rb) return ra - rb;
+          return a[0].localeCompare(b[0]);
+        })
         .map(([family, items]) => ({
           family,
-          items: items.slice().sort((a,b)=> {
+          items: items.slice().sort((a, b) => {
             const ta = taskOrder(a.model_variant);
             const tb = taskOrder(b.model_variant);
             if (ta !== tb) return ta - tb;

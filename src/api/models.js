@@ -1,5 +1,7 @@
 import { API_BASE } from '@/utils/request';
 
+const HIDDEN_ARCH_ENGINES = new Set(["paddle-det"]);
+
 async function safeJson(res) {
     try {
         return await res.json();
@@ -23,6 +25,16 @@ function pickPageItems(data) {
     return [];
 }
 
+function normalizeEngine(v) {
+    return String(v || "").trim().toLowerCase();
+}
+
+function isArchitectureVisible(it) {
+    const engine = normalizeEngine(it?.engine);
+    if (!engine) return true;
+    return !HIDDEN_ARCH_ENGINES.has(engine);
+}
+
 // FetchArchitectureDetail 获取架构信息接口
 export async function FetchArchitectureDetail() {
     try {
@@ -33,7 +45,7 @@ export async function FetchArchitectureDetail() {
             throw new Error(msg);
         }
 
-        const list = Array.isArray(data) ? data : [];
+        const list = (Array.isArray(data) ? data : []).filter(isArchitectureVisible);
         // 兼容字段：旧前端用 model_family/model_variant/arch_id
         return list.map((it) => ({
             ...it,
