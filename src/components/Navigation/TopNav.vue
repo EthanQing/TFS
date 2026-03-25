@@ -52,6 +52,26 @@
     </nav>
     
     <div class="sidebar-footer">
+        <div
+          class="monitor-entry"
+          :class="{ active: isPerformanceMonitorActive }"
+          @mouseenter="handleMonitorEnter"
+          @mouseleave="handleMonitorLeave"
+        >
+            <button type="button" class="monitor-trigger" @click="navigate('/performance-monitor')">
+                <div class="monitor-trigger-main">
+                    <i class="el-icon-data-analysis nav-icon monitor-icon"></i>
+                    <span>性能监控</span>
+                </div>
+                <i class="el-icon-arrow-right monitor-arrow"></i>
+            </button>
+            <PerformanceHoverPanel
+              :visible="monitorHovered"
+              :metric="monitorMetric"
+              :loading="monitorLoading"
+              :error="monitorError"
+            />
+        </div>
         <div class="user-profile">
             <div class="avatar"><i class="el-icon-user-solid"></i></div>
             <div class="user-info">
@@ -64,8 +84,29 @@
 </template>
 
 <script>
+import PerformanceHoverPanel from "@/components/Performance/PerformanceHoverPanel.vue";
+import { fetchSystemMetricsSummary } from "@/api/systemMetrics";
+import {
+  DEFAULT_MONITOR_NODE_ID,
+  DEFAULT_MONITOR_NODE_TYPE,
+  DEFAULT_SUMMARY_REFRESH_MS,
+  normalizeSystemMetric,
+} from "@/utils/systemMetrics";
+
 export default {
   name: "TopNav",
+  components: {
+    PerformanceHoverPanel,
+  },
+  data() {
+    return {
+      monitorHovered: false,
+      monitorLoading: false,
+      monitorError: "",
+      monitorMetric: null,
+      monitorTimer: null,
+    };
+  },
   computed: {
     isDataActive() {
       const p = this.$route.path;
@@ -82,12 +123,56 @@ export default {
       const p = this.$route.path;
       return p === "/deployment" || p.startsWith("/deployment");
     },
+    isPerformanceMonitorActive() {
+      const p = this.$route.path;
+      return p === "/performance-monitor" || p.startsWith("/performance-monitor");
+    },
+  },
+  beforeDestroy() {
+    this.stopMonitorPolling();
   },
   methods: {
     navigate(path) {
       if (this.$route.path !== path) {
         this.$router.push(path);
       }
+    },
+    handleMonitorEnter() {
+      this.monitorHovered = true;
+      this.startMonitorPolling();
+    },
+    handleMonitorLeave() {
+      this.monitorHovered = false;
+      this.stopMonitorPolling();
+    },
+    async refreshMonitorMetric({ silent = false } = {}) {
+      if (!silent) this.monitorLoading = true;
+      try {
+        const data = await fetchSystemMetricsSummary({
+          nodeId: DEFAULT_MONITOR_NODE_ID,
+          nodeType: DEFAULT_MONITOR_NODE_TYPE,
+        });
+        this.monitorMetric = normalizeSystemMetric(data);
+        this.monitorError = "";
+      } catch (error) {
+        this.monitorError = error?.message || "获取性能数据失败";
+      } finally {
+        if (!silent) this.monitorLoading = false;
+      }
+    },
+    startMonitorPolling() {
+      if (this.monitorTimer) return;
+      this.refreshMonitorMetric({ silent: !!this.monitorMetric });
+      this.monitorTimer = window.setInterval(() => {
+        this.refreshMonitorMetric({ silent: !!this.monitorMetric });
+      }, DEFAULT_SUMMARY_REFRESH_MS);
+    },
+    stopMonitorPolling() {
+      if (this.monitorTimer) {
+        clearInterval(this.monitorTimer);
+        this.monitorTimer = null;
+      }
+      this.monitorLoading = false;
     },
   },
 };
@@ -202,6 +287,57 @@ export default {
 .sidebar-footer {
     padding: 20px 24px;
     border-top: 1px solid var(--border-light);
+}
+
+.monitor-entry {
+    position: relative;
+    margin-bottom: 16px;
+}
+
+.monitor-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 14px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-md);
+    background: linear-gradient(135deg, rgba(241, 245, 249, 0.95) 0%, rgba(248, 250, 252, 1) 100%);
+    color: var(--text-secondary);
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.monitor-trigger-main {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.monitor-icon {
+    color: #7c3aed;
+}
+
+.monitor-arrow {
+    font-size: 0.9rem;
+    color: var(--text-light);
+}
+
+.monitor-entry:hover .monitor-trigger,
+.monitor-entry.active .monitor-trigger {
+    border-color: rgba(37, 99, 235, 0.15);
+    box-shadow: var(--shadow-md);
+    background: linear-gradient(135deg, rgba(239, 246, 255, 0.95) 0%, rgba(255, 255, 255, 1) 100%);
+    color: var(--text-main);
+}
+
+.monitor-entry.active .monitor-icon,
+.monitor-entry.active .monitor-arrow,
+.monitor-entry:hover .monitor-arrow {
+    color: var(--color-primary);
 }
 
 .user-profile {

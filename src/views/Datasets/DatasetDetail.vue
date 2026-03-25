@@ -85,7 +85,7 @@
           </div>
 
           <!-- Inline Label Mapping Panel -->
-          <!-- <div
+          <div
             v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
             class="preset-toolbar"
           >
@@ -119,7 +119,7 @@
               <span>分类: {{ presetClassificationCount }}</span>
               <span>更新时间: {{ presetUpdatedAtText }}</span>
             </div>
-          </div> -->
+          </div>
           <LabelMappingPanel
             ref="labelMappingPanel"
             v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"

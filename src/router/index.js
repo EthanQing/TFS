@@ -36,6 +36,7 @@ const DataConversion = () => import('@/views/Datasets/components/DataConversion.
 const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
 const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
+const PerformanceMonitor = () => import('@/views/Monitoring/PerformanceMonitor.vue')
 
 export default new VueRouter({
     routes: [
@@ -99,6 +100,10 @@ export default new VueRouter({
         {
             path: '/modelformatconversion',
             component: FormatConversion
+        },
+        {
+            path: '/performance-monitor',
+            component: PerformanceMonitor
         },
 
         {
