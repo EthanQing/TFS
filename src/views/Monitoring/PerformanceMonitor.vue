@@ -123,25 +123,16 @@
 
 <script>
 import BaseChart from "@/components/Chart/BaseChart.vue";
-import {
-  fetchSystemMetricsHistory,
-  fetchSystemMetricsSummary,
-} from "@/api/systemMetrics";
+import { metricsStore, subscribe, unsubscribe, refresh } from "@/store/metricsStore";
 import {
   DEFAULT_HISTORY_MINUTES,
   DEFAULT_HISTORY_STEP_SECONDS,
-  DEFAULT_HISTORY_SYNC_MS,
   DEFAULT_MONITOR_NODE_ID,
   DEFAULT_MONITOR_NODE_TYPE,
-  DEFAULT_SUMMARY_REFRESH_MS,
   buildResourceItems,
   buildSystemMetricTrendOptions,
   formatMetricDateTime,
   getProgressValue,
-  mergeHistoryPoints,
-  normalizeSystemMetric,
-  normalizeSystemMetricHistory,
-  trimHistoryPoints,
 } from "@/utils/systemMetrics";
 
 export default {
@@ -155,17 +146,27 @@ export default {
       nodeType: DEFAULT_MONITOR_NODE_TYPE,
       historyMinutes: DEFAULT_HISTORY_MINUTES,
       stepSeconds: DEFAULT_HISTORY_STEP_SECONDS,
-      initialLoading: true,
-      refreshing: false,
-      historyLoading: false,
-      error: "",
-      summary: null,
-      historyPoints: [],
-      summaryTimer: null,
-      historyTimer: null,
     };
   },
   computed: {
+    initialLoading() {
+      return metricsStore.initialLoading;
+    },
+    refreshing() {
+      return metricsStore.refreshing;
+    },
+    historyLoading() {
+      return metricsStore.historyLoading;
+    },
+    error() {
+      return metricsStore.error;
+    },
+    summary() {
+      return metricsStore.summary;
+    },
+    historyPoints() {
+      return metricsStore.historyPoints;
+    },
     hasAnyData() {
       return !!this.summary || this.historyPoints.length > 0;
     },
@@ -182,107 +183,17 @@ export default {
     },
   },
   created() {
-    this.bootstrap();
+    subscribe();
   },
   beforeDestroy() {
-    this.stopTimers();
+    unsubscribe();
   },
   methods: {
     progressValue(value) {
       return getProgressValue(value);
     },
-    trimPoints(points) {
-      return trimHistoryPoints(points, this.historyMinutes * 60 * 1000);
-    },
-    async bootstrap() {
-      this.initialLoading = true;
-      const [summaryResult, historyResult] = await Promise.allSettled([
-        this.loadSummary({ silent: true, appendToHistory: false }),
-        this.loadHistory({ silent: true }),
-      ]);
-
-      if (summaryResult.status === "rejected" && historyResult.status === "rejected") {
-        this.error = summaryResult.reason?.message || historyResult.reason?.message || "获取性能监控数据失败";
-      }
-
-      this.initialLoading = false;
-      this.startTimers();
-    },
-    async loadSummary({ silent = false, appendToHistory = true } = {}) {
-      if (!silent) this.refreshing = true;
-      try {
-        const data = await fetchSystemMetricsSummary({
-          nodeId: this.nodeId,
-          nodeType: this.nodeType,
-        });
-        const metric = normalizeSystemMetric(data);
-        this.summary = metric;
-        this.error = "";
-        if (appendToHistory) {
-          this.historyPoints = this.trimPoints(
-            mergeHistoryPoints(this.historyPoints, [metric])
-          );
-        }
-        return metric;
-      } catch (error) {
-        const message = error?.message || "获取性能概览失败";
-        if (!this.summary || !silent) this.error = message;
-        throw error;
-      } finally {
-        if (!silent) this.refreshing = false;
-      }
-    },
-    async loadHistory({ silent = false } = {}) {
-      if (!silent) this.historyLoading = true;
-      try {
-        const raw = await fetchSystemMetricsHistory({
-          minutes: this.historyMinutes,
-          node: this.nodeId,
-          nodeType: this.nodeType,
-          stepSeconds: this.stepSeconds,
-        });
-        const history = normalizeSystemMetricHistory(raw);
-        this.historyPoints = this.trimPoints(
-          mergeHistoryPoints(history.points, this.summary ? [this.summary] : [])
-        );
-        if (!this.summary && this.historyPoints.length) {
-          this.summary = this.historyPoints[this.historyPoints.length - 1];
-        }
-        return this.historyPoints;
-      } catch (error) {
-        const message = error?.message || "获取趋势数据失败";
-        if (!this.historyPoints.length || !silent) {
-          this.error = this.summary ? (this.error || message) : message;
-        }
-        throw error;
-      } finally {
-        if (!silent) this.historyLoading = false;
-      }
-    },
-    startTimers() {
-      this.stopTimers();
-      this.summaryTimer = window.setInterval(() => {
-        this.loadSummary({ silent: true, appendToHistory: true }).catch(() => {});
-      }, DEFAULT_SUMMARY_REFRESH_MS);
-      this.historyTimer = window.setInterval(() => {
-        this.loadHistory({ silent: true }).catch(() => {});
-      }, DEFAULT_HISTORY_SYNC_MS);
-    },
-    stopTimers() {
-      if (this.summaryTimer) {
-        clearInterval(this.summaryTimer);
-        this.summaryTimer = null;
-      }
-      if (this.historyTimer) {
-        clearInterval(this.historyTimer);
-        this.historyTimer = null;
-      }
-    },
     async handleManualRefresh() {
-      await Promise.allSettled([
-        this.loadSummary({ silent: false, appendToHistory: true }),
-        this.loadHistory({ silent: false }),
-      ]);
+      await refresh();
     },
   },
 };

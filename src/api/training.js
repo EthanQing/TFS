@@ -232,7 +232,7 @@ export async function createTrainingJob(trainParameters) {
 
     const params = {
       epochs: Number(tp.epochs ?? 100) || 100,
-      batch_size: Number(tp.batch_size ?? 16) || 16,
+      batch_size: tp.batch_size != null ? Number(tp.batch_size) : 16,
       image_size: Number(tp.image_size ?? tp.img_size ?? tp.imgsz ?? 640) || 640,
       learning_rate: Number(tp.learning_rate ?? 0.01) || 0.01,
       patience: Number(tp.patience ?? 50) || 50,

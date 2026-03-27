@@ -85,13 +85,7 @@
 
 <script>
 import PerformanceHoverPanel from "@/components/Performance/PerformanceHoverPanel.vue";
-import { fetchSystemMetricsSummary } from "@/api/systemMetrics";
-import {
-  DEFAULT_MONITOR_NODE_ID,
-  DEFAULT_MONITOR_NODE_TYPE,
-  DEFAULT_SUMMARY_REFRESH_MS,
-  normalizeSystemMetric,
-} from "@/utils/systemMetrics";
+import { metricsStore, subscribe, unsubscribe } from "@/store/metricsStore";
 
 export default {
   name: "TopNav",
@@ -101,13 +95,19 @@ export default {
   data() {
     return {
       monitorHovered: false,
-      monitorLoading: false,
-      monitorError: "",
-      monitorMetric: null,
-      monitorTimer: null,
+      _subscribed: false,
     };
   },
   computed: {
+    monitorMetric() {
+      return metricsStore.summary;
+    },
+    monitorLoading() {
+      return metricsStore.initialLoading;
+    },
+    monitorError() {
+      return metricsStore.error;
+    },
     isDataActive() {
       const p = this.$route.path;
       return p === "/datasets" || p.startsWith("/datadetail") || p.includes("/imagespart");
@@ -129,7 +129,7 @@ export default {
     },
   },
   beforeDestroy() {
-    this.stopMonitorPolling();
+    this.handleMonitorLeave();
   },
   methods: {
     navigate(path) {
@@ -139,40 +139,17 @@ export default {
     },
     handleMonitorEnter() {
       this.monitorHovered = true;
-      this.startMonitorPolling();
+      if (!this._subscribed) {
+        this._subscribed = true;
+        subscribe();
+      }
     },
     handleMonitorLeave() {
       this.monitorHovered = false;
-      this.stopMonitorPolling();
-    },
-    async refreshMonitorMetric({ silent = false } = {}) {
-      if (!silent) this.monitorLoading = true;
-      try {
-        const data = await fetchSystemMetricsSummary({
-          nodeId: DEFAULT_MONITOR_NODE_ID,
-          nodeType: DEFAULT_MONITOR_NODE_TYPE,
-        });
-        this.monitorMetric = normalizeSystemMetric(data);
-        this.monitorError = "";
-      } catch (error) {
-        this.monitorError = error?.message || "获取性能数据失败";
-      } finally {
-        if (!silent) this.monitorLoading = false;
+      if (this._subscribed) {
+        this._subscribed = false;
+        unsubscribe();
       }
-    },
-    startMonitorPolling() {
-      if (this.monitorTimer) return;
-      this.refreshMonitorMetric({ silent: !!this.monitorMetric });
-      this.monitorTimer = window.setInterval(() => {
-        this.refreshMonitorMetric({ silent: !!this.monitorMetric });
-      }, DEFAULT_SUMMARY_REFRESH_MS);
-    },
-    stopMonitorPolling() {
-      if (this.monitorTimer) {
-        clearInterval(this.monitorTimer);
-        this.monitorTimer = null;
-      }
-      this.monitorLoading = false;
     },
   },
 };

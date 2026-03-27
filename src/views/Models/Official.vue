@@ -135,15 +135,21 @@
           <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
         </div>
         <div class="field-row">
-          <div class="field-label">设备</div>
-          <div class="device-toggle">
-            <button @click="selectedDevice = 'Auto'" :class="{ active: selectedDevice === 'Auto' }">Auto</button>
-            <button @click="selectedDevice = 'GPU'" :class="{ active: selectedDevice === 'GPU' }">GPU</button>
-            <button @click="selectedDevice = 'CPU'" :class="{ active: selectedDevice === 'CPU' }">CPU</button>
+          <div class="field-label-row">
+            <span class="field-label">设备</span>
+            <el-tooltip effect="dark" placement="top" content="默认使用单卡 GPU 0。多卡请用逗号分隔（如 0,1）。如需仅使用 CPU，请输入 cpu。">
+              <i class="el-icon-question hint-icon"></i>
+            </el-tooltip>
           </div>
+          <el-input v-model="selectedDevice" size="small" placeholder="例: 0 或 0,1 或 cpu" class="field-input"></el-input>
         </div>
         <div class="field-row">
-          <div class="field-label">批次大小</div>
+          <div class="field-label-row">
+            <span class="field-label">批次大小</span>
+            <el-tooltip effect="dark" placement="top" content="设置为 -1 可开启批次大小自适应（仅单卡 Ultralytics 训练支持）">
+              <i class="el-icon-question hint-icon"></i>
+            </el-tooltip>
+          </div>
           <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
         </div>
         <div class="field-row">
@@ -184,7 +190,7 @@ export default {
       imgSize: "640",
       patience: "100",
       learningRate: "0.01",
-      selectedDevice: "Auto",
+      selectedDevice: "0",
       batchSize: "16",
       options: [
         { value: "Auto", label: "Auto" },
@@ -584,7 +590,7 @@ export default {
         img_size: parseInt(this.imgSize, 10) || 640,
         patience: parseInt(this.patience, 10) || 100,
         learning_rate: parseFloat(this.learningRate) || 0.01,
-        batch_size: parseInt(this.batchSize, 10) || 16,
+        batch_size: this.batchSize != null && String(this.batchSize).trim() !== '' ? parseInt(this.batchSize, 10) : 16,
         device: this.getDeviceValue(),
         optimizer: String(this.optimizer || "auto").toLowerCase(),
         use_pretrained: this.pretrainedEnabled,
@@ -597,14 +603,8 @@ export default {
       this.$emit("config-changed", configData);
     },
     getDeviceValue() {
-      switch (this.selectedDevice) {
-        case "GPU":
-          return "0";
-        case "CPU":
-          return "cpu";
-        default:
-          return "0";
-      }
+      const val = String(this.selectedDevice || "").trim();
+      return val || "0";
     }
   },
   mounted() {
@@ -993,5 +993,24 @@ export default {
   .advanced-grid {
     grid-template-columns: 1fr;
   }
+}
+
+/* Field label with tooltip */
+.field-label-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* Hint icon (?) */
+.hint-icon {
+  font-size: 14px;
+  color: #9ca3af;
+  cursor: help;
+  transition: color 0.2s ease;
+}
+
+.hint-icon:hover {
+  color: #4f63c7;
 }
 </style>

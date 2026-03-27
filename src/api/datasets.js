@@ -95,6 +95,22 @@ function encodePathSegments(p) {
     return s.split('/').map(seg => encodeURIComponent(seg)).join('/');
 }
 
+export function buildDatasetThumbnailApiUrl(datasetId, relPath, { versionId = null, size = null } = {}) {
+    if (!datasetId || !relPath) return '';
+    const cleanRelPath = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!cleanRelPath) return '';
+    const params = new URLSearchParams();
+    if (versionId !== null && versionId !== undefined && versionId !== '') {
+        params.set('version_id', String(versionId));
+    }
+    if (size !== null && size !== undefined && size !== '') {
+        params.set('size', String(size));
+    }
+    const qs = params.toString();
+    const base = `/api/v2/thumbnails/${encodeURIComponent(datasetId)}/${encodePathSegments(cleanRelPath)}`;
+    return toAbsUrl(qs ? `${base}?${qs}` : base);
+}
+
 function normalizeDatasetToken(storagePathOrName) {
     let token = String(storagePathOrName || '').trim().replace(/\\/g, '/');
     const marker = '/static/datasets/';
@@ -581,7 +597,7 @@ export async function FetchDatasetPreviewImage(datasetId) {
 // }
 
 // FetchDatasetDetail 获取数据集详细信息接口（组合：/detail + /files，适配旧 UI 需要的 images/classes 字段）
-export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionId = null } = {}) {
+export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionId = null, includeFiles = true } = {}) {
     try {
         const response = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/detail`);
         // console.log('Fetching dataset detail from:', `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/detail`);
@@ -593,32 +609,32 @@ export async function FetchDatasetDetail(datasetId, { filesLimit = 500, versionI
         const ds = detail?.dataset || {};
         const stats = detail?.statistics || null;
 
-        // 拉一批图片用于详情页展示（最多 500，后端限制 page_size<=500）
-        const pageSize = Math.max(1, Math.min(Number(filesLimit) || 200, 500));
-        let filesPage = null;
-        try {
-            filesPage = await FetchDatasetFiles(datasetId, { page: 1, pageSize, kind: 'image', versionId });
-        } catch (_) {
-            filesPage = { items: [], meta: { page: 1, page_size: pageSize, total: 0 } };
+        let images = [];
+        if (includeFiles) {
+            // 拉一批图片用于详情页展示（最多 500，后端限制 page_size<=500）
+            const pageSize = Math.max(1, Math.min(Number(filesLimit) || 200, 500));
+            let filesPage = null;
+            try {
+                filesPage = await FetchDatasetFiles(datasetId, { page: 1, pageSize, kind: 'image', versionId });
+            } catch (_) {
+                filesPage = { items: [], meta: { page: 1, page_size: pageSize, total: 0 } };
+            }
+
+            const fileItems = (filesPage && Array.isArray(filesPage.items) && filesPage.items) || [];
+            images = fileItems.map(f => {
+                const relPath = String(f?.path || '').replace(/\\/g, '/');
+                const url = encodeURI(toAbsUrl(f?.url));
+                return {
+                    // 详情页会用 image_name 做去重/展示；用相对路径更稳定（避免同名文件被错误去重）
+                    image_name: relPath || basename(f?.path),
+                    image_url: url,
+                    thumbnail_url: buildDatasetThumbnailApiUrl(datasetId, relPath, { versionId }),
+                    image_path: relPath,
+                    objects_count: 0,
+                    classes_in_image: [],
+                };
+            });
         }
-
-        const fileItems = (filesPage && Array.isArray(filesPage.items) && filesPage.items) || [];
-
-        const images = fileItems.map(f => {
-            const relPath = String(f?.path || '').replace(/\\/g, '/');
-            const url = encodeURI(toAbsUrl(f?.url));
-            const thumbPath = `/api/v2/thumbnails/${encodeURIComponent(datasetId)}/${encodePathSegments(relPath)}`;
-            const thumbnailUrl = toAbsUrl(versionId ? `${thumbPath}?version_id=${encodeURIComponent(versionId)}` : thumbPath);
-            return {
-                // 详情页会用 image_name 做去重/展示；用相对路径更稳定（避免同名文件被错误去重）
-                image_name: relPath || basename(f?.path),
-                image_url: url,
-                thumbnail_url: thumbnailUrl,
-                image_path: relPath,
-                objects_count: 0,
-                classes_in_image: [],
-            };
-        });
 
         // const datasetToken = ds?.storage_path || ds?.name || '';
         // const yamlNames = await fetchDatasetYamlNames(datasetToken, false);
@@ -676,12 +692,46 @@ export async function FetchDatasetView(datasetId, { versionId = null, classId = 
         items: (data.items || []).map(item => ({
             ...item,
             image_name: item.name,
+            image_path: item.name,
             image_url: toAbsUrl(item.url),
             thumbnail_url: toAbsUrl(item.thumbnail_url),
-            objects_count: item.classes?.length || 0,
+            objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
             classes_in_image: item.classes || [],
         })),
-        meta: data.meta || { page: 1, page_size: 50, total_items: 0, total_pages: 0 },
+        meta: {
+            page: Number(data?.meta?.page || 1) || 1,
+            page_size: Number(data?.meta?.page_size || pageSize || 50) || 50,
+            total_items: Number(data?.meta?.total_items || 0) || 0,
+            total_pages: Number(data?.meta?.total_pages || 0) || 0,
+            thumbnail_status: data?.meta?.thumbnail_status || null,
+            thumbnail_progress: data?.meta?.thumbnail_progress ?? null,
+            view_index_status: data?.meta?.view_index_status || null,
+        },
+    };
+}
+
+export async function fetchDatasetImageAnnotations(datasetId, imagePath, { versionId = null } = {}) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    if (!imagePath) throw new Error('缺少 imagePath');
+
+    const params = new URLSearchParams();
+    params.set('image_path', String(imagePath));
+    if (versionId !== null && versionId !== undefined && versionId !== '') {
+        params.set('version_id', String(versionId));
+    }
+
+    const url = `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/image-annotations?${params.toString()}`;
+    const response = await fetch(url);
+    const data = await safeJson(response);
+    if (!response.ok) throw new Error(pickErrorMessage(data, response));
+
+    return {
+        ...data,
+        image_url: toAbsUrl(data?.image_url || ''),
+        boxes: Array.isArray(data?.boxes) ? data.boxes : [],
+        object_count: Number(data?.object_count || 0) || 0,
+        width: Number(data?.width || 0) || 0,
+        height: Number(data?.height || 0) || 0,
     };
 }
 

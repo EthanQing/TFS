@@ -134,11 +134,14 @@
 
         <div v-if="isDatasetEmpty" class="empty-state">
           <div class="empty-content">
-            <div class="empty-title">数据集为空</div>
-            <div class="empty-desc">上传 ZIP 文件以初始化此数据集。</div>
+            <div class="empty-title">{{ emptyStateTitle }}</div>
+            <div class="empty-desc">{{ emptyStateDesc }}</div>
             <div class="empty-tips">
               <span class="tip-item"><i class="el-icon-check"></i> 仅支持 .zip 文件</span>
               <span class="tip-item"><i class="el-icon-check"></i> 请保持文件夹结构</span>
+            </div>
+            <div v-if="zipUploading" class="empty-processing-tip">
+              {{ emptyProcessingTip }}
             </div>
           </div>
           <div class="empty-action">
@@ -150,6 +153,14 @@
               @upload-success="handleUploadSuccess"
               @upload-fail="handleUploadFail"
             ></UploadZip>
+            <el-button
+              v-if="zipUploading"
+              type="text"
+              class="upload-reset-btn"
+              @click="resetRecoveredZipUploadState"
+            >
+              清除当前处理状态
+            </el-button>
           </div>
         </div>
 
@@ -229,7 +240,10 @@
 
           <main class="images-panel">
             <div class="panel-head">
-              <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
+              <div>
+                <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
+                <div v-if="viewStatusText" class="panel-subtitle">{{ viewStatusText }}</div>
+              </div>
               <div v-if="showPanelActions" class="panel-actions">
                 <el-button
                   v-if="showSplitButton"
@@ -241,7 +255,7 @@
                 >
                   数据集划分
                 </el-button>
-                <!-- <el-button
+                <el-button
                   v-if="showAugmentationButton"
                   size="small"
                   type="success"
@@ -249,7 +263,7 @@
                   @click="openAugmentationDialog"
                 >
                   <i class="el-icon-magic-stick"></i> 样本扩增
-                </el-button> -->
+                </el-button>
                 <div v-if="allowAppendUpload" class="action-card">
                     <el-select
                       v-model="selectedVersionId"
@@ -300,7 +314,7 @@
                     :src="image.thumbnail_url || image.image_url"
                     :alt="image.image_name"
                     loading="lazy"
-                    @error="handleImageError"
+                    @error="handleImageError($event, image)"
                     />
                 </div>
                 <div class="image-overlay">
@@ -319,12 +333,17 @@
       <div class="modal-card glass-panel" @click.stop>
         <button class="close-btn" @click="closeImagePreview"><i class="el-icon-close"></i></button>
         <div class="modal-image-wrapper">
+          <div ref="previewCanvasWrap" class="modal-canvas-wrap">
             <img
+            ref="previewModalImage"
             :src="previewImage.image_url"
             :alt="previewImage.image_name"
             class="modal-image"
+            @load="handlePreviewImageLoad"
             @error="handleModalImageError"
             />
+            <canvas ref="previewCanvas" class="modal-overlay-canvas"></canvas>
+          </div>
         </div>
         <div class="modal-info">
           <h3>{{ previewImage.image_name }}</h3>
@@ -335,6 +354,13 @@
           <div class="modal-meta-row" v-if="previewImage.classes_in_image?.length">
             <span class="label">包含类别:</span>
             <span class="value">{{ getClassNames(previewImage.classes_in_image) }}</span>
+          </div>
+          <div class="modal-meta-row" v-if="isDetectionDataset">
+            <span class="label">标注显示:</span>
+            <span class="value" v-if="previewAnnotationsLoading">加载中...</span>
+            <span class="value error" v-else-if="previewAnnotationsError">{{ previewAnnotationsError }}</span>
+            <span class="value" v-else-if="previewBoxCount > 0">已显示 {{ previewBoxCount }} 个标注框</span>
+            <span class="value muted" v-else>无标注 / 负样本</span>
           </div>
         </div>
       </div>
@@ -679,8 +705,10 @@
 
 <script>
 import {
+  buildDatasetThumbnailApiUrl,
   FetchDatasetDetail,
   FetchDatasetView,
+  fetchDatasetImageAnnotations,
   fetchDatasetVersions,
   uploadDatasetImages,
   appendDatasetArchive,
@@ -715,6 +743,13 @@ export default {
             selectedImages: [],
             showImagePreview: false,
             previewImage: null,
+            previewAnnotationsLoading: false,
+            previewAnnotationsError: '',
+            previewAnnotationData: null,
+            previewRequestToken: 0,
+            viewRequestToken: 0,
+            viewStatusRetryTimer: null,
+            viewStatusRetryCount: 0,
             searchTimeout: null,
             debouncedSearch: null,
             selectedVersionId: null,
@@ -740,6 +775,10 @@ export default {
             zipUploadFile: null,
             zipUploading: false,
             zipUploadProgress: 0,
+            zipUploadRestored: false,
+            zipUploadInterrupted: false,
+            zipUploadPollTimer: null,
+            zipUploadPollAttempts: 0,
             // Illegal dataset conversion
             showConvertDialog: false,
             convertingDataset: false,
@@ -785,11 +824,9 @@ export default {
             renameSaving: false,
         }
     },
-    created() {
-        this.loadDataFromRoute();
-    },
     mounted() {
         document.addEventListener('keydown', this.handleKeydown);
+        window.addEventListener('resize', this.handlePreviewResize);
         this.debouncedSearch = this.debounce(() => {}, 300);
     },
     activated() {
@@ -803,6 +840,9 @@ export default {
     },
     beforeDestroy() {
         document.removeEventListener('keydown', this.handleKeydown);
+        window.removeEventListener('resize', this.handlePreviewResize);
+        this.clearZipUploadPolling();
+        this.clearPendingViewRefresh();
         this.stopConversionStream();
     },
     computed: {
@@ -830,6 +870,27 @@ export default {
             if (!this.datasetDetail) return false;
             const total = Number(this.datasetDetail.total_images ?? this.datasetDetail.num_images ?? this.imagesList.length ?? 0) || 0;
             return total === 0;
+        },
+        emptyStateTitle() {
+            if (this.zipUploadInterrupted) {
+                return '上传已中断';
+            }
+            return this.zipUploading ? '数据集处理中' : '数据集为空';
+        },
+        emptyStateDesc() {
+            if (this.zipUploading) {
+                return '检测到上传后的后端处理仍在进行中，请耐心等待，页面会自动刷新结果。';
+            }
+            if (this.zipUploadInterrupted) {
+                return '上次上传在页面刷新时已中断，当前无法继续续传，请重新选择 ZIP 文件上传。';
+            }
+            return '上传 ZIP 文件以初始化此数据集。';
+        },
+        emptyProcessingTip() {
+            if ((Number(this.zipUploadProgress || 0) || 0) >= 100 || this.zipUploadRestored) {
+                return '检测到该数据集有未完成的上传任务，已自动恢复处理状态并持续轮询后端结果。';
+            }
+            return 'ZIP 文件正在上传中，请勿刷新或离开页面。';
         },
         isIllegalDataset() {
             const ver = this.datasetDetail && this.datasetDetail.active_version;
@@ -915,6 +976,31 @@ export default {
         showPanelActions() {
             return this.showSplitButton || this.showAugmentationButton || this.allowAppendUpload;
         },
+        currentViewMeta() {
+            return this.datasetDetail && this.datasetDetail.view_meta ? this.datasetDetail.view_meta : null;
+        },
+        viewStatusText() {
+            const meta = this.currentViewMeta;
+            if (!meta || this.selectedClass) return '';
+            const thumbStatus = String(meta.thumbnail_status || '').toLowerCase();
+            const indexStatus = String(meta.view_index_status || '').toLowerCase();
+            const thumbProgress = Number(meta.thumbnail_progress);
+            if (indexStatus === 'running' || indexStatus === 'queued' || indexStatus === 'building') {
+                return '标注统计生成中，图片会先显示';
+            }
+            if (thumbStatus === 'running' || thumbStatus === 'queued' || thumbStatus === 'generating') {
+                if (Number.isFinite(thumbProgress) && thumbProgress > 0) {
+                    return `缩略图生成中（${Math.max(0, Math.min(100, Math.round(thumbProgress)))}%）`;
+                }
+                return '缩略图生成中，正在逐步补齐';
+            }
+            return '';
+        },
+        previewBoxCount() {
+            return Array.isArray(this.previewAnnotationData && this.previewAnnotationData.boxes)
+              ? this.previewAnnotationData.boxes.length
+              : 0;
+        },
         conversionStatusText() {
             const status = this.conversionStatus;
             const map = { queued: '排队中', running: '转换中', completed: '已完成', failed: '失败', pending: '待转换' };
@@ -989,15 +1075,205 @@ export default {
         },
         datasetDetail: {
             handler(newDetail) {
-                if (newDetail) {
-                    const current = this.selectedClass ? this.classList.find(c => c.class_id === this.selectedClass.class_id) : null;
-                    this.selectClass(current || null);
+                if (!newDetail) return;
+                if (!this.selectedClass) {
+                    this.selectedImages = this.imagesList.slice();
+                    return;
                 }
+                const current = this.classList.find(c => c.class_id === this.selectedClass.class_id);
+                if (!current) {
+                    this.selectedClass = null;
+                    this.selectedImages = this.imagesList.slice();
+                    return;
+                }
+                this.selectedClass = current;
+                this.selectClass(current, { silent: true, background: true });
             },
             immediate: true
+        },
+        zipUploadFile: {
+            handler(val) {
+                if (val) {
+                    this.zipUploadInterrupted = false;
+                }
+                this.persistZipUploadState();
+            },
+            deep: true,
+        },
+        zipUploading(val) {
+            if (val) {
+                this.zipUploadInterrupted = false;
+            }
+            this.persistZipUploadState();
+            if (val && (Number(this.zipUploadProgress || 0) || 0) >= 100) {
+                this.scheduleZipUploadPolling();
+            } else {
+                this.clearZipUploadPolling();
+            }
+        },
+        zipUploadProgress(val) {
+            if (this.zipUploading) {
+                this.persistZipUploadState();
+                if ((Number(val || 0) || 0) >= 100) {
+                    this.scheduleZipUploadPolling();
+                }
+            }
         }
     },
     methods: {
+      getResolvedDatasetVersionId(detail = this.datasetDetail, preferredVersionId = undefined) {
+            const candidate = preferredVersionId !== undefined ? preferredVersionId : this.selectedVersionId;
+            if (candidate !== null && candidate !== undefined && candidate !== '') {
+                return candidate;
+            }
+            const activeVersionId = detail && detail.active_version && detail.active_version.version_id;
+            if (activeVersionId !== null && activeVersionId !== undefined && activeVersionId !== '') {
+                return activeVersionId;
+            }
+            return null;
+        },
+      getZipUploadStateKey() {
+            const id = String(this.datasetId || '').trim();
+            return id ? `dataset_zip_upload_state:${id}` : '';
+        },
+        serializeZipUploadFile(fileLike) {
+            if (!fileLike || typeof fileLike !== 'object') return null;
+            const name = String(fileLike.name || '').trim();
+            if (!name) return null;
+            return {
+                name,
+                size: Number(fileLike.size || 0) || 0,
+                type: String(fileLike.type || ''),
+                lastModified: Number(fileLike.lastModified || 0) || 0,
+                __persisted: true,
+            };
+        },
+        readPersistedZipUploadState() {
+            const key = this.getZipUploadStateKey();
+            if (!key || typeof window === 'undefined' || !window.sessionStorage) return null;
+            try {
+                const raw = window.sessionStorage.getItem(key);
+                if (!raw) return null;
+                const parsed = JSON.parse(raw);
+                if (!parsed || typeof parsed !== 'object') return null;
+                const savedAt = Number(parsed.savedAt || 0) || 0;
+                if (savedAt && (Date.now() - savedAt) > 2 * 60 * 60 * 1000) {
+                    window.sessionStorage.removeItem(key);
+                    return null;
+                }
+                return {
+                    uploading: !!parsed.uploading,
+                    progress: Math.max(0, Math.min(100, Number(parsed.progress || 0) || 0)),
+                    file: this.serializeZipUploadFile(parsed.file),
+                };
+            } catch (_) {
+                return null;
+            }
+        },
+        persistZipUploadState() {
+            const key = this.getZipUploadStateKey();
+            if (!key || typeof window === 'undefined' || !window.sessionStorage) return;
+            const isUploading = !!this.zipUploading;
+            const fileMeta = this.serializeZipUploadFile(this.zipUploadFile);
+            if (!isUploading) {
+                window.sessionStorage.removeItem(key);
+                return;
+            }
+            try {
+                window.sessionStorage.setItem(
+                    key,
+                    JSON.stringify({
+                        uploading: isUploading,
+                        progress: Math.max(0, Math.min(100, Number(this.zipUploadProgress || 0) || 0)),
+                        file: fileMeta,
+                        savedAt: Date.now(),
+                    })
+                );
+            } catch (_) {
+                // ignore persistence failures
+            }
+        },
+        clearPersistedZipUploadState({ resetLocal = false, keepInterrupted = false } = {}) {
+            const key = this.getZipUploadStateKey();
+            if (key && typeof window !== 'undefined' && window.sessionStorage) {
+                try {
+                    window.sessionStorage.removeItem(key);
+                } catch (_) {
+                    // ignore remove failures
+                }
+            }
+            if (resetLocal) {
+                this.zipUploadFile = null;
+                this.zipUploading = false;
+                this.zipUploadProgress = 0;
+                this.zipUploadRestored = false;
+                this.zipUploadPollAttempts = 0;
+                if (!keepInterrupted) {
+                    this.zipUploadInterrupted = false;
+                }
+            }
+        },
+        clearZipUploadPolling() {
+            if (this.zipUploadPollTimer) {
+                clearTimeout(this.zipUploadPollTimer);
+                this.zipUploadPollTimer = null;
+            }
+        },
+        scheduleZipUploadPolling() {
+            this.clearZipUploadPolling();
+            if (!this.datasetId || !this.zipUploading || !this.isDatasetEmpty) return;
+            if ((Number(this.zipUploadProgress || 0) || 0) < 100) return;
+            if (this.zipUploadPollAttempts >= 240) return;
+            this.zipUploadPollAttempts += 1;
+            this.zipUploadPollTimer = setTimeout(async () => {
+                this.zipUploadPollTimer = null;
+                try {
+                    await this.fetchDatasetDetail({ silent: true });
+                } catch (_) {
+                    // ignore polling failures
+                }
+            }, 2000);
+        },
+        restorePersistedZipUploadState() {
+            const state = this.readPersistedZipUploadState();
+            this.zipUploadInterrupted = false;
+            if (!state) {
+                this.zipUploadFile = null;
+                this.zipUploading = false;
+                this.zipUploadProgress = 0;
+                this.zipUploadRestored = false;
+                this.zipUploadPollAttempts = 0;
+                return false;
+            }
+            const progress = Math.max(0, Math.min(100, Number(state.progress || 0) || 0));
+            const recoverable = !!state.uploading && progress >= 100;
+            if (!recoverable) {
+                const hadInterruptedUpload = !!state.uploading;
+                this.clearPersistedZipUploadState({ resetLocal: true, keepInterrupted: true });
+                this.zipUploadInterrupted = hadInterruptedUpload;
+                if (hadInterruptedUpload && this.$message && typeof this.$message.warning === 'function') {
+                    this.$message.warning('上次上传在刷新时已中断，请重新上传 ZIP 文件。');
+                }
+                return false;
+            }
+            this.zipUploadFile = state.file || {
+                name: 'dataset.zip',
+                size: 0,
+                type: 'application/zip',
+                lastModified: 0,
+                __persisted: true,
+            };
+            this.zipUploadProgress = progress;
+            this.zipUploadRestored = true;
+            this.zipUploadPollAttempts = 0;
+            this.zipUploading = true;
+            return true;
+        },
+        resetRecoveredZipUploadState() {
+            this.clearZipUploadPolling();
+            this.clearPersistedZipUploadState({ resetLocal: true });
+            this.$message.info('已清除当前上传处理状态');
+        },
       async autoLoadIllegalLabels() {
             if (this.illegalLabels.length > 0) return; // already loaded
             this.loadingLabels = true;
@@ -1424,6 +1700,8 @@ export default {
 
         async loadDataFromRoute() {
             this.stopConversionStream();
+            this.clearPendingViewRefresh();
+            this.clearZipUploadPolling();
             this.datasetId = this.$route.query.datasetId || '';
             this.datasetName = this.$route.query.datasetName || '';
             this.datasetType = this.$route.query.datasetType || '';
@@ -1435,14 +1713,131 @@ export default {
             this.splitSummary = null;
             this.splitLoading = false;
             this.showAugmentationDialog = false;
+            this.viewStatusRetryCount = 0;
+            this.zipUploadInterrupted = false;
+            this.restorePersistedZipUploadState();
             this.savedLabelMapping = this.loadLocalLabelMapping();
             this.hasSavedMapping = !!(this.savedLabelMapping && Object.keys(this.savedLabelMapping).length > 0);
             await this.refreshVersionsAndDetail({ forceLatest: true });
         },
         async refreshVersionsAndDetail({ forceLatest = false } = {}) {
             if (!this.datasetId) return;
-            await this.loadDatasetVersions({ forceLatest });
-            await this.fetchDatasetDetail();
+            if (forceLatest) {
+                this.selectedVersionId = null;
+            }
+            const requestedVersionId = forceLatest ? null : this.selectedVersionId;
+            await Promise.all([
+                this.loadDatasetVersions({ forceLatest }),
+                this.fetchDatasetDetail({ versionIdOverride: requestedVersionId }),
+            ]);
+        },
+        getInitialViewPageSize() {
+            return 100;
+        },
+        getBufferedViewLimit() {
+            return 500;
+        },
+        getBufferedViewPageSize() {
+            return 200;
+        },
+        mergeImageItems(existingItems, incomingItems, maxItems = 500) {
+            const merged = [];
+            const seen = new Set();
+            const pushOne = (item) => {
+                if (!item || typeof item !== 'object') return;
+                const key = String(item.image_name || item.image_path || item.name || '').trim();
+                if (!key || seen.has(key)) return;
+                seen.add(key);
+                merged.push(item);
+            };
+            (Array.isArray(existingItems) ? existingItems : []).forEach(pushOne);
+            (Array.isArray(incomingItems) ? incomingItems : []).forEach(pushOne);
+            if (maxItems > 0 && merged.length > maxItems) {
+                return merged.slice(0, maxItems);
+            }
+            return merged;
+        },
+        clearPendingViewRefresh() {
+            if (this.viewStatusRetryTimer) {
+                clearTimeout(this.viewStatusRetryTimer);
+                this.viewStatusRetryTimer = null;
+            }
+        },
+        scheduleViewRefreshIfPending(meta = null) {
+            this.clearPendingViewRefresh();
+            if (this.selectedClass) return;
+            const currentMeta = meta || this.currentViewMeta;
+            if (!currentMeta) {
+                this.viewStatusRetryCount = 0;
+                return;
+            }
+            const thumbStatus = String(currentMeta.thumbnail_status || '').toLowerCase();
+            const indexStatus = String(currentMeta.view_index_status || '').toLowerCase();
+            const pending = ['queued', 'running', 'generating', 'building'].includes(thumbStatus)
+                || ['queued', 'running', 'building'].includes(indexStatus);
+            if (!pending) {
+                this.viewStatusRetryCount = 0;
+                return;
+            }
+            if (this.viewStatusRetryCount >= 8) return;
+            this.viewStatusRetryCount += 1;
+            this.viewStatusRetryTimer = setTimeout(async () => {
+                this.viewStatusRetryTimer = null;
+                try {
+                    await this.fetchDatasetDetail({ silent: true });
+                } catch (_) {
+                    // ignore background refresh errors
+                }
+            }, 1500);
+        },
+        async loadRemainingViewPages({
+            token,
+            versionId,
+            classId = null,
+            startPage = 2,
+            totalPages = 1,
+            maxItems = 500,
+        } = {}) {
+            if (!this.datasetId || !totalPages || startPage > totalPages) return;
+            const bufferedPageSize = this.getBufferedViewPageSize();
+            for (let page = startPage; page <= totalPages; page += 1) {
+                if (token !== this.viewRequestToken) return;
+                const currentCount = classId === null
+                    ? (((this.datasetDetail && this.datasetDetail.images) || []).length)
+                    : this.selectedImages.length;
+                if (maxItems > 0 && currentCount >= maxItems) return;
+                const remainingSlots = maxItems > 0 ? Math.max(1, maxItems - currentCount) : bufferedPageSize;
+                const viewData = await FetchDatasetView(this.datasetId, {
+                    versionId,
+                    classId,
+                    page,
+                    pageSize: Math.min(bufferedPageSize, remainingSlots),
+                });
+                if (token !== this.viewRequestToken) return;
+                const incomingItems = Array.isArray(viewData.items) ? viewData.items : [];
+                if (!incomingItems.length) return;
+
+                if (classId === null) {
+                    const mergedImages = this.mergeImageItems(
+                        this.datasetDetail && this.datasetDetail.images,
+                        incomingItems,
+                        maxItems,
+                    );
+                    if (this.datasetDetail) {
+                        this.$set(this.datasetDetail, 'images', mergedImages);
+                        this.$set(this.datasetDetail, 'view_meta', viewData.meta || (this.datasetDetail.view_meta || null));
+                    }
+                    if (!this.selectedClass) {
+                        this.selectedImages = mergedImages.slice();
+                    }
+                } else if (this.selectedClass && Number(this.selectedClass.class_id) === Number(classId)) {
+                    this.selectedImages = this.mergeImageItems(this.selectedImages, incomingItems, maxItems);
+                }
+
+                if (incomingItems.length < Math.min(bufferedPageSize, remainingSlots)) {
+                    return;
+                }
+            }
         },
         async loadDatasetVersions({ forceLatest = false } = {}) {
             if (!this.datasetId) return;
@@ -1514,20 +1909,44 @@ export default {
                 return text;
             }
         },
-        async selectClass(classInfo) {
+        async selectClass(classInfo, { silent = false, background = false } = {}) {
             this.selectedClass = classInfo;
-            console.log("Selected class:", classInfo);
+            if (!classInfo || classInfo.class_id === undefined || classInfo.class_id === null) {
+                this.selectedImages = this.imagesList.slice();
+                if (!background) {
+                    this.scheduleViewRefreshIfPending();
+                }
+                return;
+            }
+            const versionId = this.getResolvedDatasetVersionId();
+            if (versionId === null) {
+                this.selectedImages = [];
+                return;
+            }
             
             // Use server-side filtering via the view API
             try {
+                const token = ++this.viewRequestToken;
                 const classId = classInfo && classInfo.class_id !== undefined ? classInfo.class_id : null;
                 const viewData = await FetchDatasetView(this.datasetId, {
-                    versionId: this.selectedVersionId,
+                    versionId,
                     classId: classId,
                     page: 1,
-                    pageSize: 500,
+                    pageSize: this.getInitialViewPageSize(),
                 });
+                if (token !== this.viewRequestToken) return;
                 this.selectedImages = viewData.items || [];
+                const totalPages = Number(viewData?.meta?.total_pages || 0) || 0;
+                if (totalPages > 1) {
+                    this.loadRemainingViewPages({
+                        token,
+                        versionId,
+                        classId,
+                        startPage: 2,
+                        totalPages,
+                        maxItems: this.getBufferedViewLimit(),
+                    });
+                }
             } catch (error) {
                 console.error('Failed to filter images by class:', error);
                 // Fallback to client-side filtering
@@ -1538,42 +1957,182 @@ export default {
                 } else {
                     this.selectedImages = [...this.imagesList];
                 }
+                if (!silent) {
+                    this.$message.warning('按类别筛选失败，已回退为本地过滤结果');
+                }
             }
         },
-        handleImageError(event) {
+        handleImageError(event, image) {
             const img = event.target;
+            if (!img) return;
             const currentSrc = img.src || '';
-            
-            // If static thumbnail failed, try API endpoint as fallback (on-demand generation)
-            if (currentSrc.includes('/static/thumbnails/')) {
-                // Extract dataset_id and path from static URL
-                // Format: /static/thumbnails/{dataset_id}/{path}.webp
-                const match = currentSrc.match(/\/static\/thumbnails\/(\d+)\/(.+)\.webp/);
-                if (match) {
-                    const datasetId = match[1];
-                    // Convert path.webp back to original extension
-                    const relPath = match[2];
-                    // Try API endpoint which generates on-demand
-                    const apiUrl = `/api/v2/thumbnails/${datasetId}/images/${relPath}.jpg`;
-                    img.src = apiUrl;
+            const fallbackStage = String(img.dataset.fallback || '');
+            const relPath = image && (image.image_path || image.image_name) ? String(image.image_path || image.image_name) : '';
+            const originalUrl = image && image.image_url ? String(image.image_url) : '';
+
+            if (!fallbackStage && relPath) {
+                const apiUrl = buildDatasetThumbnailApiUrl(this.datasetId, relPath, {
+                    versionId: this.selectedVersionId,
+                });
+                if (apiUrl && apiUrl !== currentSrc) {
                     img.dataset.fallback = 'api';
+                    img.src = apiUrl;
                     return;
                 }
             }
-            
-            // If API also failed or already tried, hide the image
-            img.style.display = 'none';
+
+            if (fallbackStage !== 'original' && originalUrl && originalUrl !== currentSrc) {
+                img.dataset.fallback = 'original';
+                img.src = originalUrl;
+                return;
+            }
+
+            img.dataset.fallback = 'failed';
+            img.alt = `${image && image.image_name ? image.image_name : '图片'} 预览加载失败`;
         },
-        openImagePreview(image) {
-            this.previewImage = image;
+        async openImagePreview(image) {
+            this.previewImage = image ? { ...image } : null;
             this.showImagePreview = true;
+            this.previewAnnotationsLoading = !!this.isDetectionDataset;
+            this.previewAnnotationsError = '';
+            this.previewAnnotationData = null;
+            const token = ++this.previewRequestToken;
+
+            this.$nextTick(() => {
+                const img = this.$refs.previewModalImage;
+                if (img && img.complete) this.handlePreviewImageLoad();
+            });
+
+            if (!this.isDetectionDataset || !image || !image.image_name) {
+                this.previewAnnotationsLoading = false;
+                return;
+            }
+
+            try {
+                const data = await fetchDatasetImageAnnotations(this.datasetId, image.image_name, {
+                    versionId: this.selectedVersionId,
+                });
+                if (token !== this.previewRequestToken) return;
+                this.previewAnnotationData = data;
+                this.previewAnnotationsLoading = false;
+                this.previewImage = {
+                    ...this.previewImage,
+                    objects_count: Number(data && data.object_count) || 0,
+                };
+                this.$nextTick(() => this.redrawPreviewAnnotations());
+            } catch (e) {
+                if (token !== this.previewRequestToken) return;
+                this.previewAnnotationsLoading = false;
+                this.previewAnnotationsError = e && e.message ? String(e.message) : '标注加载失败';
+                this.$nextTick(() => this.redrawPreviewAnnotations());
+            }
         },
         closeImagePreview() {
             this.showImagePreview = false;
             this.previewImage = null;
+            this.previewAnnotationsLoading = false;
+            this.previewAnnotationsError = '';
+            this.previewAnnotationData = null;
+            this.previewRequestToken += 1;
+            this.clearPreviewCanvas();
         },
         handleModalImageError(event) {
             event.target.style.display = 'none';
+            this.clearPreviewCanvas();
+        },
+        handlePreviewImageLoad() {
+            this.fitPreviewCanvasToImage();
+            this.redrawPreviewAnnotations();
+        },
+        handlePreviewResize() {
+            if (!this.showImagePreview) return;
+            this.$nextTick(() => {
+                this.fitPreviewCanvasToImage();
+                this.redrawPreviewAnnotations();
+            });
+        },
+        fitPreviewCanvasToImage() {
+            const canvas = this.$refs.previewCanvas;
+            const wrap = this.$refs.previewCanvasWrap;
+            if (!canvas || !wrap) return;
+            const width = wrap.clientWidth || 0;
+            const height = wrap.clientHeight || 0;
+            if (!width || !height) return;
+            if (canvas.width !== width) canvas.width = width;
+            if (canvas.height !== height) canvas.height = height;
+        },
+        clearPreviewCanvas() {
+            const canvas = this.$refs.previewCanvas;
+            const ctx = canvas ? canvas.getContext('2d') : null;
+            if (!ctx || !canvas) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        },
+        getPreviewRenderedImageRect() {
+            const wrap = this.$refs.previewCanvasWrap;
+            const img = this.$refs.previewModalImage;
+            if (!wrap || !img) return null;
+
+            const wrapRect = wrap.getBoundingClientRect();
+            const imgRect = img.getBoundingClientRect();
+            if (!wrapRect.width || !wrapRect.height || !imgRect.width || !imgRect.height) return null;
+
+            return {
+                offsetX: imgRect.left - wrapRect.left,
+                offsetY: imgRect.top - wrapRect.top,
+                drawW: imgRect.width,
+                drawH: imgRect.height,
+                naturalW: img.naturalWidth || Number(this.previewAnnotationData && this.previewAnnotationData.width) || 0,
+                naturalH: img.naturalHeight || Number(this.previewAnnotationData && this.previewAnnotationData.height) || 0,
+            };
+        },
+        getAnnotationColor(classId = 0) {
+            const palette = [
+                '#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed',
+                '#0891b2', '#db2777', '#4f46e5', '#ea580c', '#059669'
+            ];
+            const idx = Math.abs(Number(classId) || 0) % palette.length;
+            return palette[idx];
+        },
+        redrawPreviewAnnotations() {
+            const canvas = this.$refs.previewCanvas;
+            const ctx = canvas ? canvas.getContext('2d') : null;
+            if (!ctx || !canvas) return;
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            const boxes = Array.isArray(this.previewAnnotationData && this.previewAnnotationData.boxes)
+              ? this.previewAnnotationData.boxes
+              : [];
+            if (!boxes.length) return;
+
+            const rect = this.getPreviewRenderedImageRect();
+            if (!rect || !rect.naturalW || !rect.naturalH) return;
+            const { offsetX, offsetY, drawW, drawH, naturalW, naturalH } = rect;
+
+            ctx.lineWidth = 2;
+            ctx.font = '13px sans-serif';
+            ctx.textBaseline = 'top';
+
+            boxes.forEach((box) => {
+                const color = this.getAnnotationColor(box.class_id);
+                const x = offsetX + (Number(box.x1) || 0) * drawW / naturalW;
+                const y = offsetY + (Number(box.y1) || 0) * drawH / naturalH;
+                const w = Math.max(0, ((Number(box.x2) || 0) - (Number(box.x1) || 0)) * drawW / naturalW);
+                const h = Math.max(0, ((Number(box.y2) || 0) - (Number(box.y1) || 0)) * drawH / naturalH);
+
+                ctx.strokeStyle = color;
+                ctx.strokeRect(x, y, w, h);
+
+                const label = String(box.class_name || `class_${box.class_id ?? 0}`);
+                const textW = ctx.measureText(label).width + 10;
+                const textH = 20;
+                const textX = x;
+                const textY = Math.max(offsetY, y - textH);
+
+                ctx.fillStyle = color;
+                ctx.fillRect(textX, textY, textW, textH);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillText(label, textX + 5, textY + 3);
+            });
         },
         getClassNames(classIds) {
             if (!this.classList || !classIds) return '';
@@ -1596,9 +2155,11 @@ export default {
         goBack() {
             this.$router.push('/datasets');
         },
-        handleUploadSuccess() {
+        async handleUploadSuccess() {
             this.$message.success('上传成功，正在刷新数据集。');
-            this.refreshVersionsAndDetail({ forceLatest: true });
+            this.clearZipUploadPolling();
+            this.clearPersistedZipUploadState({ resetLocal: true });
+            await this.refreshVersionsAndDetail({ forceLatest: true });
         },
         openSplitDialog() {
           if (!this.showSplitButton) return;
@@ -1866,6 +2427,8 @@ export default {
             return msg;
         },
         handleUploadFail(errorMsg) {
+            this.clearZipUploadPolling();
+            this.clearPersistedZipUploadState({ resetLocal: true });
             const msg = this.formatUploadErrorMessage(errorMsg);
             this.$message.error(`上传失败: ${msg}`);
         },
@@ -1894,24 +2457,34 @@ export default {
             };
             return typeMap[type] || type || '图像分类';
         },
-        async fetchDatasetDetail() {
+        async fetchDatasetDetail({ versionIdOverride = undefined, silent = false } = {}) {
             if (!this.datasetId) return;
 
-            this.detailLoading = true;
+            const token = ++this.viewRequestToken;
+            this.clearPendingViewRefresh();
+            if (!silent) this.detailLoading = true;
             try {
+                const requestedVersionId = versionIdOverride !== undefined ? versionIdOverride : this.selectedVersionId;
                 // First get basic detail for dataset info
                 const detail = await FetchDatasetDetail(this.datasetId, {
-                    versionId: this.selectedVersionId,
+                    versionId: requestedVersionId,
                     filesLimit: 10, // Minimal for basic info
+                    includeFiles: false,
                 });
+                if (token !== this.viewRequestToken) return;
                 
                 if (detail.dataset_name) this.datasetName = detail.dataset_name;
                 if (detail.dataset_type) this.datasetType = detail.dataset_type;
                 if (detail.dataset_size_mb) this.datasetSize = detail.dataset_size_mb;
+                if ((this.selectedVersionId === null || requestedVersionId === null) && detail && detail.active_version && detail.active_version.version_id) {
+                    this.selectedVersionId = detail.active_version.version_id;
+                }
                 
                 const ver = detail && detail.active_version;
                 const meta = ver && ver.meta;
                 const isIllegal = !!(ver && ver.status === 'failed' && meta && meta.illegal);
+                const resolvedVersionId = this.getResolvedDatasetVersionId(detail, requestedVersionId);
+                const hasResolvableVersion = resolvedVersionId !== null;
 
                 if (isIllegal) {
                     this.datasetDetail = detail;
@@ -1921,15 +2494,21 @@ export default {
                     // Auto-load illegal labels for inline mapping panel
                     this.autoLoadIllegalLabels();
                     this.loadIllegalLabelPresets();
+                } else if (!hasResolvableVersion) {
+                    this.datasetDetail = detail;
+                    this.numClasses = detail.num_classes || 0;
+                    this.numImages = detail.total_images || 0;
+                    this.selectedImages = [];
                 } else {
                     // Then get view data with categories and images
                     try {
                         const viewData = await FetchDatasetView(this.datasetId, {
-                            versionId: this.selectedVersionId,
+                            versionId: resolvedVersionId,
                             classId: null, // No filter initially
                             page: 1,
-                            pageSize: 500,
+                            pageSize: this.getInitialViewPageSize(),
                         });
+                        if (token !== this.viewRequestToken) return;
                         
                         // Merge view data into detail object
                         this.datasetDetail = {
@@ -1937,20 +2516,44 @@ export default {
                             categories: viewData.categories || [],
                             images: viewData.items || [],
                             total_images: viewData.meta?.total_items || viewData.items?.length || 0,
+                            view_meta: viewData.meta || null,
                         };
                         
                         // Update stats from view data
-                        this.numClasses = (viewData.categories || []).length;
-                        this.numImages = viewData.meta?.total_items || 0;
+                        this.numClasses = (viewData.categories || []).length || detail.num_classes || 0;
+                        this.numImages = viewData.meta?.total_items || detail.total_images || 0;
                         
                         // Set selected images initially
                         this.selectedImages = viewData.items || [];
+
+                        const totalPages = Number(viewData?.meta?.total_pages || 0) || 0;
+                        if (totalPages > 1) {
+                            this.loadRemainingViewPages({
+                                token,
+                                versionId: resolvedVersionId,
+                                classId: null,
+                                startPage: 2,
+                                totalPages,
+                                maxItems: this.getBufferedViewLimit(),
+                            });
+                        }
+                        this.scheduleViewRefreshIfPending(viewData.meta || null);
                     } catch (viewError) {
                         console.warn('View API failed, falling back to detail:', viewError);
+                        if (token !== this.viewRequestToken) return;
                         this.datasetDetail = detail;
                         if (detail.num_classes !== undefined) this.numClasses = detail.num_classes;
                         if (detail.total_images !== undefined) this.numImages = detail.total_images;
                         this.selectedImages = detail.images || [];
+                    }
+                }
+
+                if (this.zipUploading) {
+                    if (isIllegal || !this.isDatasetEmpty) {
+                        this.clearZipUploadPolling();
+                        this.clearPersistedZipUploadState({ resetLocal: true });
+                    } else {
+                        this.scheduleZipUploadPolling();
                     }
                 }
 
@@ -1969,8 +2572,11 @@ export default {
             } catch (error) {
                 console.error('Failed to fetch dataset detail:', error);
                 this.datasetDetail = null;
+                if (this.zipUploading) {
+                    this.scheduleZipUploadPolling();
+                }
             } finally {
-                this.detailLoading = false;
+                if (!silent) this.detailLoading = false;
             }
         },
         async fetchSplitSummary() {
@@ -1979,10 +2585,16 @@ export default {
                 this.splitSummary = null;
                 return;
             }
+            const versionId = this.getResolvedDatasetVersionId();
+            if (versionId === null) {
+                this.splitSummary = null;
+                this.splitLoading = false;
+                return;
+            }
             this.splitLoading = true;
             try {
                 const summary = await fetchDatasetSplitSummary(this.datasetId, {
-                    versionId: this.selectedVersionId,
+                    versionId,
                 });
                 this.splitSummary = summary || null;
             } catch (e) {
@@ -1993,6 +2605,7 @@ export default {
             }
         },
         async handleVersionChange() {
+            this.viewStatusRetryCount = 0;
             await this.fetchDatasetDetail();
         },
         handleAddImage() {
@@ -2379,6 +2992,8 @@ export default {
 
 .empty-title { font-size: 1.5rem; font-weight: 700; color: var(--text-main); margin-bottom: 0.5rem; }
 .empty-desc { color: var(--text-secondary); margin-bottom: 1rem; }
+.empty-processing-tip { margin-top: 0.75rem; color: #2563eb; font-size: 0.9rem; line-height: 1.5; }
+.upload-reset-btn { margin-top: 0.75rem; }
 .empty-tips { display: flex; gap: 1rem; font-size: 0.875rem; color: var(--text-secondary); }
 .tip-item i { color: #10b981; margin-right: 0.25rem; }
 
@@ -2404,6 +3019,7 @@ export default {
 
 .panel-title { font-weight: 700; color: var(--text-main); font-size: 1rem; }
 .panel-sub { font-size: 0.75rem; color: var(--text-secondary); }
+.panel-subtitle { margin-top: 0.25rem; font-size: 0.75rem; color: var(--text-secondary); }
 
 .glass-input ::v-deep .el-input__inner {
     border: 1px solid rgba(0,0,0,0.1);
@@ -2645,7 +3261,7 @@ export default {
 
 .image-card:hover .image-overlay { opacity: 1; }
 .image-wrapper { width: 100%; height: 100%; background: #f1f5f9; }
-.image-wrapper img { width: 100%; height: 100%; object-fit: cover; }
+.image-wrapper img { width: 100%; height: 100%; object-fit: cover; display: block; }
 .image-overlay {
     position: absolute;
     inset: 0;
@@ -2718,10 +3334,28 @@ export default {
     overflow: hidden;
 }
 
+.modal-canvas-wrap {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    min-height: 320px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
 .modal-image {
     max-width: 100%;
     max-height: 60vh;
     object-fit: contain;
+}
+
+.modal-overlay-canvas {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
 }
 
 .modal-info {
@@ -2734,6 +3368,8 @@ export default {
 .modal-meta-row { display: flex; gap: 0.5rem; font-size: 0.9rem; }
 .modal-meta-row .label { color: var(--text-secondary); }
 .modal-meta-row .value { color: var(--text-main); font-weight: 500; }
+.modal-meta-row .value.error { color: #dc2626; }
+.modal-meta-row .value.muted { color: var(--text-secondary); font-weight: 400; }
 
 /* Upload Dialog */
 .upload-dialog ::v-deep .el-dialog__header {
