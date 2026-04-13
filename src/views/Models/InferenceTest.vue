@@ -272,7 +272,7 @@
                             :class="{ 'active': selectedResultIndex === index }"
                         >
                             <div class="result-thumbnail">
-                                <img v-if="result.type === 'image'" :src="result.preview" :alt="result.name">
+                                <img v-if="result.type === 'image'" :src="absoluteUrl(result.preview)" :alt="result.name">
                                 <div v-else class="video-thumbnail">
                                     <i class="el-icon-video-play"></i>
                                 </div>
@@ -308,7 +308,15 @@
 
                     <div class="detail-content">
                         <div class="result-preview">
-                            <img v-if="currentResult.type === 'image'" :src="currentResult.preview" :alt="currentResult.name">
+                            <AnnotatedImagePreview
+                                v-if="currentResult.type === 'image' && currentResult.preview"
+                                class="result-annotator"
+                                :image-url="absoluteUrl(currentResult.preview)"
+                                :predictions="currentResult.predictions || []"
+                                :show-labels="inferenceConfig.showLabels"
+                                :show-confidence="inferenceConfig.showConfidence"
+                                :alt="currentResult.name"
+                            />
                             <div v-else class="video-preview">
                                 <i class="el-icon-video-play"></i>
                                 <span>{{ currentResult.name }}</span>
@@ -373,11 +381,16 @@
 </template>
 
 <script>
+import { API_BASE } from "@/utils/request";
+import AnnotatedImagePreview from "@/components/Inference/AnnotatedImagePreview.vue";
 import { uploadInferenceFile, runSingleInference, runBatchInference, runVideoInference } from "@/api/inference";
 import { fetchModelVersionsByRunId, registerModelVersionFromRun } from "@/api/models";
 
 export default {
     name: 'ModelInferenceTest',
+    components: {
+        AnnotatedImagePreview,
+    },
     data() {
         return {
             selectedFiles: [],
@@ -435,6 +448,18 @@ export default {
         this.resolveJobId();
     },
     methods: {
+        absoluteUrl(url) {
+            const raw = String(url || '').trim();
+            if (!raw) return '';
+            if (
+                raw.startsWith('http://')
+                || raw.startsWith('https://')
+                || raw.startsWith('blob:')
+                || raw.startsWith('data:')
+            ) return raw;
+            if (raw.startsWith('/')) return `${API_BASE}${raw}`;
+            return `${API_BASE}/${raw}`;
+        },
         resolveJobId() {
             const routeJobId = this.$route && this.$route.query && this.$route.query.jobId;
             if (routeJobId) {
@@ -1366,6 +1391,11 @@ export default {
     overflow: hidden;
     background-color: #f9fafb;
     border: 1px solid #e8ecef;
+}
+
+.result-annotator {
+    width: 100%;
+    min-height: 150px;
 }
 
 .result-preview img {

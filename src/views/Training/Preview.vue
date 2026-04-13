@@ -86,6 +86,7 @@ import {
 } from "@/api/datasets";
 import { GetInferenceResult, uploadInferenceImage, fetchModelVersionsByRunId, registerModelVersionFromRun } from "@/api/models";
 import { previewStore } from "@/store/previewStore";
+import { normalizeInferencePredictions } from "@/utils/inferencePreview";
 export default {
   name: "PreviewPart",
   data() {
@@ -118,8 +119,12 @@ export default {
     // 初始化图片预览区
     if (previewStore.imageUrl) this.imageUrl = previewStore.imageUrl;
     this.$nextTick(() => { this.redraw(); });
-    this._onResult = () => this.$nextTick(() => { this.fitCanvasToImage(); this.redraw(); });
-    this._onResize = () => this.$nextTick(() => { this.fitCanvasToImage(); this.redraw(); });
+    this._onResult = () => {
+      this.$nextTick(() => { this.fitCanvasToImage(); this.redraw(); });
+    };
+    this._onResize = () => {
+      this.$nextTick(() => { this.fitCanvasToImage(); this.redraw(); });
+    };
     window.addEventListener('preview-inference-updated', this._onResult);
     window.addEventListener('resize', this._onResize);
   },
@@ -210,7 +215,9 @@ export default {
         try {
           previewStore.setInferenceResult(mapped);
           window.dispatchEvent(new CustomEvent("preview-inference-updated"));
-        } catch (e) {}
+        } catch (_) {
+          // ignore store/event sync failures
+        }
 
         this.$message && this.$message.success("Inference request sent");
         console.log("inference result", res);
@@ -261,38 +268,22 @@ export default {
     mapInferenceResult(raw) {
       if (!raw) return raw;
       const output = raw.output || {};
-      const preds = Array.isArray(output.predictions) ? output.predictions : [];
-      const names = output.names && typeof output.names === 'object' ? output.names : {};
       const img = this.$refs.img;
       const width = Number(img?.naturalWidth) || Number(raw?.input_meta?.image_width) || 0;
       const height = Number(img?.naturalHeight) || Number(raw?.input_meta?.image_height) || 0;
 
-      const boxes = preds.map((p) => {
-        const xyxy = Array.isArray(p?.xyxy) ? p.xyxy : [];
-        let x1 = Number(xyxy[0] ?? 0);
-        let y1 = Number(xyxy[1] ?? 0);
-        let x2 = Number(xyxy[2] ?? 0);
-        let y2 = Number(xyxy[3] ?? 0);
-
-        // If coordinates are in pixels, normalize using image size.
-        const maxVal = Math.max(x1, y1, x2, y2);
-        if (width > 0 && height > 0 && maxVal > 1.5) {
-          x1 = x1 / width;
-          x2 = x2 / width;
-          y1 = y1 / height;
-          y2 = y2 / height;
-        }
-
-        return {
-          x1,
-          y1,
-          x2,
-          y2,
-          conf: Number(p?.confidence ?? p?.conf ?? 0),
-          cls: p?.class_id ?? p?.cls,
-          category_name: p?.class_name ?? names?.[p?.class_id],
-        };
-      });
+      const boxes = normalizeInferencePredictions(output, {
+        imageWidth: width,
+        imageHeight: height,
+      }).map((prediction) => ({
+        x1: prediction.x1,
+        y1: prediction.y1,
+        x2: prediction.x2,
+        y2: prediction.y2,
+        conf: Number(prediction.confidence ?? 0),
+        cls: prediction.classId,
+        category_name: prediction.className,
+      }));
 
       return {
         ...raw,
@@ -360,7 +351,6 @@ export default {
       this.redraw();
     },
     fitCanvasToImage() {
-      const img = this.$refs.img;
       const canvas = this.$refs.canvas;
       if (!canvas) return;
       const wrap = canvas.parentElement;
@@ -376,8 +366,6 @@ export default {
       
       // 获取容器尺寸
       const wrapRect = wrap.getBoundingClientRect();
-      const wrapW = wrapRect.width;
-      const wrapH = wrapRect.height;
       
       // 获取图片原始尺寸
       const naturalW = img.naturalWidth || previewStore.inferenceResult?.image_width;
@@ -408,19 +396,24 @@ export default {
       ctx.lineWidth = 2;
       ctx.font = '12px sans-serif';
       ctx.textBaseline = 'top';
-      if (res.boxes && res.boxes.length) {
-        res.boxes.forEach((b) => {
-          const x = offsetX + (b.x1 || 0) * drawW;
-          const y = offsetY + (b.y1 || 0) * drawH;
-          const w = ((b.x2 || 0) - (b.x1 || 0)) * drawW;
-          const h = ((b.y2 || 0) - (b.y1 || 0)) * drawH;
-          const color = 'rgba(17,31,104,0.95)';
-          ctx.strokeStyle = color;
-          ctx.strokeRect(x, y, Math.max(0, w), Math.max(0, h));
-          const label = (b.category_name || b.cls || 'obj') + ` ${(b.conf*100).toFixed(1)}%`;
-          const textW = ctx.measureText(label).width + 6;
-          const textH = 16;
-          ctx.fillStyle = color;
+        if (res.boxes && res.boxes.length) {
+          res.boxes.forEach((b) => {
+            const x1 = Number.isFinite(Number(b.x1)) ? Number(b.x1) : 0;
+            const y1 = Number.isFinite(Number(b.y1)) ? Number(b.y1) : 0;
+            const x2 = Number.isFinite(Number(b.x2)) ? Number(b.x2) : 0;
+            const y2 = Number.isFinite(Number(b.y2)) ? Number(b.y2) : 0;
+            const x = offsetX + x1 * drawW;
+            const y = offsetY + y1 * drawH;
+            const w = (x2 - x1) * drawW;
+            const h = (y2 - y1) * drawH;
+            const color = 'rgba(17,31,104,0.95)';
+            ctx.strokeStyle = color;
+            ctx.strokeRect(x, y, Math.max(0, w), Math.max(0, h));
+            const conf = Number.isFinite(Number(b.conf)) ? Number(b.conf) : null;
+            const label = `${b.category_name || b.cls || 'obj'}${conf === null ? '' : ` ${(conf * 100).toFixed(1)}%`}`;
+            const textW = ctx.measureText(label).width + 6;
+            const textH = 16;
+            ctx.fillStyle = color;
           ctx.fillRect(x, Math.max(offsetY, y - textH), textW, textH);
           ctx.fillStyle = '#fff';
           ctx.fillText(label, x + 3, Math.max(offsetY, y - textH) + 2);
@@ -478,7 +471,9 @@ export default {
           if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
             URL.revokeObjectURL(this.imageUrl);
           }
-        } catch (e) {}
+        } catch (_) {
+          // ignore blob revoke errors
+        }
         this.imageUrl = URL.createObjectURL(raw);
         previewStore.set(raw, this.imageUrl);
         previewStore.setInferenceResult(null);
@@ -512,19 +507,21 @@ export default {
         if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
           URL.revokeObjectURL(this.imageUrl);
         }
-      } catch (e) {}
+      } catch (_) {
+        // ignore blob revoke errors
+      }
       this.imageUrl = '';
       previewStore.clear();
       this.$nextTick(() => this.redraw());
     },
     // 拖拽上传相关方法
-    onDragEnter(e) {
+    onDragEnter() {
       this.isDragging = true;
     },
-    onDragOver(e) {
+    onDragOver() {
       this.isDragging = true;
     },
-    onDragLeave(e) {
+    onDragLeave() {
       this.isDragging = false;
     },
     onDrop(e) {
@@ -544,7 +541,9 @@ export default {
         if (this.imageUrl && this.imageUrl.startsWith('blob:')) {
           URL.revokeObjectURL(this.imageUrl);
         }
-      } catch (e) {}
+      } catch (_) {
+        // ignore blob revoke errors
+      }
       this.imageUrl = URL.createObjectURL(file);
       previewStore.set(file, this.imageUrl);
       previewStore.setInferenceResult(null);

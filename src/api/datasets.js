@@ -58,6 +58,24 @@ function xhrUploadJson(url, formData, { onProgress = null, onUploadDone = null }
     };
 }
 
+async function postJson(url, payload) {
+    const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload || {}),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || {};
+}
+
+async function putForm(url, formData) {
+    const res = await fetch(url, { method: "PUT", body: formData });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || {};
+}
+
 function pickErrorMessage(data, res) {
     if (data) {
         const msg = data.detail || data.message;
@@ -373,6 +391,113 @@ export function uploadDatasetToExisting(
         console.error('???????:', error);
         return { promise: Promise.reject(error), cancel: () => { } };
     }
+}
+
+export function uploadDatasetToExistingChunked(
+    datasetId,
+    file,
+    {
+        chunkSize = 64 * 1024 * 1024,
+        maxRetries = 5,
+        onProgress = null,
+        onUploadDone = null,
+        onServerProcessing = null,
+    } = {}
+) {
+    let cancelled = false;
+    let sessionId = null;
+    const safeChunkSize = Math.max(1 * 1024 * 1024, Number(chunkSize) || 64 * 1024 * 1024);
+
+    const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    const uploadOnePart = async (partNo, blob) => {
+        let attempt = 0;
+        let lastErr = null;
+        while (attempt <= maxRetries) {
+            if (cancelled) throw new Error("Upload cancelled");
+            try {
+                const form = new FormData();
+                form.append("file", blob, `part-${partNo}.part`);
+                await putForm(
+                    `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload-sessions/${encodeURIComponent(sessionId)}/parts/${encodeURIComponent(partNo)}`,
+                    form
+                );
+                return;
+            } catch (e) {
+                lastErr = e;
+                attempt += 1;
+                if (attempt > maxRetries) break;
+                const delay = Math.min(15000, 1000 * Math.pow(2, attempt - 1));
+                await wait(delay);
+            }
+        }
+        throw lastErr || new Error("Part upload failed");
+    };
+
+    const promise = (async () => {
+        if (!datasetId) throw new Error("缺少 datasetId");
+        if (!file) throw new Error("缺少上传文件");
+
+        const total = Number(file.size || 0);
+        if (total <= 0) throw new Error("文件大小无效");
+
+        const create = await postJson(
+            `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload-sessions`,
+            {
+                filename: file.name || "dataset.zip",
+                total_size: total,
+                chunk_size: safeChunkSize,
+            }
+        );
+        sessionId = create.session_id;
+        const serverChunk = Math.max(1, Number(create.chunk_size || safeChunkSize));
+        const totalParts = Math.max(1, Number(create.total_parts || Math.ceil(total / serverChunk)));
+
+        let uploadedBytes = 0;
+        for (let i = 0; i < totalParts; i += 1) {
+            if (cancelled) throw new Error("Upload cancelled");
+            const start = i * serverChunk;
+            const end = Math.min(total, start + serverChunk);
+            const blob = file.slice(start, end);
+            const partNo = i + 1;
+            await uploadOnePart(partNo, blob);
+
+            uploadedBytes = end;
+            if (typeof onProgress === "function") {
+                const percent = total > 0 ? Math.round((uploadedBytes / total) * 100) : 0;
+                onProgress({ loaded: uploadedBytes, total, percent: Math.max(0, Math.min(100, percent)) });
+            }
+        }
+
+        if (typeof onUploadDone === "function") onUploadDone();
+        if (typeof onServerProcessing === "function") onServerProcessing();
+        const done = await postJson(
+            `${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload-sessions/${encodeURIComponent(sessionId)}/complete`,
+            {}
+        );
+        return done;
+    })();
+
+    return {
+        promise,
+        cancel: () => {
+            cancelled = true;
+            if (sessionId) {
+                fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/upload-sessions/${encodeURIComponent(sessionId)}`, {
+                    method: "DELETE",
+                }).catch(() => { });
+            }
+        },
+    };
+}
+
+export async function fetchDatasetImportJob(datasetId, jobId) {
+    if (!datasetId) throw new Error("缺少 datasetId");
+    if (!jobId) throw new Error("缺少 jobId");
+    const res = await fetch(`${API_BASE}/api/v2/datasets/${encodeURIComponent(datasetId)}/imports/${encodeURIComponent(jobId)}`);
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || null;
 }
 
 // appendDatasetArchive 向已有数据集追加ZIP内容（支持非空数据集）

@@ -711,7 +711,8 @@ import {
   fetchDatasetImageAnnotations,
   fetchDatasetVersions,
   uploadDatasetImages,
-  appendDatasetArchive,
+  uploadDatasetToExistingChunked,
+  fetchDatasetImportJob,
   convertIllegalDataset,
   openIllegalConversionStream,
   fetchDatasetSplitSummary,
@@ -2415,6 +2416,25 @@ export default {
 
         formatUploadErrorMessage(errorMsg) {
             const msg = errorMsg ? String(errorMsg) : '';
+            const low = msg.toLowerCase();
+            if (low.includes('[part_missing]')) {
+                return '分片不完整，请重试上传（可继续上传缺失分片）';
+            }
+            if (low.includes('[archive_corrupted]')) {
+                return '压缩包损坏或格式不支持，请重新打包后上传';
+            }
+            if (low.includes('[no_images]')) {
+                return '未检测到图片文件，请确认压缩包中包含图片';
+            }
+            if (low.includes('[no_labels]')) {
+                return '未检测到标注文件，请确认包含 YOLO txt 或 LabelMe JSON';
+            }
+            if (low.includes('[coco_json_invalid]')) {
+                return 'JSON 标注解析失败，请检查 JSON 编码与格式';
+            }
+            if (low.includes('[class_mismatch]')) {
+                return '类别定义不兼容，请检查 classnames/data.yaml 与现有数据集';
+            }
             if (msg.toLowerCase().includes('no image files found')) {
                 return `${msg}（请检查是否为 .tif/.tiff 或后端未开启支持）`;
             }
@@ -2724,7 +2744,7 @@ export default {
             this.uploadLoaded = 0;
             this.uploadTotal = Number(this.pendingZipFile.size) || 0;
             try {
-                const req = appendDatasetArchive(this.datasetId, this.pendingZipFile, {
+                const req = uploadDatasetToExistingChunked(this.datasetId, this.pendingZipFile, {
                     onProgress: ({ loaded, total, percent }) => {
                         const l = Number(loaded) || 0;
                         const t = Number(total) || 0;
@@ -2739,10 +2759,19 @@ export default {
                         this.uploadStage = 'processing';
                         this.uploadPercent = Math.max(this.uploadPercent, 100);
                     },
+                    onServerProcessing: () => {
+                        this.uploadStage = 'processing';
+                        this.uploadPercent = 100;
+                    },
                 });
                 this.cancelUploadRequest = req.cancel;
 
-                await req.promise;
+                const done = await req.promise;
+                const jobId = done && done.job_id ? String(done.job_id) : '';
+                if (!jobId) {
+                    throw new Error('服务器未返回解析任务 ID');
+                }
+                await this.waitImportJobDone(jobId);
                 this.$message.success('ZIP上传成功');
                 this.closeUploadDialog();
                 // Refresh the dataset detail
@@ -2760,6 +2789,25 @@ export default {
                 this.cancelUploadRequest = null;
                 this.uploadStage = 'idle';
             }
+        },
+        async waitImportJobDone(jobId) {
+            const maxAttempts = 2880; // up to ~4 hours
+            const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+            for (let i = 0; i < maxAttempts; i += 1) {
+                const state = await fetchDatasetImportJob(this.datasetId, jobId);
+                const status = String(state && state.status ? state.status : '').toLowerCase();
+                if (status === 'completed') {
+                    return state;
+                }
+                if (status === 'failed') {
+                    const code = state && state.error_code ? `[${state.error_code}] ` : '';
+                    const msg = state && state.error_message ? state.error_message : '解析失败';
+                    const hint = state && state.error_hint ? `（${state.error_hint}）` : '';
+                    throw new Error(`${code}${msg}${hint}`);
+                }
+                await sleep(5000);
+            }
+            throw new Error('服务器处理超时，请稍后在数据集详情页刷新查看结果');
         },
         async submitUpload() {
             if (!this.pendingImages.length) {

@@ -203,7 +203,15 @@
           <div v-if="currentItem && !videoOutputUrl" class="feature-box preview-box">
             <div class="box-header"><i class="el-icon-view"></i> 预览：{{ currentItem.filename }}</div>
             <div class="preview-container">
-              <img v-if="currentPreviewUrl" :src="absoluteUrl(currentPreviewUrl)" alt="result" />
+              <AnnotatedImagePreview
+                v-if="currentPreviewUrl"
+                class="preview-annotator"
+                :image-url="absoluteUrl(currentPreviewUrl)"
+                :predictions="currentOverlayPredictions"
+                :show-labels="form.showLabels"
+                :show-confidence="form.showConfidence"
+                :alt="currentItem.filename || 'result'"
+              />
               <div v-else class="empty-preview"><i class="el-icon-picture-outline"></i> 图源未就绪</div>
             </div>
           </div>
@@ -216,6 +224,7 @@
 <script>
 import { API_BASE } from "@/utils/request";
 import { uploadInferenceFile } from "@/api/inference";
+import AnnotatedImagePreview from "@/components/Inference/AnnotatedImagePreview.vue";
 import {
   fetchInferableModels,
   createInferenceJob,
@@ -223,11 +232,15 @@ import {
   cancelInferenceJob,
   openInferenceJobStream,
 } from "@/api/inferenceJobs";
+import { extractInferencePredictions } from "@/utils/inferencePreview";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
 export default {
   name: "ModelInferenceTestTool",
+  components: {
+    AnnotatedImagePreview,
+  },
   data() {
     return {
       models: [],
@@ -304,7 +317,11 @@ export default {
     },
     currentPreviewUrl() {
       if (!this.currentItem) return "";
-      return this.currentItem.output_url || this.currentItem.source_url || "";
+      return this.currentItem.source_url || this.currentItem.output_url || "";
+    },
+    currentOverlayPredictions() {
+      if (!this.currentItem || !this.currentItem.source_url) return [];
+      return extractInferencePredictions(this.currentItem.output);
     },
     videoOutputUrl() {
       return this.videoMeta.output_url || "";
@@ -735,6 +752,14 @@ export default {
 .upload-text { font-size: 15px; color: #334155; font-weight: 600; }
 .upload-tip { font-size: 12px; color: #94a3b8; margin-top: 8px; line-height: 1.5; padding: 0 16px; }
 
+::v-deep .premium-uploader .el-upload-list {
+  max-height: 160px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+::v-deep .premium-uploader .el-upload-list::-webkit-scrollbar { width: 6px; }
+::v-deep .premium-uploader .el-upload-list::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+
 /* 阈值滑块优化 */
 .sliders-row { display: flex; gap: 24px; }
 .slider-field { flex: 1; }
@@ -1031,6 +1056,11 @@ export default {
   min-height: 280px;
   max-height: 400px;
   position: relative;
+}
+.preview-annotator {
+  width: 100%;
+  height: 100%;
+  min-height: 280px;
 }
 .preview-container img {
   width: 100%;
