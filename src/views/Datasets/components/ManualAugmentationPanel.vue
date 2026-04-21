@@ -216,13 +216,13 @@
 
 <script>
 import {
-  previewDatasetAugmentation,
-  createDatasetAugmentationJob,
-  fetchDatasetAugmentationJob,
-  cancelDatasetAugmentationJob,
-  publishDatasetAugmentationJob,
-  openDatasetAugmentationStream,
-} from '@/api/datasets';
+  previewStandardAugmentation as previewDatasetAugmentation,
+  createStandardAugmentationJob as createDatasetAugmentationJob,
+  fetchStandardAugmentationJob as fetchDatasetAugmentationJob,
+  cancelStandardAugmentationJob as cancelDatasetAugmentationJob,
+  publishStandardAugmentationJob as publishDatasetAugmentationJob,
+  openStandardAugmentationStream as openDatasetAugmentationStream,
+} from '@/api/standardDatasets';
 
 export default {
   name: 'ManualAugmentationPanel',

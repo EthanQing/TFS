@@ -1,12 +1,5 @@
 import { API_BASE } from '@/utils/request';
-
-async function safeJson(res) {
-    try {
-        return await res.json();
-    } catch (_) {
-        return null;
-    }
-}
+import { safeJson, getJson, postJson, deleteJson, patchJson } from './apiUtils';
 
 function pickPageItems(data) {
     if (Array.isArray(data)) return data;
@@ -18,12 +11,13 @@ function pickPageItems(data) {
 function mapProjectOut(p) {
     if (!p || typeof p !== 'object') return p;
 
-    // Preserve dataset info from various possible API response formats
+    // V3 uses standard_dataset_id
     let dataset = p.dataset;
-    if (!dataset && (p.dataset_id || p.dataset_name)) {
+    const sid = p.standard_dataset_id || p.dataset_id;
+    if (!dataset && (sid || p.dataset_name)) {
         dataset = {
-            dataset_id: p.dataset_id,
-            dataset_name: p.dataset_name || (p.dataset_id ? `Dataset #${p.dataset_id}` : null)
+            dataset_id: sid,
+            dataset_name: p.dataset_name || (sid ? `Dataset #${sid}` : null)
         };
     }
 
@@ -31,18 +25,18 @@ function mapProjectOut(p) {
         ...p,
         project_id: p.project_id || p.id,
         project_name: p.project_name || p.name,
-        // Keep backend fields too for later API calls.
         name: p.name || p.project_name,
-        // Ensure dataset info is available
         dataset: dataset,
+        dataset_id: sid,
+        standard_dataset_id: sid,
         dataset_name: p.dataset_name || (dataset && dataset.dataset_name),
     };
 }
 
-// fetchProjects 项目接口（v2 返回 Page{items, meta}）
+// fetchProjects 项目接口
 export async function fetchProjects(page = 1, pageSize = 500) {
     try {
-        const url = `${API_BASE}/api/v2/projects?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
+        const url = `${API_BASE}/api/v3/projects?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
         const response = await fetch(url);
         const data = await safeJson(response);
         if (!response.ok) {
@@ -59,26 +53,22 @@ export async function fetchProjects(page = 1, pageSize = 500) {
 // createProject 创建项目接口
 export async function createProject(projectData) {
     try {
-        // 兼容旧前端字段：project_name -> name；并补齐 v2 必填 task_type
         const payload = {
             name: projectData?.name || projectData?.project_name || projectData?.projectName,
             description: projectData?.description,
-            dataset_id: projectData?.dataset_id ?? projectData?.dataset,
+            standard_dataset_id: Number(projectData?.dataset_id ?? projectData?.standard_dataset_id ?? projectData?.dataset),
             task_type: projectData?.task_type || 'detection',
             created_by: projectData?.created_by || projectData?.user || '',
             tags: projectData?.tags,
         };
 
-        const response = await fetch(`${API_BASE}/api/v2/projects`, {
+        const response = await fetch(`${API_BASE}/api/v3/projects`, {
             method: 'POST',
-            headers: {
-                'Content-Type': 'application/json'
-            },
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
 
         const result = await safeJson(response);
-
         if (response.ok) {
             return mapProjectOut(result);
         } else {
@@ -93,7 +83,7 @@ export async function createProject(projectData) {
 // FetchProjectsDetail 获取项目详细信息接口
 export async function FetchProjectsDetail(projectId) {
     try {
-        const response = await fetch(`${API_BASE}/api/v2/projects/${projectId}`);
+        const response = await fetch(`${API_BASE}/api/v3/projects/${projectId}`);
         const data = await safeJson(response);
         if (!response.ok) {
             const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
@@ -106,13 +96,13 @@ export async function FetchProjectsDetail(projectId) {
     }
 }
 
-// deleteProject 删除项目接口（v2: DELETE /projects/{id}）
+// deleteProject 删除项目接口
 export async function deleteProject(projectId, { force = false } = {}) {
     try {
         const id = Number(projectId);
         if (!Number.isFinite(id)) throw new Error('无效的 projectId');
 
-        const response = await fetch(`${API_BASE}/api/v2/projects/${id}?force=${force ? '1' : '0'}`, {
+        const response = await fetch(`${API_BASE}/api/v3/projects/${id}?force=${force ? '1' : '0'}`, {
             method: 'DELETE',
         });
         const data = await safeJson(response);
@@ -133,7 +123,7 @@ export async function deleteProject(projectId, { force = false } = {}) {
 // FetchProjectModelsSize 获取项目模型大小接口
 export async function FetchProjectModelsSize(projectId) {
     try {
-        const response = await fetch(`${API_BASE}/api/v2/projects/${projectId}/model-size`);
+        const response = await fetch(`${API_BASE}/api/v3/projects/${projectId}/model-size`);
         const data = await safeJson(response);
         if (!response.ok) {
             const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
@@ -146,13 +136,13 @@ export async function FetchProjectModelsSize(projectId) {
     }
 }
 
-// FetchProjectsModelsSize 批量获取项目模型大小（更高性能，避免逐个请求）
+// FetchProjectsModelsSize 批量获取项目模型大小
 export async function FetchProjectsModelsSize(projectIds = []) {
     try {
         const ids = Array.isArray(projectIds) ? projectIds.map(x => Number(x)).filter(x => Number.isFinite(x)) : [];
         if (!ids.length) return [];
         const q = ids.join(',');
-        const response = await fetch(`${API_BASE}/api/v2/projects/model-sizes?project_ids=${encodeURIComponent(q)}`);
+        const response = await fetch(`${API_BASE}/api/v3/projects/model-sizes?project_ids=${encodeURIComponent(q)}`);
         const data = await safeJson(response);
         if (!response.ok) {
             const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
@@ -172,7 +162,7 @@ export async function fetchProjectCompareBaseline(projectId, frameworkKey) {
         if (!Number.isFinite(pid)) throw new Error('无效的 projectId');
         if (!fw) throw new Error('framework_key is required');
 
-        const url = `${API_BASE}/api/v2/projects/${encodeURIComponent(pid)}/compare-baseline?framework_key=${encodeURIComponent(fw)}`;
+        const url = `${API_BASE}/api/v3/projects/${encodeURIComponent(pid)}/compare-baseline?framework_key=${encodeURIComponent(fw)}`;
         const response = await fetch(url);
         const data = await safeJson(response);
         if (!response.ok) {
@@ -201,7 +191,7 @@ export async function setProjectCompareBaseline(projectId, payload = {}) {
         if (!body.framework_key) throw new Error('framework_key is required');
         if (!body.baseline_run_id) throw new Error('baseline_run_id is required');
 
-        const response = await fetch(`${API_BASE}/api/v2/projects/${encodeURIComponent(pid)}/compare-baseline`, {
+        const response = await fetch(`${API_BASE}/api/v3/projects/${encodeURIComponent(pid)}/compare-baseline`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
@@ -228,7 +218,7 @@ export async function clearProjectCompareBaseline(projectId, frameworkKey) {
         if (!Number.isFinite(pid)) throw new Error('无效的 projectId');
         if (!fw) throw new Error('framework_key is required');
 
-        const response = await fetch(`${API_BASE}/api/v2/projects/${encodeURIComponent(pid)}/compare-baseline?framework_key=${encodeURIComponent(fw)}`, {
+        const response = await fetch(`${API_BASE}/api/v3/projects/${encodeURIComponent(pid)}/compare-baseline?framework_key=${encodeURIComponent(fw)}`, {
             method: 'DELETE',
         });
         const data = await safeJson(response);

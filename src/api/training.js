@@ -96,7 +96,7 @@ async function getArchitectureMap({ force = false } = {}) {
   if (!force && _archCache.pending) return _archCache.pending;
 
   _archCache.pending = (async () => {
-    const res = await fetch(`${API_BASE}/api/v2/architectures`);
+    const res = await fetch(`${API_BASE}/api/v3/architectures`);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
     const list = Array.isArray(data) ? data : [];
@@ -276,12 +276,11 @@ export async function createTrainingJob(trainParameters) {
     const payload = {
       project_id,
       architecture_id,
-      dataset_version_id: tp.dataset_version_id != null ? Number(tp.dataset_version_id) : undefined,
       name: normStr(tp.name || tp.job_name) || undefined,
       parameters: params,
     };
 
-    const res = await fetch(`${API_BASE}/api/v2/training-runs`, {
+    const res = await fetch(`${API_BASE}/api/v3/training-runs`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -300,7 +299,7 @@ export async function createTrainingJob(trainParameters) {
 export async function startTrainingJob(jobId) {
   try {
     const id = normStr(jobId);
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/queue`, {
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/queue`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
     });
@@ -347,7 +346,7 @@ export async function fetchTrainingJobs(page = 1, pageSize = 500) {
 // fetchTrainingJobsPage 获取分页训练任务（返回 { items, meta }）
 export async function fetchTrainingJobsPage(page = 1, pageSize = 20, filters = {}) {
   try {
-    let url = `${API_BASE}/api/v2/training-runs?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
+    let url = `${API_BASE}/api/v3/training-runs?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
     if (filters.project_id) url += `&project_id=${encodeURIComponent(filters.project_id)}`;
     if (filters.status) url += `&status=${encodeURIComponent(filters.status)}`;
     if (filters.search) {
@@ -382,7 +381,7 @@ export async function fetchTrainingJobsPage(page = 1, pageSize = 20, filters = {
 export async function FetchTrainingJobsStatus(jobId) {
   try {
     const id = normStr(jobId);
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}`);
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}`);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
     const job = await mapTrainingRunToJob(data);
@@ -407,7 +406,7 @@ export async function FetchTrainingJobsMetrics_detailed(jobId) {
   try {
     const id = normStr(jobId);
     const res = await fetch(
-      `${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/metrics/epochs?limit=5000`
+      `${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/metrics/epochs?limit=5000`
     );
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
@@ -455,7 +454,7 @@ function buildWsUrl(runId, query = {}) {
   });
   const base = String(WS_BASE || API_BASE || "").replace(/\/+$/, "");
   const tail = qs.toString();
-  return `${base}/api/v2/training-runs/${rid}/metrics/stream${tail ? `?${tail}` : ""}`;
+  return `${base}/api/v3/training-runs/${rid}/metrics/stream${tail ? `?${tail}` : ""}`;
 }
 
 export function openTrainingRunMetricsStream(runId, handlers = {}, options = {}) {
@@ -616,7 +615,7 @@ export function openTrainingRunMetricsStream(runId, handlers = {}, options = {})
 export async function DeleteTrainingJob(jobId, { force = false } = {}) {
   try {
     const id = normStr(jobId);
-    const url = `${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}?force=${force ? "1" : "0"}`;
+    const url = `${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}?force=${force ? "1" : "0"}`;
     const res = await fetch(url, {
       method: "DELETE",
     });
@@ -638,7 +637,7 @@ export async function DeleteTrainingJob(jobId, { force = false } = {}) {
 export async function CancelTrainingJob(jobId) {
   try {
     const id = normStr(jobId);
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/cancel`, {
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/cancel`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -655,7 +654,7 @@ export async function CancelTrainingJob(jobId) {
 export async function ResumeTrainingJob(jobId) {
   try {
     const id = normStr(jobId);
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/resume`, {
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/resume`, {
       method: "POST",
       headers: { "Content-Type": "application/json" }
     });
@@ -672,7 +671,7 @@ export async function ResumeTrainingJob(jobId) {
 export async function FetchTrainingJobParameters(jobId) {
   try {
     const id = normStr(jobId);
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}`);
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}`);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
     return mapParametersOut(data && data.parameters);
@@ -686,7 +685,7 @@ export async function FetchTrainingJobParameters(jobId) {
 export async function FetchTrainingJobModelSize(jobId) {
   try {
     const id = normStr(jobId);
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}`);
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}`);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
 
@@ -716,7 +715,7 @@ export async function ExportModel(jobId, options = {}) {
       imgsz: options.imgsz != null ? Number(options.imgsz) : undefined,
     };
 
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/${encodeURIComponent(id)}/export`, {
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/export`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -735,7 +734,7 @@ export async function ExportModel(jobId, options = {}) {
 export async function CompareTrainingRuns(runIds) {
   try {
     const payload = { run_ids: Array.isArray(runIds) ? runIds : [] };
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/compare`, {
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/compare`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -760,7 +759,7 @@ export async function benchmarkTrainingRunsInferenceTime(runIds, options = {}) {
       run_ids: Array.isArray(runIds) ? runIds : [],
       force: !!options.force,
     };
-    const res = await fetch(`${API_BASE}/api/v2/training-runs/benchmark-inference-time`, {
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/benchmark-inference-time`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),

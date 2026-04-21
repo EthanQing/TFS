@@ -185,7 +185,7 @@
 <script>
 import { API_BASE } from "@/utils/request";
 import { createDatasetConversion, fetchDatasetConversion } from "@/api/datasetConversions";
-import { uploadDataset } from "@/api/datasets";
+import { createStandardDataset, uploadStandardDatasetArchive } from "@/api/standardDatasets";
 
 export default {
   name: "DatasetFormatConversion",
@@ -549,7 +549,11 @@ export default {
         const filename = this.outputFilename || `dataset_yolo_${this.jobId}.zip`;
         const zipFile = new File([blob], filename, { type: "application/zip" });
 
-        const req = uploadDataset(zipFile, this.datasetName, "detection", null, {
+        const createdDs = await createStandardDataset({ name: this.datasetName, dataset_type: "detection" });
+        const createdId = createdDs && (createdDs.dataset_id || createdDs.id);
+        if (!createdId) throw new Error("数据集创建失败，未返回ID");
+        
+        const req = uploadStandardDatasetArchive(createdId, zipFile, {
           onProgress: (p) => {
             const percent = p && p.percent;
             if (typeof percent === "number") this.uploadProgress = percent;
@@ -560,8 +564,7 @@ export default {
         this.uploadingDataset = false;
         this.uploadCancel = null;
         this.uploadProgress = 100;
-        const ds = result && result.dataset;
-        const id = ds && (ds.dataset_id || ds.id);
+        const id = createdId;
         this.$message.success("数据集创建成功");
         if (id) {
             // Slight delay to allow progress bar to show complete

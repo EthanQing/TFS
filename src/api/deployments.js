@@ -42,14 +42,14 @@ function mapPage(data) {
 
 export async function fetchDeploymentsPage(params = {}) {
   const query = buildPageQuery(params);
-  const res = await fetch(`${API_BASE}/api/v2/deployments?${query}`);
+  const res = await fetch(`${API_BASE}/api/v3/deployments?${query}`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return mapPage(data);
 }
 
 export async function createDeployment(payload = {}) {
-  const res = await fetch(`${API_BASE}/api/v2/deployments`, {
+  const res = await fetch(`${API_BASE}/api/v3/deployments`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
@@ -62,7 +62,7 @@ export async function createDeployment(payload = {}) {
 export async function fetchDeployment(deploymentId) {
   const did = normId(deploymentId);
   if (did == null) throw new Error("Missing deployment id");
-  const res = await fetch(`${API_BASE}/api/v2/deployments/${encodeURIComponent(String(did))}`);
+  const res = await fetch(`${API_BASE}/api/v3/deployments/${encodeURIComponent(String(did))}`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return data || {};
@@ -84,7 +84,7 @@ export async function fetchActiveDeployment(projectId) {
 export async function fetchDeploymentRollbackCandidates(deploymentId) {
   const did = normId(deploymentId);
   if (did == null) throw new Error("Missing deployment id");
-  const res = await fetch(`${API_BASE}/api/v2/deployments/${encodeURIComponent(String(did))}/rollback/candidates`);
+  const res = await fetch(`${API_BASE}/api/v3/deployments/${encodeURIComponent(String(did))}/rollback/candidates`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return data || {};
@@ -93,7 +93,7 @@ export async function fetchDeploymentRollbackCandidates(deploymentId) {
 export async function rollbackDeployment(deploymentId, payload = {}) {
   const did = normId(deploymentId);
   if (did == null) throw new Error("Missing deployment id");
-  const res = await fetch(`${API_BASE}/api/v2/deployments/${encodeURIComponent(String(did))}/rollback`, {
+  const res = await fetch(`${API_BASE}/api/v3/deployments/${encodeURIComponent(String(did))}/rollback`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
@@ -108,7 +108,7 @@ export async function fetchDeploymentRollbackHistory(deploymentId, { limit = 200
   if (did == null) throw new Error("Missing deployment id");
   const safeLimit = Math.min(5000, Math.max(1, Number(limit) || 200));
   const res = await fetch(
-    `${API_BASE}/api/v2/deployments/${encodeURIComponent(String(did))}/rollback/history?limit=${safeLimit}`
+    `${API_BASE}/api/v3/deployments/${encodeURIComponent(String(did))}/rollback/history?limit=${safeLimit}`
   );
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));

@@ -81,9 +81,6 @@
 </template>
 
 <script>
-import {
-  FetchDatasetType
-} from "@/api/datasets";
 import { GetInferenceResult, uploadInferenceImage, fetchModelVersionsByRunId, registerModelVersionFromRun } from "@/api/models";
 import { previewStore } from "@/store/previewStore";
 import { normalizeInferencePredictions } from "@/utils/inferencePreview";

@@ -38,7 +38,7 @@ function isArchitectureVisible(it) {
 // FetchArchitectureDetail 获取架构信息接口
 export async function FetchArchitectureDetail() {
     try {
-        const response = await fetch(`${API_BASE}/api/v2/architectures`);
+        const response = await fetch(`${API_BASE}/api/v3/architectures`);
         const data = await safeJson(response);
         if (!response.ok) {
             const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
@@ -65,7 +65,7 @@ export async function fetchModelVersionsByRunId(runId, page = 1, pageSize = 20) 
     const id = String(runId || '').trim();
     if (!id) throw new Error('Missing run_id');
 
-    const url = `${API_BASE}/api/v2/model-versions?run_id=${encodeURIComponent(id)}&page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
+    const url = `${API_BASE}/api/v3/model-versions?run_id=${encodeURIComponent(id)}&page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
     const res = await fetch(url);
     const data = await safeJson(res);
     if (!res.ok) {
@@ -83,7 +83,7 @@ export async function registerModelVersionFromRun({ run_id, version, stage = 'de
         description: description || undefined,
     };
 
-    const res = await fetch(`${API_BASE}/api/v2/model-versions`, {
+    const res = await fetch(`${API_BASE}/api/v3/model-versions`, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json'
@@ -100,7 +100,7 @@ export async function registerModelVersionFromRun({ run_id, version, stage = 'de
 // GetInferenceResult 获取推理结果接口
 export async function GetInferenceResult(payload) {
     try {
-        const response = await fetch(`${API_BASE}/api/v2/inference-runs`, {
+        const response = await fetch(`${API_BASE}/api/v3/inference-runs`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json'
@@ -124,7 +124,7 @@ export async function uploadInferenceImage(file) {
     try {
         const formData = new FormData();
         formData.append('file', file);
-        const response = await fetch(`${API_BASE}/api/v2/inference-runs/upload`, {
+        const response = await fetch(`${API_BASE}/api/v3/inference-runs/upload`, {
             method: 'POST',
             body: formData
         });

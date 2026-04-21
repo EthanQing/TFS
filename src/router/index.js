@@ -18,7 +18,8 @@ Vue.use(VueRouter)
 const Datasets = () => import('@/views/Datasets/index.vue')
 const Projects = () => import('@/views/Projects/index.vue')
 const Architecture = () => import('@/views/Models/Architecture.vue')
-const DatasetDetail = () => import('@/views/Datasets/DatasetDetail.vue')
+const IllegalDatasetDetail = () => import('@/views/Datasets/IllegalDatasetDetail.vue')
+const StandardDatasetDetail = () => import('@/views/Datasets/StandardDatasetDetail.vue')
 const ProjectDetail = () => import('@/views/Projects/ProjectDetail.vue')
 const ProjectCharts = () => import('@/views/Projects/ProjectCharts.vue')
 const TrainManager = () => import('@/views/Training/TrainManager.vue')
@@ -36,7 +37,6 @@ const DataConversion = () => import('@/views/Datasets/components/DataConversion.
 const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
 const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
-const PerformanceMonitor = () => import('@/views/Monitoring/PerformanceMonitor.vue')
 
 export default new VueRouter({
     routes: [
@@ -53,8 +53,12 @@ export default new VueRouter({
             component: Architecture
         },
         {
-            path: '/datadetail',
-            component: DatasetDetail
+            path: '/illegal-dataset-detail',
+            component: IllegalDatasetDetail
+        },
+        {
+            path: '/standard-dataset-detail',
+            component: StandardDatasetDetail
         },
         {
             path: '/projectsdetail',
@@ -102,8 +106,9 @@ export default new VueRouter({
             component: FormatConversion
         },
         {
+            // 暂时屏蔽性能监控页面，统一回到数据集首页
             path: '/performance-monitor',
-            component: PerformanceMonitor
+            redirect: { path: '/datasets' }
         },
 
         {

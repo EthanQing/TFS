@@ -1,7 +1,7 @@
 import Vue from "vue";
 
 import { API_BASE } from "@/utils/request";
-import { fetchDatasets } from "@/api/datasets";
+import { fetchStandardDatasets } from "@/api/standardDatasets";
 import { FetchArchitectureDetail } from "@/api/models";
 
 async function safeJson(res) {
@@ -56,7 +56,7 @@ function hydrateProjectsWithDatasets() {
     return {
       ...p,
       dataset: {
-        dataset_id: ds.dataset_id,
+        dataset_id: ds.standard_dataset_id || ds.dataset_id,
         dataset_name: ds.dataset_name,
         dataset_type: ds.dataset_type,
       },
@@ -71,7 +71,7 @@ export async function loadDatasets({ force = false } = {}) {
   referenceStore.loading.datasets = true;
   referenceStore.error.datasets = "";
   try {
-    const list = await fetchDatasets(1, 500);
+    const list = await fetchStandardDatasets(1, 500);
     referenceStore.datasets = Array.isArray(list) ? list : [];
     referenceStore.loaded.datasets = true;
   } catch (e) {
@@ -110,7 +110,7 @@ export async function loadProjects({ force = false } = {}) {
   referenceStore.error.projects = "";
   try {
     // Use raw fetch here to avoid coupling to legacy front-end API shapes.
-    const response = await fetch(`${API_BASE}/api/v2/projects?page=1&page_size=500`);
+    const response = await fetch(`${API_BASE}/api/v3/projects?page=1&page_size=500`);
     const data = await safeJson(response);
     if (!response.ok) {
       const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;

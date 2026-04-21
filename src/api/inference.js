@@ -14,7 +14,7 @@ function toErr(data, res) {
 export async function uploadInferenceFile(file) {
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/api/v2/inference-runs/upload`, {
+    const res = await fetch(`${API_BASE}/api/v3/inference-runs/upload`, {
         method: "POST",
         body: formData,
     });
@@ -25,7 +25,7 @@ export async function uploadInferenceFile(file) {
 
 // Run single-image inference
 export async function runSingleInference(payload) {
-    const res = await fetch(`${API_BASE}/api/v2/inference-runs`, {
+    const res = await fetch(`${API_BASE}/api/v3/inference-runs`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -37,7 +37,7 @@ export async function runSingleInference(payload) {
 
 // Run batch inference on multiple uploaded images
 export async function runBatchInference(payload) {
-    const res = await fetch(`${API_BASE}/api/v2/inference-runs/batch`, {
+    const res = await fetch(`${API_BASE}/api/v3/inference-runs/batch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
@@ -49,7 +49,7 @@ export async function runBatchInference(payload) {
 
 // Run video inference
 export async function runVideoInference(payload) {
-    const res = await fetch(`${API_BASE}/api/v2/inference-runs/video`, {
+    const res = await fetch(`${API_BASE}/api/v3/inference-runs/video`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),

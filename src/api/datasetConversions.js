@@ -20,7 +20,7 @@ export async function createDatasetConversion({ file, targetFormat } = {}) {
   const fd = new FormData();
   fd.append("file", file, file.name || "dataset.zip");
 
-  let url = `${API_BASE}/api/v2/dataset-conversions`;
+  let url = `${API_BASE}/api/v3/dataset-conversions`;
   if (targetFormat) {
     url += `?target_format=${encodeURIComponent(targetFormat)}`;
   }
@@ -37,7 +37,7 @@ export async function createDatasetConversion({ file, targetFormat } = {}) {
 export async function fetchDatasetConversion(jobId) {
   const id = String(jobId || "").trim();
   if (!id) throw new Error("缺少 job_id");
-  const res = await fetch(`${API_BASE}/api/v2/dataset-conversions/${encodeURIComponent(id)}`);
+  const res = await fetch(`${API_BASE}/api/v3/dataset-conversions/${encodeURIComponent(id)}`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return data;

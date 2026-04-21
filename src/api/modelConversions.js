@@ -31,7 +31,7 @@ export async function createModelConversion({
   if (opset != null && Number.isFinite(Number(opset))) fd.append("opset", String(Number(opset)));
   if (dynamic != null) fd.append("dynamic", String(!!dynamic));
 
-  const res = await fetch(`${API_BASE}/api/v2/model-conversions`, {
+  const res = await fetch(`${API_BASE}/api/v3/model-conversions`, {
     method: "POST",
     body: fd,
   });
@@ -43,7 +43,7 @@ export async function createModelConversion({
 export async function fetchModelConversion(jobId) {
   const id = String(jobId || "").trim();
   if (!id) throw new Error("缺少 job_id");
-  const res = await fetch(`${API_BASE}/api/v2/model-conversions/${encodeURIComponent(id)}`);
+  const res = await fetch(`${API_BASE}/api/v3/model-conversions/${encodeURIComponent(id)}`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return data;

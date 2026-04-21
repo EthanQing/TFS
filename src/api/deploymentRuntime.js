@@ -22,7 +22,7 @@ function normStr(v) {
 export async function executeDeployment(deploymentId, payload = {}) {
   const id = Number(deploymentId);
   if (!Number.isFinite(id)) throw new Error("Missing deployment id");
-  const res = await fetch(`${API_BASE}/api/v2/deployments/${encodeURIComponent(String(id))}/execute`, {
+  const res = await fetch(`${API_BASE}/api/v3/deployments/${encodeURIComponent(String(id))}/execute`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
@@ -35,7 +35,7 @@ export async function executeDeployment(deploymentId, payload = {}) {
 export async function fetchDeploymentRun(runId) {
   const id = normStr(runId);
   if (!id) throw new Error("Missing run id");
-  const res = await fetch(`${API_BASE}/api/v2/deployment-runs/${encodeURIComponent(id)}`);
+  const res = await fetch(`${API_BASE}/api/v3/deployment-runs/${encodeURIComponent(id)}`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return data || {};
@@ -44,7 +44,7 @@ export async function fetchDeploymentRun(runId) {
 export async function retryDeploymentRun(runId, payload = {}) {
   const id = normStr(runId);
   if (!id) throw new Error("Missing run id");
-  const res = await fetch(`${API_BASE}/api/v2/deployment-runs/${encodeURIComponent(id)}/retry`, {
+  const res = await fetch(`${API_BASE}/api/v3/deployment-runs/${encodeURIComponent(id)}/retry`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
@@ -57,7 +57,7 @@ export async function retryDeploymentRun(runId, payload = {}) {
 export async function cancelDeploymentRun(runId) {
   const id = normStr(runId);
   if (!id) throw new Error("Missing run id");
-  const res = await fetch(`${API_BASE}/api/v2/deployment-runs/${encodeURIComponent(id)}/cancel`, {
+  const res = await fetch(`${API_BASE}/api/v3/deployment-runs/${encodeURIComponent(id)}/cancel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -72,7 +72,7 @@ export async function fetchDeploymentRunLogs(runId, { fromSeq = 0, limit = 1000 
   const qs = new URLSearchParams();
   qs.set("from_seq", String(Math.max(0, Number(fromSeq) || 0)));
   qs.set("limit", String(Math.min(5000, Math.max(1, Number(limit) || 1000))));
-  const res = await fetch(`${API_BASE}/api/v2/deployment-runs/${encodeURIComponent(id)}/logs?${qs.toString()}`);
+  const res = await fetch(`${API_BASE}/api/v3/deployment-runs/${encodeURIComponent(id)}/logs?${qs.toString()}`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return Array.isArray(data) ? data : [];
@@ -90,7 +90,7 @@ function buildWsUrl(runId, query = {}) {
   });
   const base = String(WS_BASE || API_BASE || "").replace(/\/+$/, "");
   const tail = qs.toString();
-  return `${base}/api/v2/deployment-runs/${id}/stream${tail ? `?${tail}` : ""}`;
+  return `${base}/api/v3/deployment-runs/${id}/stream${tail ? `?${tail}` : ""}`;
 }
 
 export function openDeploymentRunStream(runId, handlers = {}, options = {}) {

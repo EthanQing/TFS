@@ -26,7 +26,7 @@ export async function fetchSystemMetricsSummary({ nodeId = "backend", nodeType =
   const qs = new URLSearchParams();
   qs.set("node_id", String(nodeId || "backend"));
   qs.set("node_type", String(nodeType || "backend"));
-  return getJson(`${API_BASE}/api/v2/system-metrics/summary?${qs.toString()}`);
+  return getJson(`${API_BASE}/api/v3/system-metrics/summary?${qs.toString()}`);
 }
 
 export async function fetchSystemMetricsHistory({
@@ -40,5 +40,5 @@ export async function fetchSystemMetricsHistory({
   qs.set("node", String(node || "backend"));
   qs.set("node_type", String(nodeType || "backend"));
   qs.set("step_seconds", String(Math.max(1, Number(stepSeconds) || 5)));
-  return getJson(`${API_BASE}/api/v2/system-metrics/history?${qs.toString()}`);
+  return getJson(`${API_BASE}/api/v3/system-metrics/history?${qs.toString()}`);
 }

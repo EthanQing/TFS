@@ -20,7 +20,7 @@ function normStr(v) {
 }
 
 export async function fetchInferableModels({ projectId } = {}) {
-  let url = `${API_BASE}/api/v2/inference-jobs/models`;
+  let url = `${API_BASE}/api/v3/inference-jobs/models`;
   if (projectId != null && Number.isFinite(Number(projectId))) {
     url += `?project_id=${encodeURIComponent(Number(projectId))}`;
   }
@@ -31,7 +31,7 @@ export async function fetchInferableModels({ projectId } = {}) {
 }
 
 export async function createInferenceJob(payload) {
-  const res = await fetch(`${API_BASE}/api/v2/inference-jobs`, {
+  const res = await fetch(`${API_BASE}/api/v3/inference-jobs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload || {}),
@@ -45,7 +45,7 @@ export async function fetchInferenceJob(jobId, { includeItems = true } = {}) {
   const id = normStr(jobId);
   if (!id) throw new Error("Missing job id");
   const qs = includeItems ? "1" : "0";
-  const res = await fetch(`${API_BASE}/api/v2/inference-jobs/${encodeURIComponent(id)}?include_items=${qs}`);
+  const res = await fetch(`${API_BASE}/api/v3/inference-jobs/${encodeURIComponent(id)}?include_items=${qs}`);
   const data = await safeJson(res);
   if (!res.ok) throw new Error(toErrorMessage(data, res));
   return data;
@@ -54,7 +54,7 @@ export async function fetchInferenceJob(jobId, { includeItems = true } = {}) {
 export async function cancelInferenceJob(jobId) {
   const id = normStr(jobId);
   if (!id) throw new Error("Missing job id");
-  const res = await fetch(`${API_BASE}/api/v2/inference-jobs/${encodeURIComponent(id)}/cancel`, {
+  const res = await fetch(`${API_BASE}/api/v3/inference-jobs/${encodeURIComponent(id)}/cancel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
   });
@@ -75,7 +75,7 @@ function buildWsUrl(jobId, query = {}) {
   });
   const base = String(WS_BASE || API_BASE || "").replace(/\/+$/, "");
   const tail = qs.toString();
-  return `${base}/api/v2/inference-jobs/${id}/stream${tail ? `?${tail}` : ""}`;
+  return `${base}/api/v3/inference-jobs/${id}/stream${tail ? `?${tail}` : ""}`;
 }
 
 export function openInferenceJobStream(jobId, handlers = {}, options = {}) {

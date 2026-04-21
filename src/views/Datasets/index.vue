@@ -4,20 +4,29 @@
       <div class="ds-hero-content">
         <div class="ds-eyebrow">数据中心</div>
         <h1 class="ds-title">数据集</h1>
-        <p class="ds-subtitle">集中创建、上传和管理您的训练数据。</p>
+        <p class="ds-subtitle">集中创建、上传、标注和管理您的训练数据。</p>
         
         <div class="ds-actions">
            <el-button
             type="primary"
             icon="el-icon-plus"
             class="hero-action"
-            @click="dialogFormVisible = true"
+            @click="openCreateDialog"
           >新建数据集</el-button>
         </div>
       </div>
-      
-      <!-- Optional: Add a decorative element or keep clean -->
     </header>
+
+    <div class="ds-tabs-container">
+      <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="ds-custom-tabs">
+        <el-tab-pane label="非法数据集 (待处理)" name="illegal">
+            <span slot="label"><i class="el-icon-folder"></i> 非法数据集 (待处理)</span>
+        </el-tab-pane>
+        <el-tab-pane label="标准数据集 (正式/已发布)" name="standard">
+            <span slot="label"><i class="el-icon-document-checked"></i> 标准数据集 (已发布)</span>
+        </el-tab-pane>
+      </el-tabs>
+    </div>
 
     <section class="ds-toolbar">
       <div class="toolbar-left">
@@ -32,9 +41,9 @@
         </div>
         
         <div class="filter-group">
-          <el-select v-model="value" placeholder="全部类型" class="filter-select" @change="handleFilterChange">
+          <el-select v-model="filterType" placeholder="全部类型" class="filter-select">
             <el-option
-              v-for="item in options"
+              v-for="item in typeOptions"
               :key="item.value"
               :label="item.label"
               :value="item.value"
@@ -42,8 +51,8 @@
           </el-select>
         </div>
 
-        <div class="filter-group">
-          <el-select v-model="formatValue" placeholder="全部格式" class="filter-select">
+        <div class="filter-group" v-if="activeTab === 'standard'">
+          <el-select v-model="filterFormat" placeholder="全部格式" class="filter-select">
              <el-option
               v-for="item in formatOptions"
               :key="item.value"
@@ -56,7 +65,7 @@
       
       <div class="toolbar-right">
         <div class="filter-group">
-          <el-select v-model="activeFilter" placeholder="排序方式" class="filter-select" clearable>
+          <el-select v-model="activeSort" placeholder="排序方式" class="filter-select" clearable>
             <el-option
               v-for="item in sortOptions"
               :key="item.value"
@@ -68,7 +77,7 @@
       </div>
     </section>
 
-    <section class="ds-content">
+    <section class="ds-content" v-loading="loading">
       <section v-if="filteredDatasets.length" class="dataset-grid">
         <div
           class="dataset-card"
@@ -78,7 +87,7 @@
         >
           <div class="card-media" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
             <span class="card-type-badge">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
-            <span v-if="d.format === 'coco'" class="card-format-badge coco">COCO</span>
+            <span v-if="activeTab === 'standard' && d.format" class="card-format-badge coco">{{ d.format.toUpperCase() }}</span>
             <div class="card-overlay"></div>
           </div>
           <div class="card-body">
@@ -112,9 +121,16 @@
         <div class="empty-icon">
           <i class="el-icon-folder-opened"></i>
         </div>
-        <div class="empty-title">暂无数据集</div>
-        <div class="empty-desc">创建您的第一个数据集项目以开始。</div>
-        <el-button type="primary" @click="dialogFormVisible = true">创建数据集</el-button>
+        <div class="empty-title">暂无{{ activeTab === 'illegal' ? '非法' : '标准' }}数据集</div>
+        <div class="empty-desc">
+            <template v-if="activeTab === 'illegal'">
+                非法数据集用于原始数据导入、标注、版本管理和格式转换。
+            </template>
+            <template v-else>
+                标准数据集用于正式的模型训练，可通过非法数据集发布或直接导入。
+            </template>
+        </div>
+        <el-button type="primary" @click="openCreateDialog">创建数据集</el-button>
       </div>
     </section>
 
@@ -134,7 +150,7 @@
     </div>
 
     <el-dialog
-      title="创建新数据集"
+      :title="`创建新${activeTab === 'illegal' ? '非法' : '标准'}数据集`"
       :visible.sync="dialogFormVisible"
       width="600px"
       custom-class="dataset-dialog"
@@ -143,16 +159,22 @@
       <div class="dialog-content">
         <el-form :model="form" :rules="rules" ref="formRef" label-position="top">
             <el-form-item label="数据集名称" prop="name">
-              <el-input v-model="form.name" autocomplete="off" :disabled="createdDatasetId" placeholder="例如：交通标志"></el-input>
+              <el-input v-model="form.name" autocomplete="off" :disabled="!!createdDatasetId" placeholder="例如：交通标志"></el-input>
             </el-form-item>
             <el-form-item label="任务类型" prop="type">
-              <el-select v-model="form.type" placeholder="选择类型" :disabled="createdDatasetId" style="width: 100%">
+              <el-select v-model="form.type" placeholder="选择类型" :disabled="!!createdDatasetId" style="width: 100%">
                   <el-option
-                  v-for="item in selectOptions"
+                  v-for="item in createTypeOptions"
                   :key="item.value"
                   :label="item.label"
                   :value="item.value"
                   ></el-option>
+              </el-select>
+            </el-form-item>
+            <el-form-item label="数据集格式" prop="format" v-if="activeTab === 'standard'">
+              <el-select v-model="form.format" placeholder="选择格式" :disabled="!!createdDatasetId" style="width: 100%">
+                  <el-option label="YOLO" value="yolo"></el-option>
+                  <el-option label="COCO" value="coco"></el-option>
               </el-select>
             </el-form-item>
         </el-form>
@@ -182,22 +204,30 @@
 </template>
 
 <script>
-// Logic remains mostly the same, ensuring imports are correct
-import { fetchDatasets, createDataset, deleteDataset, FetchDatasetPreviewImage } from "@/api/datasets";
+import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset } from "@/api/illegalDatasets";
+import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset } from "@/api/standardDatasets";
+import { buildIllegalThumbnailUrl } from "@/api/illegalDatasets";
+import { buildStandardThumbnailUrl } from "@/api/standardDatasets";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
   name: "Datasets",
   data() {
     return {
+      activeTab: "illegal",
+      loading: false,
       searchQuery: "",
-      options: [
+      filterType: "all",
+      filterFormat: "all",
+      activeSort: null,
+      
+      typeOptions: [
         { value: "all", label: "全部类型" },
         { value: "detection", label: "目标检测" },
         { value: "segmentation", label: "图像分割" },
         { value: "classification", label: "图像分类" },
       ],
-      selectOptions: [
+      createTypeOptions: [
         { value: "detection", label: "目标检测" },
         { value: "segmentation", label: "图像分割" },
         { value: "classification", label: "图像分类" },
@@ -212,16 +242,15 @@ export default {
         { value: "image", label: "图片数" },
         { value: "size", label: "大小" },
       ],
-      value: "all",
-      formatValue: "all",
-      activeFilter: null,
+      
       datasets: [],
-      originalDatasets: [],
+      
       dialogFormVisible: false,
-      form: { name: "", type: "" },
+      form: { name: "", type: "", format: "yolo" },
       rules: {
         name: [{ required: true, message: "请输入数据集名称", trigger: "blur" }],
         type: [{ required: true, message: "请选择任务类型", trigger: "change" }],
+        format: [{ required: true, message: "请选择格式", trigger: "change" }],
       },
       showPopup: false,
       currentDatasetId: null,
@@ -233,83 +262,96 @@ export default {
   watch: {
     dialogFormVisible(val) {
       if (!val) {
-        this.createdDatasetId = null;
-        this.creatingDataset = false;
-        if (this.$refs.formRef) this.$refs.formRef.resetFields();
+        this.resetCreatedDataset();
       }
     }
   },
   computed: {
     filteredDatasets() {
       let result = [...this.datasets];
-      // console.log("the datasets:", this.datasets);
       if (this.searchQuery) {
         const query = this.searchQuery.toLowerCase();
-        result = result.filter(dataset => dataset.dataset_name.toLowerCase().includes(query));
+        result = result.filter(dataset => (dataset.dataset_name || "").toLowerCase().includes(query));
       }
-      if (this.value !== 'all' && this.value) {
-        result = result.filter(dataset => dataset.dataset_type === this.value);
+      if (this.filterType !== 'all' && this.filterType) {
+        result = result.filter(dataset => dataset.dataset_type === this.filterType);
       }
-      if (this.formatValue !== 'all' && this.formatValue) {
-        result = result.filter(dataset => (dataset.format || 'yolo') === this.formatValue);
+      if (this.activeTab === 'standard' && this.filterFormat !== 'all' && this.filterFormat) {
+        result = result.filter(dataset => (dataset.format || 'yolo') === this.filterFormat);
       }
-      console.log('After filtering:', result);
-      if (this.activeFilter === 'category') {
+      
+      if (this.activeSort === 'category') {
         result.sort((a, b) => (b.num_classes || 0) - (a.num_classes || 0));
-      } else if (this.activeFilter === 'image') {
+      } else if (this.activeSort === 'image') {
         result.sort((a, b) => (b.num_images || 0) - (a.num_images || 0));
-      } else if (this.activeFilter === 'size') {
+      } else if (this.activeSort === 'size') {
         result.sort((a, b) => this.parseDatasetSize(b.dataset_size_mb) - this.parseDatasetSize(a.dataset_size_mb));
       }
-      // console.log(result,'filtered result');
       return result;
     }
   },
   methods: {
-    testClick(d){
-      console.log(d);
+    handleTabClick() {
+      this.filterType = 'all';
+      this.filterFormat = 'all';
+      this.activeSort = null;
+      this.searchQuery = "";
+      this.fetchDatasetsList();
     },
-    setActiveFilter(filter) {
-      this.activeFilter = this.activeFilter === filter ? null : filter;
-    },
-    handleFilterChange() {},
     goDetail(dataset) {
-      if (this.$route.path !== "/datadetail") {
-        this.$router.push({
-          path: "/datadetail",
-          query: {
-            datasetId: dataset.dataset_id,
-            datasetName: dataset.dataset_name,
-            datasetType: dataset.dataset_type,
-            numClasses: dataset.num_classes,
-            numImages: dataset.num_images,
-            datasetSize: dataset.dataset_size_mb
-          }
-        });
+      if (this.activeTab === 'illegal') {
+          this.$router.push({
+            path: "/illegal-dataset-detail",
+            query: {
+              id: dataset.dataset_id,
+            }
+          });
+      } else {
+          this.$router.push({
+            path: "/standard-dataset-detail",
+            query: {
+              id: dataset.dataset_id,
+            }
+          });
       }
+    },
+    openCreateDialog() {
+      this.dialogFormVisible = true;
     },
     resetCreatedDataset() {
       this.createdDatasetId = null;
+      this.creatingDataset = false;
       this.form.name = "";
       this.form.type = "";
+      this.form.format = "yolo";
       this.$nextTick(() => { if (this.$refs.formRef) this.$refs.formRef.clearValidate(); });
     },
     goToCreatedDetail() {
       if (!this.createdDatasetId) return;
+      const id = this.createdDatasetId;
       this.dialogFormVisible = false;
-      this.$router.push({ 
-        path: "/datadetail", 
-        query: { datasetId: this.createdDatasetId, datasetName: this.form.name, datasetType: this.form.type } 
-      });
+      if (this.activeTab === 'illegal') {
+          this.$router.push({ path: "/illegal-dataset-detail", query: { id } });
+      } else {
+          this.$router.push({ path: "/standard-dataset-detail", query: { id } });
+      }
     },
     async handleCreateDataset() {
       if (this.creatingDataset || this.createdDatasetId) return;
       try {
         this.creatingDataset = true;
         await this.$refs.formRef.validate();
-        const payload = { name: this.form.name, dataset_type: this.form.type };
-        const ds = await createDataset(payload);
-        this.createdDatasetId = ds && (ds.dataset_id || ds.id);
+        
+        let ds;
+        if (this.activeTab === 'illegal') {
+            const payload = { name: this.form.name, dataset_type: this.form.type };
+            ds = await createIllegalDataset(payload);
+        } else {
+            const payload = { name: this.form.name, dataset_type: this.form.type, format: this.form.format };
+            ds = await createStandardDataset(payload);
+        }
+        
+        this.createdDatasetId = ds && (ds.illegal_dataset_id || ds.standard_dataset_id || ds.id);
         this.$message.success(`Dataset Created: ${this.form.name}`);
         this.fetchDatasetsList();
       } catch (error) {
@@ -320,21 +362,27 @@ export default {
     },
     async fetchDatasetsList() {
       try {
-        const list = await fetchDatasets();
-        // console.log(list,'list:');
+        this.loading = true;
+        let list;
+        if (this.activeTab === 'illegal') {
+            list = await fetchIllegalDatasets();
+        } else {
+            list = await fetchStandardDatasets();
+        }
+        
         this.datasets = Array.isArray(list) ? list : [];
-        this.originalDatasets = [...this.datasets];
         this.seedPreviewFromCache();
-        this.loadStatsParallel();
         this.loadPreviewsParallel(4);
       } catch (e) {
         console.error('Failed to fetch datasets:', e);
         this.datasets = [];
+      } finally {
+        this.loading = false;
       }
     },
     seedPreviewFromCache() {
       this.datasets.forEach(d => {
-        const key = `ds_preview_${d.dataset_id}`;
+        const key = `ds_preview_${this.activeTab}_${d.dataset_id}`;
         const cached = localStorage.getItem(key) || '';
         if (cached && !/images\/image\.png$/.test(cached)) {
           this.$set(d, 'preview_image_url', cached);
@@ -344,42 +392,19 @@ export default {
       });
       this.$forceUpdate();
     },
-    async loadStatsParallel() {
-      // Statistics now come embedded in fetchDatasets() response
-      // This method is kept for backwards compatibility but no longer needs to fetch separately
-      // Just ensure defaults are set for any missing fields
-      this.datasets.forEach(d => {
-        if (d.num_classes === undefined) {
-          this.$set(d, 'num_classes', 0);
-        }
-        if (d.num_images === undefined) {
-          this.$set(d, 'num_images', 0);
-        }
-        if (d.dataset_size_mb === undefined) {
-          this.$set(d, 'dataset_size_mb', '0MB');
-        }
-      });
-    },
     async loadPreviewsParallel(concurrency = 4) {
-      const queue = [...this.datasets];
-      const worker = async () => {
-        for (;;) {
-          const d = queue.shift();
-          if (!d) return;
-          try {
-            const url = await FetchDatasetPreviewImage(d.dataset_id);
-            if (url && !/images\/image\.png$/.test(url)) {
-               this.$set(d, 'preview_image_url', url);
-               localStorage.setItem(`ds_preview_${d.dataset_id}`, url);
-            }
-          } catch (_) {}
-        }
-      };
-      await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, worker));
+      // Logic for preview can be implemented here by calling thumbnail endpoints.
+      // E.g., picking the first file of the dataset. For now, since view api gives it,
+      // we might not need separate requests if we don't have the file paths here.
+      // This is a placeholder for custom preview loading logic.
     },
     async handleDelete(id) {
       try {
-        await deleteDataset(id, { force: false, deleteFiles: true });
+        if (this.activeTab === 'illegal') {
+             await deleteIllegalDataset(id, { force: false, deleteFiles: true });
+        } else {
+             await deleteStandardDataset(id, { force: false, deleteFiles: true });
+        }
         this.showPopup = false;
         this.fetchDatasetsList();
         this.$message.success('Dataset deleted');
@@ -388,11 +413,15 @@ export default {
           this.showPopup = false;
           try {
             await this.$confirm(
-              '该数据集有关联项目/训练任务，是否强制链式删除？',
+              '该数据集有关联项目/训练任务或增强任务，是否强制链式删除？',
               '确认强制删除',
               { type: 'warning', confirmButtonText: '强制删除', cancelButtonText: '取消' }
             );
-            await deleteDataset(id, { force: true, deleteFiles: true });
+            if (this.activeTab === 'illegal') {
+                await deleteIllegalDataset(id, { force: true, deleteFiles: true });
+            } else {
+                await deleteStandardDataset(id, { force: true, deleteFiles: true });
+            }
             this.fetchDatasetsList();
             this.$message.success('Dataset deleted');
           } catch (forceError) {
@@ -432,7 +461,7 @@ export default {
     parseDatasetSize(sizeStr) {
       if (!sizeStr) return 0;
       if (typeof sizeStr === 'number') return sizeStr;
-      const match = sizeStr.match(/(\d+\.?\d*)/);
+      const match = String(sizeStr).match(/(\d+\.?\d*)/);
       return match ? parseFloat(match[1]) : 0;
     },
   },
@@ -492,6 +521,25 @@ export default {
 
 .ds-actions {
     margin-top: 16px;
+}
+
+.ds-tabs-container {
+    background: var(--bg-card);
+    border-radius: var(--radius-lg);
+    padding: 0 24px;
+    box-shadow: var(--shadow-sm);
+    border: 1px solid var(--border-color);
+}
+
+.ds-custom-tabs ::v-deep .el-tabs__nav-wrap::after {
+    height: 1px;
+    background-color: var(--border-color);
+}
+
+.ds-custom-tabs ::v-deep .el-tabs__item {
+    font-size: 1rem;
+    height: 50px;
+    line-height: 50px;
 }
 
 /* Toolbar */
@@ -635,7 +683,7 @@ export default {
   position: absolute;
   top: 12px;
   left: auto;
-  right: 50px; /* Positioned to the left of the 'more' button */
+  right: 50px;
   padding: 4px 8px;
   border-radius: var(--radius-full);
   font-size: 0.75rem;

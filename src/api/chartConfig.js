@@ -12,11 +12,11 @@ function normStr(v) {
     return String(v ?? "").trim();
 }
 
-// fetchChartConfig - GET /api/v2/chart-configs/{scope}
+// fetchChartConfig - GET /api/v3/chart-configs/{scope}
 export async function fetchChartConfig(scope) {
     try {
         const s = normStr(scope) || "training_charts";
-        const res = await fetch(`${API_BASE}/api/v2/chart-configs/${encodeURIComponent(s)}`);
+        const res = await fetch(`${API_BASE}/api/v3/chart-configs/${encodeURIComponent(s)}`);
         const data = await safeJson(res);
         if (!res.ok) return {};
         return data || {};
@@ -26,11 +26,11 @@ export async function fetchChartConfig(scope) {
     }
 }
 
-// saveChartConfig - PUT /api/v2/chart-configs/{scope}
+// saveChartConfig - PUT /api/v3/chart-configs/{scope}
 export async function saveChartConfig(scope, config) {
     try {
         const s = normStr(scope) || "training_charts";
-        const res = await fetch(`${API_BASE}/api/v2/chart-configs/${encodeURIComponent(s)}`, {
+        const res = await fetch(`${API_BASE}/api/v3/chart-configs/${encodeURIComponent(s)}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(config || {}),

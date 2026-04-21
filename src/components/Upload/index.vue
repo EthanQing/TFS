@@ -113,8 +113,8 @@
 </template>
 
 <script>
-// 导入上传数据集接口
-import { uploadDatasetToExisting } from '@/api/datasets';
+import { uploadIllegalDatasetArchive } from '@/api/illegalDatasets';
+import { uploadStandardDatasetArchive } from '@/api/standardDatasets';
 
 export default {
   name: "UploadZip",
@@ -122,6 +122,10 @@ export default {
     datasetId: {
       type: [String, Number],
       required: true
+    },
+    isIllegal: {
+      type: Boolean,
+      default: false
     },
     // 支持外部状态管理
     externalFile: {
@@ -264,7 +268,8 @@ export default {
       this.errorMessage = "";
 
       try {
-        const req = uploadDatasetToExisting(this.datasetId, this.selectedFile, {
+        const uploadFn = this.isIllegal ? uploadIllegalDatasetArchive : uploadStandardDatasetArchive;
+        const req = uploadFn(this.datasetId, this.selectedFile, {
           onProgress: ({ loaded, total, percent }) => {
             const l = Number(loaded) || 0;
             const t = Number(total) || 0;

@@ -153,7 +153,7 @@
 <script>
 // Keep logic intact, update styling structures
 import { fetchProjects, createProject, deleteProject, FetchProjectModelsSize, FetchProjectsModelsSize } from "@/api/projects";
-import { fetchDatasets } from "@/api/datasets";
+import { fetchStandardDatasets } from "@/api/standardDatasets";
 export default {
   name: "Projects",
   data() {
@@ -325,7 +325,8 @@ export default {
     },
     async fetchDatasetsList() {
       try {
-        this.datasetList = await fetchDatasets();
+        const list = await fetchStandardDatasets();
+        this.datasetList = Array.isArray(list) ? list : [];
         this.hydrateProjectsWithDatasets();
       } catch (e) {}
     },

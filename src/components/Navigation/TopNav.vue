@@ -52,26 +52,6 @@
     </nav>
     
     <div class="sidebar-footer">
-        <div
-          class="monitor-entry"
-          :class="{ active: isPerformanceMonitorActive }"
-          @mouseenter="handleMonitorEnter"
-          @mouseleave="handleMonitorLeave"
-        >
-            <button type="button" class="monitor-trigger" @click="navigate('/performance-monitor')">
-                <div class="monitor-trigger-main">
-                    <i class="el-icon-data-analysis nav-icon monitor-icon"></i>
-                    <span>性能监控</span>
-                </div>
-                <i class="el-icon-arrow-right monitor-arrow"></i>
-            </button>
-            <PerformanceHoverPanel
-              :visible="monitorHovered"
-              :metric="monitorMetric"
-              :loading="monitorLoading"
-              :error="monitorError"
-            />
-        </div>
         <div class="user-profile">
             <div class="avatar"><i class="el-icon-user-solid"></i></div>
             <div class="user-info">
@@ -84,33 +64,12 @@
 </template>
 
 <script>
-import PerformanceHoverPanel from "@/components/Performance/PerformanceHoverPanel.vue";
-import { metricsStore, subscribe, unsubscribe } from "@/store/metricsStore";
-
 export default {
   name: "TopNav",
-  components: {
-    PerformanceHoverPanel,
-  },
-  data() {
-    return {
-      monitorHovered: false,
-      _subscribed: false,
-    };
-  },
   computed: {
-    monitorMetric() {
-      return metricsStore.summary;
-    },
-    monitorLoading() {
-      return metricsStore.initialLoading;
-    },
-    monitorError() {
-      return metricsStore.error;
-    },
     isDataActive() {
       const p = this.$route.path;
-      return p === "/datasets" || p.startsWith("/datadetail") || p.includes("/imagespart");
+      return p === "/datasets" || p.startsWith("/datadetail") || p.startsWith("/standard-dataset-detail") || p.startsWith("/illegal-dataset-detail") || p.includes("/imagespart");
     },
     isProjectActive() {
       const p = this.$route.path;
@@ -123,32 +82,11 @@ export default {
       const p = this.$route.path;
       return p === "/deployment" || p.startsWith("/deployment");
     },
-    isPerformanceMonitorActive() {
-      const p = this.$route.path;
-      return p === "/performance-monitor" || p.startsWith("/performance-monitor");
-    },
-  },
-  beforeDestroy() {
-    this.handleMonitorLeave();
   },
   methods: {
     navigate(path) {
       if (this.$route.path !== path) {
         this.$router.push(path);
-      }
-    },
-    handleMonitorEnter() {
-      this.monitorHovered = true;
-      if (!this._subscribed) {
-        this._subscribed = true;
-        subscribe();
-      }
-    },
-    handleMonitorLeave() {
-      this.monitorHovered = false;
-      if (this._subscribed) {
-        this._subscribed = false;
-        unsubscribe();
       }
     },
   },
