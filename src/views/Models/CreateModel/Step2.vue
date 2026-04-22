@@ -129,7 +129,7 @@ export default {
     datasetName() {
       const fromProject = this.selectedProject?.dataset?.dataset_name;
       const fromParams = this.trainParams.dataset_name;
-      return fromProject || fromParams || "No dataset linked";
+      return fromProject || fromParams || "No standard dataset linked";
     },
     modelName() {
       return this.selectedModel ? this.formatModelLabel(this.selectedModel) : "Select a model";
@@ -140,7 +140,7 @@ export default {
     footerMessage() {
       if (!this.selectedProject) return "选择一个项目以继续。";
       if (!this.selectedModel) return "选择一个模型架构以启用训练。";
-      if (!this.trainParams.dataset_name) return "该项目未关联数据集。";
+      if (!this.trainParams.dataset_name) return "该项目未关联标准数据集。";
       return "准备添加训练任务。";
     }
   },
@@ -173,7 +173,7 @@ export default {
         return;
       }
       if (!this.trainParams.dataset_name) {
-        this.$message.error("This project has no dataset linked. Please attach one first.");
+        this.$message.error("This project has no standard dataset linked. Please attach one first.");
         return;
       }
       this.isAdding = true;

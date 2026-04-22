@@ -3,11 +3,11 @@
  * All endpoints target /api/v3/illegal-datasets
  */
 import {
-    API_BASE, WS_BASE,
+    API_BASE,
     safeJson, postJson, putJson, deleteJson, getJson,
-    xhrUploadJson, chunkedUpload, putForm,
+    xhrUploadJson,
     toAbsUrl, encodePathSegments, formatMb, normalizeFileArray,
-    pickErrorMessage, createReconnectingWs,
+    pickErrorMessage,
 } from './apiUtils';
 
 const PREFIX = `${API_BASE}/api/v3/illegal-datasets`;
@@ -150,11 +150,6 @@ export function uploadIllegalDatasetImages(datasetId, files, {
     );
 }
 
-export function uploadIllegalDatasetChunked(datasetId, file, opts = {}) {
-    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
-    return chunkedUpload(`${PREFIX}/${encodeURIComponent(datasetId)}`, file, opts);
-}
-
 // ── Versions ──────────────────────────────────────────────────────────────
 
 export async function fetchIllegalDatasetVersions(datasetId, { page = 1, pageSize = 50 } = {}) {
@@ -192,15 +187,26 @@ export async function updateIllegalDatasetLabelMappings(datasetId, items) {
 
 // ── Publish (illegal → standard) ──────────────────────────────────────────
 
-export async function publishIllegalDataset(datasetId, { name, dataset_type, description = null, label_strategy = 'leaf', label_mapping = null, slice_params = null, split_params = null } = {}) {
+export async function publishIllegalDataset(
+    datasetId,
+    {
+        name,
+        description = null,
+        version_id = null,
+        label_filters = [],
+        label_mapping_overrides = null,
+        split = null,
+        publish_config = null,
+    } = {}
+) {
     return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/publish`, {
         name,
-        dataset_type,
         description: description || undefined,
-        label_strategy,
-        label_mapping: label_mapping || undefined,
-        slice_params: slice_params || undefined,
-        split_params: split_params || undefined,
+        version_id: version_id != null && version_id !== '' ? Number(version_id) : undefined,
+        label_filters: Array.isArray(label_filters) ? label_filters : [],
+        label_mapping_overrides: label_mapping_overrides && typeof label_mapping_overrides === 'object' ? label_mapping_overrides : {},
+        split: split && typeof split === 'object' ? split : {},
+        publish_config: publish_config && typeof publish_config === 'object' ? publish_config : {},
     });
 }
 
@@ -283,71 +289,4 @@ export async function fetchIllegalDatasetFiles(datasetId, { page = 1, pageSize =
 
     const url = `${PREFIX}/${encodeURIComponent(datasetId)}/files?${params.toString()}`;
     return getJson(url);
-}
-
-// ── Conversion (illegal LabelMe → YOLO, via WS stream) ──────────────────
-
-function buildIllegalConversionWsUrl(datasetId, jobId, query = {}) {
-    const dsId = encodeURIComponent(String(datasetId || '').trim());
-    const jId = encodeURIComponent(String(jobId || '').trim());
-    const qs = new URLSearchParams();
-    Object.keys(query || {}).forEach((k) => {
-        const v = query[k];
-        if (v === null || v === undefined) return;
-        const s = String(v).trim();
-        if (!s) return;
-        qs.set(k, s);
-    });
-    const base = String(WS_BASE || API_BASE || '').replace(/\/+$/, '');
-    const tail = qs.toString();
-    return `${base}/api/v3/illegal-datasets/${dsId}/convert/${jId}/stream${tail ? `?${tail}` : ''}`;
-}
-
-export async function convertIllegalDataset(datasetId, payload = {}) {
-    if (!datasetId) throw new Error('缺少 datasetId');
-    const res = await fetch(`${PREFIX}/${encodeURIComponent(datasetId)}/convert`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-    });
-    const data = await safeJson(res);
-    if (!res.ok) throw new Error(pickErrorMessage(data, res));
-    return data;
-}
-
-export function openIllegalConversionStream(datasetId, jobId, handlers = {}, options = {}) {
-    const onSnapshot = typeof handlers.onSnapshot === 'function' ? handlers.onSnapshot : () => {};
-    const onProgress = typeof handlers.onProgress === 'function' ? handlers.onProgress : () => {};
-    const onDone = typeof handlers.onDone === 'function' ? handlers.onDone : () => {};
-    const onError = typeof handlers.onError === 'function' ? handlers.onError : () => {};
-
-    let fromSeq = options.fromSeq ?? null;
-
-    return createReconnectingWs(
-        () => buildIllegalConversionWsUrl(datasetId, jobId, { from_seq: fromSeq }),
-        {
-            onOpen: handlers.onOpen,
-            onClose: handlers.onClose,
-            onError,
-            onReconnect: handlers.onReconnect,
-            onMessage: (payload, helpers) => {
-                const type = String(payload?.type || '');
-                const data = payload?.data || {};
-                if (type === 'snapshot') {
-                    if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
-                    onSnapshot(data);
-                } else if (type === 'progress') {
-                    if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
-                    onProgress(data);
-                } else if (type === 'done') {
-                    if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
-                    onDone(data);
-                    helpers.close();
-                } else if (type === 'error') {
-                    onError(data?.message || 'stream error');
-                }
-            },
-        },
-        options
-    );
 }

@@ -6,35 +6,45 @@
           <i class="el-icon-arrow-left"></i> 返回数据集列表
         </button>
         <div class="hero-content">
-            <div class="hero-kicker">非法数据集概览</div>
-            <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
-            <div class="hero-meta">
-            <span class="meta-pill">{{ getDatasetTypeLabel(datasetType) }}</span>
+          <div class="hero-kicker">数据集概览</div>
+          <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
+          <div class="hero-meta">
+            <span class="meta-pill info">{{ datasetTypeLabel }}</span>
+            <span class="meta-pill warning">非法数据集</span>
+            <span v-if="activeVersion" class="meta-pill success">当前版本 v{{ activeVersion.version }}</span>
             <span class="meta-id">ID: {{ datasetId || '-' }}</span>
-            </div>
+          </div>
+          <p class="hero-desc">
+            非法数据集会长期保留原始数据与标签映射；你可以在原有详情页体验基础上继续管理版本，并反复发布新的标准数据集。
+          </p>
         </div>
       </div>
       <div class="hero-right">
         <div class="stat-card">
           <div class="stat-label">图片数</div>
-          <div class="stat-value">{{ formatImageCount(numImages) }}</div>
+          <div class="stat-value">{{ formatNumber(totalImages) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">类别数</div>
-          <div class="stat-value">{{ numClasses || 0 }}</div>
+          <div class="stat-value">{{ formatNumber(classCount) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">大小</div>
-          <div class="stat-value">{{ formatDatasetSize(datasetSize) }}</div>
+          <div class="stat-value">{{ datasetSizeText }}</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">版本数</div>
+          <div class="stat-value">{{ formatNumber(versions.length) }}</div>
         </div>
       </div>
     </header>
 
     <section class="detail-body glass-panel">
-      <div v-if="detailLoading" class="loading-state">
+      <div v-if="loading" class="loading-state">
         <i class="el-icon-loading"></i>
-        <span>正在加载数据集详情...</span>
+        <span>正在加载非法数据集详情...</span>
       </div>
+
       <template v-else>
         <div class="illegal-section">
           <div class="illegal-banner glass-panel warning-theme">
@@ -42,160 +52,270 @@
               <i class="el-icon-warning"></i>
             </div>
             <div class="illegal-content">
-              <div class="illegal-title">非法数据集 ({{ datasetType }})</div>
-              <div class="illegal-desc" v-if="illegalReason === 'labelme_json'">检测到 LabelMe JSON 标注，请配置标签映射后进行转换</div>
-              <div class="illegal-desc" v-else-if="illegalReason === 'unsupported_json'">检测到不支持的 JSON 格式，暂不支持转换</div>
-              <div class="illegal-desc" v-else>检测到非 YOLO 标注，请配置标签映射后进行转换</div>
-              <div v-if="conversionStatusText" class="illegal-badge">
-                <span class="badge-dot"></span> 转换状态：{{ conversionStatusText }}
+              <div class="illegal-title">非法数据集</div>
+              <div class="illegal-desc">
+                请先按原来的方式配置标签映射与切片参数；当前非法数据集会被保留，可继续追加版本并多次发布为新的 YOLO 标准数据集。
               </div>
-              <div v-if="conversionError" class="illegal-error">
-                <i class="el-icon-error"></i> {{ conversionError }}
-              </div>
-              <div v-if="showConversionProgress" class="conversion-progress">
-                <div class="conversion-progress-row">
-                  <div class="conversion-progress-label">
-                    总进度：{{ conversionOverallProgress.processed }}/{{ conversionOverallProgress.total || '-' }}
-                  </div>
-                  <el-progress
-                    :stroke-width="10"
-                    :percentage="conversionOverallProgress.percent"
-                    :show-text="true"
-                  />
-                </div>
-                <div class="conversion-progress-row">
-                  <div class="conversion-progress-label">
-                    单图进度（{{ conversionPhaseLabel }}）：{{ conversionImageProgress.processed }}/{{ conversionImageProgress.total || '-' }}
-                  </div>
-                  <el-progress
-                    :stroke-width="10"
-                    :percentage="conversionImageProgress.percent"
-                    :show-text="true"
-                    status="success"
-                  />
-                </div>
-                <div v-if="conversionRealtimeHint" class="conversion-reconnect-hint">
-                  <i class="el-icon-loading"></i> {{ conversionRealtimeHint }}
-                </div>
+              <div class="illegal-badge">
+                <span class="badge-dot"></span>
+                当前激活版本：{{ activeVersion ? `v${activeVersion.version}` : '未生成版本' }} · 发布输出固定为 YOLO
               </div>
             </div>
-            <div class="illegal-actions" v-if="!conversionSupported">
-              <el-button size="medium" disabled>暂不支持转换</el-button>
+            <div class="illegal-actions">
+              <el-button @click="refreshAll">刷新</el-button>
+              <el-button type="primary" plain @click="uploadDialogVisible = true">首次上传 ZIP</el-button>
+              <el-button type="primary" @click="appendDialogVisible = true">追加上传新版本</el-button>
             </div>
           </div>
 
-          <div
-            v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
-            class="preset-toolbar"
-          >
-            <div class="preset-toolbar-left">
-              <el-select v-model="presetApplyMode" size="small" class="preset-mode-select">
-                <el-option
-                  v-for="opt in presetApplyOptions"
-                  :key="opt.value"
-                  :label="opt.label"
-                  :value="opt.value"
-                />
-              </el-select>
-              <el-button
-                size="small"
-                :loading="mappingPresetsLoading"
-                @click="applyPresetToCurrentMapping"
-              >
-                应用预设到当前映射
-              </el-button>
-              <el-button
-                size="small"
-                type="primary"
-                plain
-                @click="openPresetDialog"
-              >
-                预设映射表管理
-              </el-button>
+          <template v-if="!isEmpty">
+            <div class="preset-toolbar">
+              <div class="preset-toolbar-left">
+                <el-select v-model="presetApplyMode" size="small" class="preset-mode-select">
+                  <el-option
+                    v-for="opt in presetApplyOptions"
+                    :key="opt.value"
+                    :label="opt.label"
+                    :value="opt.value"
+                  />
+                </el-select>
+                <el-button size="small" :loading="mappingPresetsLoading" @click="applyPresetToCurrentMapping">
+                  应用预设到当前映射
+                </el-button>
+                <el-button size="small" type="primary" plain @click="openPresetDialog">
+                  预设映射表管理
+                </el-button>
+              </div>
+              <div class="preset-toolbar-right">
+                <span>检测: {{ presetDetectionCount }}</span>
+                <span>分类: {{ presetClassificationCount }}</span>
+                <span>更新时间: {{ presetUpdatedAtText }}</span>
+              </div>
             </div>
-            <div class="preset-toolbar-right">
-              <span>检测: {{ presetDetectionCount }}</span>
-              <span>分类: {{ presetClassificationCount }}</span>
-              <span>更新时间: {{ presetUpdatedAtText }}</span>
-            </div>
-          </div>
-          
-          <LabelMappingPanel
-            ref="labelMappingPanel"
-            v-if="conversionSupported && !(conversionStatus === 'queued' || conversionStatus === 'running')"
-            :labels="illegalLabels"
-            :loading="loadingLabels"
-            :saving="savingLabels"
-            :converting="convertingDataset"
-            @save="handleLabelMappingSave"
-            @save-and-convert="handleSaveAndConvert"
-          />
 
-          <div v-if="isDatasetEmpty" class="empty-state">
-            <div class="empty-content">
-              <div class="empty-title">{{ emptyStateTitle }}</div>
-              <div class="empty-desc">{{ emptyStateDesc }}</div>
-              <div class="empty-tips">
-                <span class="tip-item"><i class="el-icon-check"></i> 仅支持 .zip 文件</span>
-                <span class="tip-item"><i class="el-icon-check"></i> 请保持文件夹结构</span>
-              </div>
-              <div v-if="zipUploading" class="empty-processing-tip">
-                {{ emptyProcessingTip }}
-              </div>
+            <div v-if="mappingPanelLabels.length" class="mapping-panel-wrap legacy-mapping-wrap">
+              <LabelMappingPanel
+                ref="labelMappingPanel"
+                :labels="mappingPanelLabels"
+                :loading="loadingMappings"
+                :saving="savingMappings"
+                :converting="publishing"
+                @save="handlePanelSave"
+                @save-and-convert="handleSaveAndConvert"
+              />
             </div>
-            <div class="empty-action">
-              <UploadZip
-                :dataset-id="datasetId"
-                :external-file.sync="zipUploadFile"
-                :external-uploading.sync="zipUploading"
-                :external-progress.sync="zipUploadProgress"
-                @upload-success="handleUploadSuccess"
-                @upload-fail="handleUploadFail"
-              ></UploadZip>
-              <el-button
-                v-if="zipUploading"
-                type="text"
-                class="upload-reset-btn"
-                @click="resetRecoveredZipUploadState"
-              >
-                清除当前处理状态
-              </el-button>
+            <div v-else class="panel-empty">
+              <i class="el-icon-document-remove"></i>
+              <span>当前版本尚未识别到可映射的原始标签，请先上传并确认数据内容。</span>
+            </div>
+          </template>
+        </div>
+
+        <div v-if="isEmpty" class="empty-state">
+          <div class="empty-content">
+            <div class="empty-title">当前非法数据集还是空的</div>
+            <div class="empty-desc">
+              请先上传原始 ZIP 数据。上传后即可继续使用旧版标签映射界面配置映射，并发布为新的标准数据集。
+            </div>
+            <div class="empty-tips">
+              <span class="tip-item"><i class="el-icon-check"></i> 非法数据集会保留原始数据</span>
+              <span class="tip-item"><i class="el-icon-check"></i> 每次上传都会形成独立版本</span>
+              <span class="tip-item"><i class="el-icon-check"></i> 可反复发布多个标准数据集</span>
             </div>
           </div>
+          <div class="empty-action">
+            <UploadZip
+              :dataset-id="datasetId"
+              dataset-kind="illegal"
+              mode="upload"
+              :external-file.sync="uploadFile"
+              :external-uploading.sync="uploading"
+              :external-progress.sync="uploadProgress"
+              @upload-success="handleUploadSuccess"
+              @upload-fail="handleUploadFail"
+            />
+          </div>
+        </div>
+
+        <div v-else class="illegal-layout">
+          <div class="main-column">
+            <section class="section-card">
+              <div class="section-head">
+                <div>
+                  <div class="section-title">数据内容</div>
+                  <div class="section-sub">保留当前非法数据集预览、文件与事件记录</div>
+                </div>
+                <el-select v-model="previewClassId" size="small" clearable placeholder="全部类别" @change="loadPreview">
+                  <el-option
+                    v-for="item in previewCategories"
+                    :key="item.class_id"
+                    :label="`${item.name} (${item.count})`"
+                    :value="item.class_id"
+                  />
+                </el-select>
+              </div>
+
+              <el-tabs v-model="activeTab">
+                <el-tab-pane label="样本预览" name="preview">
+                  <div v-loading="loadingPreview">
+                    <div v-if="!previewItems.length" class="panel-empty">当前版本暂无可预览的图片。</div>
+                    <div v-else class="image-grid">
+                      <div v-for="item in previewItems" :key="item.id" class="image-card">
+                        <el-image
+                          :src="item.thumbnail_url || item.image_url"
+                          :preview-src-list="previewUrls"
+                          fit="cover"
+                          class="preview-image"
+                        />
+                        <div class="image-meta">
+                          <div class="image-name">{{ item.image_name }}</div>
+                          <div class="image-desc">{{ item.objects_count }} 个标注对象</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </el-tab-pane>
+                <el-tab-pane label="文件列表" name="files">
+                  <el-table :data="files" size="small" border empty-text="暂无文件">
+                    <el-table-column prop="path" label="路径" min-width="360" show-overflow-tooltip />
+                    <el-table-column label="大小" width="140">
+                      <template slot-scope="scope">{{ formatBytes(scope.row.size_bytes) }}</template>
+                    </el-table-column>
+                    <el-table-column label="修改时间" width="180">
+                      <template slot-scope="scope">{{ formatTime(scope.row.mtime) }}</template>
+                    </el-table-column>
+                    <el-table-column label="下载" width="100" align="center">
+                      <template slot-scope="scope">
+                        <el-link v-if="scope.row.url" :href="scope.row.url" target="_blank" type="primary">打开</el-link>
+                        <span v-else>-</span>
+                      </template>
+                    </el-table-column>
+                  </el-table>
+                </el-tab-pane>
+                <el-tab-pane label="事件记录" name="events">
+                  <el-table :data="events" size="small" border empty-text="暂无事件">
+                    <el-table-column prop="event_type" label="事件类型" width="180" />
+                    <el-table-column prop="message" label="消息" min-width="280" show-overflow-tooltip />
+                    <el-table-column label="时间" width="180">
+                      <template slot-scope="scope">{{ formatDate(scope.row.created_at) }}</template>
+                    </el-table-column>
+                  </el-table>
+                </el-tab-pane>
+              </el-tabs>
+            </section>
+          </div>
+
+          <aside class="side-column">
+            <section class="section-card">
+              <div class="section-head">
+                <div>
+                  <div class="section-title">发布为标准数据集</div>
+                  <div class="section-sub">会复用左侧映射与切片参数，输出固定为 YOLO</div>
+                </div>
+              </div>
+              <div class="section-tip publish-tip">
+                发布会创建一个全新的标准数据集，不会删除或绑定当前非法数据集本体。
+              </div>
+              <el-form :model="publishForm" label-position="top" size="small">
+                <el-form-item label="标准数据集名称">
+                  <el-input v-model.trim="publishForm.name" placeholder="例如：道路目标训练集" />
+                </el-form-item>
+                <el-form-item label="说明">
+                  <el-input v-model.trim="publishForm.description" type="textarea" :rows="2" placeholder="可选" />
+                </el-form-item>
+                <el-form-item label="来源版本">
+                  <el-select v-model="publishForm.version_id" style="width: 100%" placeholder="默认使用当前激活版本">
+                    <el-option
+                      v-for="item in versions"
+                      :key="item.version_id"
+                      :label="`v${item.version} · ${versionStatusLabel(item.status)}`"
+                      :value="item.version_id"
+                    />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="标签筛选（可选）">
+                  <el-select
+                    v-model="publishForm.label_filters"
+                    multiple
+                    collapse-tags
+                    filterable
+                    style="width: 100%"
+                    placeholder="不筛选则保留全部标签"
+                  >
+                    <el-option v-for="label in publishTargetLabels" :key="label" :label="label" :value="label" />
+                  </el-select>
+                </el-form-item>
+                <el-form-item label="数据切分">
+                  <div class="split-row">
+                    <el-input-number v-model="publishForm.train_ratio" :min="0" :max="1" :step="0.05" :precision="2" />
+                    <span>train</span>
+                    <el-input-number v-model="publishForm.val_ratio" :min="0" :max="1" :step="0.05" :precision="2" />
+                    <span>val</span>
+                    <el-input-number v-model="publishForm.test_ratio" :min="0" :max="1" :step="0.05" :precision="2" />
+                    <span>test</span>
+                  </div>
+                  <div class="publish-split-summary" :class="{ invalid: !publishSplitValid }">
+                    当前总和：{{ publishSplitTotal.toFixed(2) }}
+                  </div>
+                </el-form-item>
+                <el-form-item label="划分行为">
+                  <el-row :gutter="12">
+                    <el-col :span="12">
+                      <el-switch v-model="publishForm.split_shuffle" active-text="发布时打乱顺序" />
+                    </el-col>
+                    <el-col :span="12">
+                      <el-input-number v-model="publishForm.split_seed" :min="0" :max="999999" controls-position="right" class="full-width" />
+                    </el-col>
+                  </el-row>
+                </el-form-item>
+                <el-button type="success" :loading="publishing" style="width: 100%" @click="publishToStandard()">
+                  发布新的标准数据集
+                </el-button>
+              </el-form>
+            </section>
+
+            <section class="section-card">
+              <div class="section-head">
+                <div class="section-title">版本列表</div>
+              </div>
+              <el-table :data="versions" size="small" border empty-text="暂无版本">
+                <el-table-column label="版本" width="90">
+                  <template slot-scope="scope">v{{ scope.row.version }}</template>
+                </el-table-column>
+                <el-table-column label="状态" width="110">
+                  <template slot-scope="scope">
+                    <el-tag size="mini" :type="scope.row.version_id === activeVersionId ? 'success' : 'info'">
+                      {{ scope.row.version_id === activeVersionId ? '已激活' : versionStatusLabel(scope.row.status) }}
+                    </el-tag>
+                  </template>
+                </el-table-column>
+                <el-table-column label="说明" min-width="180" show-overflow-tooltip>
+                  <template slot-scope="scope">{{ scope.row.message || '-' }}</template>
+                </el-table-column>
+                <el-table-column label="操作" width="90" align="center">
+                  <template slot-scope="scope">
+                    <el-button v-if="scope.row.version_id !== activeVersionId" type="text" size="mini" @click="activateVersion(scope.row)">激活</el-button>
+                    <span v-else>-</span>
+                  </template>
+                </el-table-column>
+              </el-table>
+            </section>
+
+            <section class="section-card">
+              <div class="section-head">
+                <div class="section-title">基础信息</div>
+              </div>
+              <div class="info-list">
+                <div class="info-item"><span>ID</span><strong>{{ datasetId }}</strong></div>
+                <div class="info-item"><span>存储路径</span><strong>{{ dataset && dataset.storage_path ? dataset.storage_path : '-' }}</strong></div>
+                <div class="info-item"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong></div>
+                <div class="info-item"><span>更新时间</span><strong>{{ formatDate(dataset && dataset.updated_at) }}</strong></div>
+              </div>
+            </section>
+          </aside>
         </div>
       </template>
     </section>
-
-    <el-dialog
-      title="标签层级转换 (非法转标准)"
-      :visible.sync="showConvertDialog"
-      width="420px"
-      :close-on-click-modal="!convertingDataset"
-      :close-on-press-escape="!convertingDataset"
-      :append-to-body="true"
-      class="convert-dialog"
-    >
-      <div class="convert-body">
-        <div class="convert-row">
-          <label class="convert-label">标签策略</label>
-          <el-radio-group v-model="convertForm.labelStrategy" size="small">
-            <el-radio label="full">完整层级</el-radio>
-            <el-radio label="leaf">叶子节点</el-radio>
-            <el-radio label="root">根节点</el-radio>
-            <el-radio label="level">指定层级</el-radio>
-          </el-radio-group>
-        </div>
-        <div class="convert-row" v-if="convertForm.labelStrategy === 'level'">
-          <label class="convert-label">取前N级</label>
-          <el-input-number v-model="convertForm.labelLevel" :min="1" size="small"></el-input-number>
-        </div>
-        <div class="convert-hint">层级分隔符: {{ convertForm.labelSeparator }}</div>
-      </div>
-      <div slot="footer" class="dialog-footer">
-        <el-button :disabled="convertingDataset" @click="showConvertDialog = false">取消</el-button>
-        <el-button type="primary" :loading="convertingDataset" @click="submitConvert">开始转换</el-button>
-      </div>
-    </el-dialog>
 
     <el-dialog
       title="非法标签映射预设管理"
@@ -276,420 +396,785 @@
       </div>
     </el-dialog>
 
+    <el-dialog title="首次上传 ZIP" :visible.sync="uploadDialogVisible" width="680px" append-to-body>
+      <UploadZip
+        :dataset-id="datasetId"
+        dataset-kind="illegal"
+        mode="upload"
+        :external-file.sync="uploadFile"
+        :external-uploading.sync="uploading"
+        :external-progress.sync="uploadProgress"
+        @upload-success="handleUploadSuccess"
+        @upload-fail="handleUploadFail"
+      />
+    </el-dialog>
+
+    <el-dialog title="追加上传新版本" :visible.sync="appendDialogVisible" width="680px" append-to-body>
+      <UploadZip
+        :dataset-id="datasetId"
+        dataset-kind="illegal"
+        mode="append"
+        :external-file.sync="appendFile"
+        :external-uploading.sync="appending"
+        :external-progress.sync="appendProgress"
+        @upload-success="handleAppendSuccess"
+        @upload-fail="handleUploadFail"
+      />
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import * as XLSX from 'xlsx';
-import {
-  fetchIllegalDataset,
-  fetchIllegalDatasetLabels,
-  updateIllegalDatasetLabels,
-  fetchIllegalLabelPresets,
-  saveIllegalLabelPresets,
-  convertIllegalDataset,
-  openIllegalConversionStream
-} from '@/api/illegalDatasets';
 import UploadZip from '@/components/Upload/index.vue';
 import LabelMappingPanel from '@/components/LabelMappingPanel.vue';
+import {
+  fetchIllegalDatasetDetail,
+  fetchIllegalDatasetFiles,
+  fetchIllegalDatasetView,
+  fetchIllegalDatasetRawLabels,
+  fetchIllegalDatasetLabelMappings,
+  updateIllegalDatasetLabelMappings,
+  activateIllegalDatasetVersion,
+  publishIllegalDataset,
+} from '@/api/illegalDatasets';
 
 export default {
   name: 'IllegalDatasetDetail',
   components: { UploadZip, LabelMappingPanel },
   data() {
     return {
-      datasetId: '',
-      datasetName: '',
-      datasetType: '',
-      numClasses: 0,
-      numImages: 0,
-      datasetSize: '',
-      detailLoading: false,
-
-      // Illegal state
-      illegalReason: '',
-      conversionStatus: '',
-      conversionError: '',
-      conversionOverallProgress: { total: 0, processed: 0, percent: 0 },
-      conversionImageProgress: { total: 0, processed: 0, percent: 0 },
-      conversionPhaseLabel: '处理中',
-      conversionRealtimeHint: '',
-      conversionStream: null,
-      convertingDataset: false,
-      showConvertDialog: false,
-      convertForm: {
-        labelStrategy: 'leaf',
-        labelLevel: 2,
-        labelSeparator: '%',
-      },
-
-      // ZIP Upload state
-      zipUploadFile: null,
-      zipUploading: false,
-      zipUploadProgress: 0,
-      
-      // Labels state
-      illegalLabels: [],
-      loadingLabels: false,
-      savingLabels: false,
-
-      // Presets
-      showPresetDialog: false,
+      datasetId: this.$route.query.id || '',
+      loading: false,
+      loadingMappings: false,
+      loadingPreview: false,
+      savingMappings: false,
+      publishing: false,
+      activeTab: 'preview',
+      detail: null,
+      files: [],
+      preview: { categories: [], items: [], meta: {} },
+      previewClassId: null,
+      rawLabels: [],
+      mappingRows: [],
       mappingPresetsLoading: false,
       mappingPresetsSaving: false,
-      presetApplyMode: 'skip_existing',
-      presetApplyOptions: [
-        { label: '跳过已有映射（安全）', value: 'skip_existing' },
-        { label: '覆盖当前映射（强制）', value: 'overwrite' }
-      ],
+      showPresetDialog: false,
+      presetApplyMode: 'detection',
       presetData: {
         detection: [],
         classification: [],
         updated_at: null,
       },
-      presetDatasetId: null
+      publishForm: {
+        name: '',
+        description: '',
+        version_id: null,
+        label_filters: [],
+        train_ratio: 0.8,
+        val_ratio: 0.2,
+        test_ratio: 0,
+        split_shuffle: true,
+        split_seed: 42,
+        slice_size: 1280,
+        slice_overlap: 0.2,
+        slice_padding: 64,
+        slice_min_area_ratio: 0.3,
+        slice_min_visibility: 0.15,
+        slice_min_pixel_size: 5,
+        slice_negative_ratio: 0.1,
+        slice_empty_positive_action: 'discard',
+      },
+      uploadDialogVisible: false,
+      appendDialogVisible: false,
+      uploadFile: null,
+      uploading: false,
+      uploadProgress: 0,
+      appendFile: null,
+      appending: false,
+      appendProgress: 0,
     };
   },
   computed: {
-    conversionSupported() {
-      return this.illegalReason === 'labelme_json' || this.illegalReason === 'not_yolo' || this.illegalReason === 'other';
+    dataset() {
+      return this.detail && this.detail.dataset ? this.detail.dataset : null;
     },
-    conversionStatusText() {
-      const map = {
-        'queued': '等待转换...',
-        'running': '转换中...',
-        'completed': '转换成功 (可前往标准数据集查看)',
-        'failed': '转换失败'
-      };
-      return map[this.conversionStatus] || this.conversionStatus || '未开始';
+    statistics() {
+      return this.detail && this.detail.statistics ? this.detail.statistics : null;
     },
-    showConversionProgress() {
-      return this.conversionStatus === 'queued' || this.conversionStatus === 'running';
+    activeVersion() {
+      return this.detail && this.detail.active_version ? this.detail.active_version : null;
     },
-    isDatasetEmpty() {
-      return this.numImages === 0 && !this.showConversionProgress && this.conversionStatus !== 'completed';
+    versions() {
+      return Array.isArray(this.detail && this.detail.versions) ? this.detail.versions : [];
     },
-    emptyStateTitle() {
-      if (this.zipUploadInterrupted) return "上传已中断";
-      if (this.zipUploadRestored) return "发现未完成的上传";
-      return "数据集为空";
+    events() {
+      return Array.isArray(this.detail && this.detail.events) ? this.detail.events : [];
     },
-    emptyStateDesc() {
-      if (this.zipUploadInterrupted) return "您可以刷新页面尝试恢复，或清除状态重新上传。";
-      if (this.zipUploadRestored) return "是否继续上传此ZIP包？";
-      return "请上传ZIP压缩包。包含图像和非YOLO格式的标注文件。";
+    activeVersionId() {
+      return this.activeVersion && this.activeVersion.version_id ? Number(this.activeVersion.version_id) : null;
     },
-    emptyProcessingTip() {
-      if (this.zipUploadProgress >= 100) return "正在服务器端解压并处理数据，这可能需要几分钟...";
-      return `正在上传... ${this.zipUploadProgress}%`;
+    datasetName() {
+      return (this.dataset && (this.dataset.name || this.dataset.dataset_name)) || '非法数据集';
     },
-    presetDetectionCount() { return this.presetData?.detection?.length || 0; },
-    presetClassificationCount() { return this.presetData?.classification?.length || 0; },
+    datasetTypeLabel() {
+      return this.typeLabel(this.dataset && this.dataset.dataset_type);
+    },
+    datasetTypeValue() {
+      return String(this.dataset && this.dataset.dataset_type || '').trim().toLowerCase();
+    },
+    isDetectionDataset() {
+      return this.datasetTypeValue === 'detection';
+    },
+    totalImages() {
+      return Number(this.statistics && this.statistics.total_images) || 0;
+    },
+    classCount() {
+      const previewCount = Array.isArray(this.preview && this.preview.categories) ? this.preview.categories.length : 0;
+      if (previewCount > 0) return previewCount;
+      return this.publishTargetLabels.length;
+    },
+    datasetSizeText() {
+      const mb = Number(this.statistics && this.statistics.total_size_mb);
+      if (Number.isFinite(mb) && mb > 0) return `${mb.toFixed(2)} MB`;
+      return '0 MB';
+    },
+    isEmpty() {
+      return !this.activeVersion || this.totalImages <= 0;
+    },
+    previewItems() {
+      return Array.isArray(this.preview && this.preview.items) ? this.preview.items : [];
+    },
+    previewCategories() {
+      return Array.isArray(this.preview && this.preview.categories) ? this.preview.categories : [];
+    },
+    previewUrls() {
+      return this.previewItems.map((item) => item.image_url).filter(Boolean);
+    },
+    mappingPanelLabels() {
+      const values = new Set();
+      (Array.isArray(this.rawLabels) ? this.rawLabels : []).forEach((label) => {
+        const value = String(label || '').trim();
+        if (value) values.add(value);
+      });
+      (Array.isArray(this.mappingRows) ? this.mappingRows : []).forEach((row) => {
+        const value = String(row && row.raw_label || '').trim();
+        if (value) values.add(value);
+      });
+      return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    },
+    publishTargetLabels() {
+      const values = (Array.isArray(this.mappingRows) ? this.mappingRows : [])
+        .map((row) => String(row && row.mapped_label || '').trim())
+        .filter((value) => value && value !== '__DISCARD__');
+      return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    },
+    publishSplitTotal() {
+      return (Number(this.publishForm.train_ratio) || 0) + (Number(this.publishForm.val_ratio) || 0) + (Number(this.publishForm.test_ratio) || 0);
+    },
+    publishSplitValid() {
+      return Math.abs(this.publishSplitTotal - 1) < 0.001;
+    },
+    presetApplyOptions() {
+      return [
+        { value: 'detection', label: '检测映射预设' },
+        { value: 'classification', label: '分类映射预设' },
+      ];
+    },
+    presetDetectionCount() {
+      return Array.isArray(this.presetData && this.presetData.detection) ? this.presetData.detection.length : 0;
+    },
+    presetClassificationCount() {
+      return Array.isArray(this.presetData && this.presetData.classification) ? this.presetData.classification.length : 0;
+    },
     presetUpdatedAtText() {
-      if (!this.presetData?.updated_at) return '从不';
-      return new Date(this.presetData.updated_at).toLocaleString();
-    }
+      const raw = this.presetData && this.presetData.updated_at;
+      if (!raw) return '未保存';
+      const date = new Date(raw);
+      if (Number.isNaN(date.getTime())) return String(raw);
+      return date.toLocaleString();
+    },
+  },
+  watch: {
+    '$route.query.id'(nextId) {
+      if (!nextId || String(nextId) === String(this.datasetId)) return;
+      this.datasetId = nextId;
+      this.previewClassId = null;
+      this.loadAll();
+    },
+  },
+  mounted() {
+    this.loadIllegalLabelPresets({ silent: true });
+    this.loadAll();
   },
   methods: {
     goBack() {
       this.$router.push('/datasets');
     },
-    formatImageCount(count) {
-      if (!count) return '0';
-      if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
-      return count.toString();
+    typeLabel(value) {
+      const map = { detection: '目标检测', segmentation: '图像分割', classification: '图像分类' };
+      return map[String(value || '')] || value || '-';
     },
-    formatDatasetSize(sizeStr) {
-      if (!sizeStr) return '0MB';
-      if (typeof sizeStr === 'string' && sizeStr.includes('MB')) return sizeStr;
-      if (typeof sizeStr === 'number') return sizeStr.toFixed(1) + 'MB';
-      return sizeStr;
+    versionStatusLabel(status) {
+      const map = { created: '已创建', finalized: '已完成', active: '激活中', archived: '已归档', ready: '就绪' };
+      return map[String(status || '').toLowerCase()] || String(status || '-') || '-';
     },
-    getDatasetTypeLabel(type) {
-      const map = { 'detection': '目标检测', 'segmentation': '图像分割', 'classification': '图像分类' };
-      return map[type] || type || '未知';
+    formatNumber(value) {
+      return (Number(value) || 0).toLocaleString();
     },
-    async loadDetail() {
-      try {
-        this.detailLoading = true;
-        const data = await fetchIllegalDataset(this.datasetId);
-        if (!data) throw new Error("Dataset not found");
-        
-        this.datasetName = data.dataset_name;
-        this.datasetType = data.dataset_type;
-        this.numClasses = data.num_classes || 0;
-        this.numImages = data.num_images || 0;
-        this.datasetSize = data.dataset_size_mb || '0MB';
-        
-        this.illegalReason = data.illegal_reason || 'other';
-        this.conversionStatus = data.conversion_status || 'idle';
-        this.conversionError = data.conversion_error || '';
-
-        // If running, open stream
-        if (this.conversionStatus === 'queued' || this.conversionStatus === 'running') {
-            this.listenToConversionStream();
-        }
-
-        // Load labels
-        if (this.conversionSupported && this.numImages > 0) {
-            this.loadLabels();
-        }
-      } catch (e) {
-        this.$message.error("Failed to load illegal dataset details: " + e.message);
-      } finally {
-        this.detailLoading = false;
+    formatBytes(value) {
+      const size = Number(value) || 0;
+      if (size <= 0) return '0 B';
+      const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+      let n = size;
+      let idx = 0;
+      while (n >= 1024 && idx < units.length - 1) {
+        n /= 1024;
+        idx += 1;
       }
+      return `${n.toFixed(idx === 0 ? 0 : 2)} ${units[idx]}`;
     },
-    async loadLabels() {
-      try {
-        this.loadingLabels = true;
-        const res = await fetchIllegalDatasetLabels(this.datasetId);
-        this.illegalLabels = res.labels || [];
-      } catch (e) {
-        this.$message.error("Failed to load labels: " + e.message);
-      } finally {
-        this.loadingLabels = false;
-      }
+    formatDate(value) {
+      if (!value) return '-';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '-';
+      return date.toLocaleString();
     },
-    async handleLabelMappingSave(mappedLabels) {
-      if (this.savingLabels) return;
-      try {
-        this.savingLabels = true;
-        await updateIllegalDatasetLabels(this.datasetId, { labels: mappedLabels });
-        this.illegalLabels = mappedLabels;
-        this.$message.success("标签映射保存成功");
-      } catch (e) {
-        this.$message.error("标签映射保存失败: " + e.message);
-      } finally {
-        this.savingLabels = false;
-      }
+    formatTime(value) {
+      if (!value) return '-';
+      const date = new Date(Number(value) * 1000);
+      if (Number.isNaN(date.getTime())) return '-';
+      return date.toLocaleString();
     },
-    async handleSaveAndConvert(mappedLabels) {
-      await this.handleLabelMappingSave(mappedLabels);
-      this.showConvertDialog = true;
+    getPresetStorageKey() {
+      return 'illegal_label_mapping_presets_v3';
     },
-    async submitConvert() {
-      try {
-        this.convertingDataset = true;
-        await convertIllegalDataset(this.datasetId, this.convertForm);
-        this.showConvertDialog = false;
-        this.$message.success("已提交转换任务");
-        this.loadDetail();
-      } catch (e) {
-        this.$message.error("提交转换任务失败: " + e.message);
-      } finally {
-        this.convertingDataset = false;
-      }
+    getLeafLabel(label) {
+      const parts = String(label || '').split('%').map((item) => item.trim()).filter(Boolean);
+      return parts.length ? parts[parts.length - 1] : String(label || '').trim();
     },
-    listenToConversionStream() {
-      if (this.conversionStream) return;
-      let reconnectAttempts = 0;
-      const MAX_RECONNECT = 5;
-      
-      const connect = () => {
-        this.conversionRealtimeHint = "正在连接转换流...";
-        this.conversionStream = openIllegalConversionStream(this.datasetId, {
-          onMessage: (data) => {
-            reconnectAttempts = 0;
-            this.conversionRealtimeHint = "";
-            this.conversionStatus = data.status || this.conversionStatus;
-            
-            if (data.overall_progress) {
-                this.conversionOverallProgress = data.overall_progress;
-            }
-            if (data.image_progress) {
-                this.conversionImageProgress = data.image_progress;
-            }
-            if (data.phase_label) {
-                this.conversionPhaseLabel = data.phase_label;
-            }
-
-            if (data.status === 'completed' || data.status === 'failed') {
-                this.conversionError = data.error || '';
-                if (this.conversionStream) {
-                    this.conversionStream.close();
-                    this.conversionStream = null;
-                }
-                setTimeout(() => this.loadDetail(), 1000);
-            }
-          },
-          onError: (e) => {
-             console.error("Stream error", e);
-             this.conversionRealtimeHint = "流连接错误，尝试重连...";
-             if (this.conversionStream) this.conversionStream.close();
-             this.conversionStream = null;
-             
-             if (this.conversionStatus === 'running' || this.conversionStatus === 'queued') {
-                reconnectAttempts++;
-                if (reconnectAttempts <= MAX_RECONNECT) {
-                    setTimeout(connect, 2000 * reconnectAttempts);
-                } else {
-                    this.conversionRealtimeHint = "实时连接丢失，请刷新页面查看进度";
-                }
-             }
-          },
-          onClose: () => {
-             if (this.conversionStatus === 'running' || this.conversionStatus === 'queued') {
-                reconnectAttempts++;
-                if (reconnectAttempts <= MAX_RECONNECT) {
-                    setTimeout(connect, 2000 * reconnectAttempts);
-                }
-             }
-          }
-        });
+    normalizePresetDetectionRows(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      const out = [];
+      const dedup = new Map();
+      list.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        const source = String(item.source_label || item.source || '').trim();
+        if (!source) return;
+        const target = String(item.target_label || item.target || '').trim() || this.getLeafLabel(source);
+        dedup.set(source, target);
+      });
+      dedup.forEach((target, source) => {
+        out.push({ source_label: source, target_label: target });
+      });
+      return out;
+    },
+    normalizePresetClassificationRows(rows) {
+      const list = Array.isArray(rows) ? rows : [];
+      const out = [];
+      const dedup = new Map();
+      list.forEach((item) => {
+        if (!item || typeof item !== 'object') return;
+        const category = String(item.category || item.group || '').trim();
+        const source = String(item.source_label || item.source || '').trim();
+        if (!category || !source) return;
+        const target = String(item.target_label || item.target || '').trim() || category;
+        dedup.set(`${category}::${source}`, { category, source_label: source, target_label: target });
+      });
+      dedup.forEach((row) => out.push(row));
+      return out;
+    },
+    normalizePresetPayload(payload) {
+      const data = payload && typeof payload === 'object' ? payload : {};
+      return {
+        detection: this.normalizePresetDetectionRows(data.detection),
+        classification: this.normalizePresetClassificationRows(data.classification),
+        updated_at: data.updated_at ? String(data.updated_at) : null,
       };
-      
-      connect();
     },
-    handleUploadSuccess() {
-      this.zipUploading = false;
-      this.zipUploadProgress = 0;
-      this.zipUploadFile = null;
-      this.$message.success("上传并解压成功，数据已入库！");
-      this.loadDetail();
-    },
-    handleUploadFail(err) {
-      this.zipUploading = false;
-      this.zipUploadProgress = 0;
-      this.zipUploadFile = null;
-      this.$message.error("上传失败：" + (err.message || String(err)));
-      this.loadDetail();
-    },
-    resetRecoveredZipUploadState() {
-      this.zipUploadFile = null;
-      this.zipUploading = false;
-      this.zipUploadProgress = 0;
-      this.$message.info("已清除未完成的上传状态。");
-    },
-    
-    // Preset Methods
-    async openPresetDialog() {
+    loadIllegalLabelPresets({ silent = false } = {}) {
+      this.mappingPresetsLoading = true;
       try {
-        this.mappingPresetsLoading = true;
-        const res = await fetchIllegalLabelPresets(this.datasetId);
-        this.presetData = {
-           detection: Array.isArray(res.detection) ? res.detection : [],
-           classification: Array.isArray(res.classification) ? res.classification : [],
-           updated_at: res.updated_at
-        };
-        this.presetDatasetId = this.datasetId;
-        this.showPresetDialog = true;
-      } catch (e) {
-        this.$message.error("加载预设失败: " + e.message);
+        const raw = window.localStorage.getItem(this.getPresetStorageKey());
+        const parsed = raw ? JSON.parse(raw) : {};
+        this.presetData = this.normalizePresetPayload(parsed);
+        return this.presetData;
+      } catch (error) {
+        this.presetData = this.normalizePresetPayload({});
+        if (!silent) {
+          this.$message.warning(`预设映射加载失败: ${error && error.message ? error.message : error}`);
+        }
+        return this.presetData;
       } finally {
         this.mappingPresetsLoading = false;
       }
     },
-    async savePresetDialogData() {
+    openPresetDialog() {
+      this.showPresetDialog = true;
+      if (!this.presetDetectionCount && !this.presetClassificationCount) {
+        this.loadIllegalLabelPresets({ silent: true });
+      }
+    },
+    addDetectionPresetRow() {
+      this.presetData.detection.push({ source_label: '', target_label: '' });
+    },
+    removeDetectionPresetRow(index) {
+      this.presetData.detection.splice(index, 1);
+    },
+    addClassificationPresetRow() {
+      this.presetData.classification.push({ category: '', source_label: '', target_label: '' });
+    },
+    removeClassificationPresetRow(index) {
+      this.presetData.classification.splice(index, 1);
+    },
+    triggerPresetFileUpload() {
+      if (this.$refs.presetFileInput) {
+        this.$refs.presetFileInput.value = '';
+        this.$refs.presetFileInput.click();
+      }
+    },
+    async handlePresetFileChange(event) {
+      const file = event && event.target && event.target.files ? event.target.files[0] : null;
+      if (!file) return;
       try {
-        this.mappingPresetsSaving = true;
+        const parsed = await this.parsePresetWorkbook(file);
+        const hasDetection = parsed.detection && parsed.detection.length > 0;
+        const hasClassification = parsed.classification && parsed.classification.length > 0;
+        if (!hasDetection && !hasClassification) {
+          this.$message.warning('未从 XLSX 中识别到检测/分类映射数据');
+          return;
+        }
+        if (hasDetection) this.presetData.detection = parsed.detection;
+        if (hasClassification) this.presetData.classification = parsed.classification;
+        this.$message.success('XLSX 导入成功，请检查后保存');
+      } catch (error) {
+        this.$message.error(`XLSX 导入失败: ${error && error.message ? error.message : error}`);
+      } finally {
+        if (event && event.target) event.target.value = '';
+      }
+    },
+    async parsePresetWorkbook(file) {
+      const xlsxModule = await import('xlsx');
+      const XLSX = xlsxModule.default || xlsxModule;
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const sheets = Array.isArray(workbook.SheetNames) ? workbook.SheetNames : [];
+      if (!sheets.length) throw new Error('工作簿为空');
+
+      const findSheetName = (keywords) => sheets.find((name) => {
+        const normalized = String(name || '').toLowerCase();
+        return keywords.some((item) => normalized.includes(String(item).toLowerCase()));
+      });
+
+      const detectionSheetName = findSheetName(['检测', 'detection', 'det']) || sheets[0] || null;
+      const classificationSheetName = findSheetName(['分类', 'classification', 'class']) || sheets[1] || null;
+
+      const readSheetRows = (sheetName) => {
+        if (!sheetName) return [];
+        const sheet = workbook.Sheets[sheetName];
+        if (!sheet) return [];
+        const matrix = XLSX.utils.sheet_to_json(sheet, { header: 1, raw: false, defval: '' });
+        return Array.isArray(matrix) ? matrix : [];
+      };
+
+      return {
+        detection: this.normalizePresetDetectionRows(this.parseDetectionPresetSheet(readSheetRows(detectionSheetName))),
+        classification: this.normalizePresetClassificationRows(this.parseClassificationPresetSheet(readSheetRows(classificationSheetName))),
+      };
+    },
+    parseDetectionPresetSheet(matrix) {
+      const rows = Array.isArray(matrix) ? matrix : [];
+      if (!rows.length) return [];
+      const normalizedHeader = (rows[0] || []).map((item) => String(item || '').trim().toLowerCase());
+      const sourceHeaderTokens = ['source', 'source_label', '原始标签', '源标签', '标签路径'];
+      const targetHeaderTokens = ['target', 'target_label', '映射标签', '目标标签', '分类'];
+      const findHeaderIndex = (tokens) => normalizedHeader.findIndex((header) => tokens.some((token) => header.includes(token)));
+      const sourceIdx = findHeaderIndex(sourceHeaderTokens);
+      const targetIdx = findHeaderIndex(targetHeaderTokens);
+      const hasHeader = sourceIdx >= 0 || targetIdx >= 0;
+      const srcCol = sourceIdx >= 0 ? sourceIdx : 0;
+      const tgtCol = targetIdx >= 0 ? targetIdx : (rows[0].length > 1 ? 1 : -1);
+      const startIndex = hasHeader ? 1 : 0;
+      const out = [];
+      for (let i = startIndex; i < rows.length; i += 1) {
+        const row = Array.isArray(rows[i]) ? rows[i] : [];
+        const source = String(row[srcCol] || '').trim();
+        if (!source) continue;
+        const targetRaw = tgtCol >= 0 ? row[tgtCol] : '';
+        const target = String(targetRaw || '').trim() || this.getLeafLabel(source);
+        out.push({ source_label: source, target_label: target });
+      }
+      return out;
+    },
+    parseClassificationPresetSheet(matrix) {
+      const rows = Array.isArray(matrix) ? matrix : [];
+      if (!rows.length) return [];
+
+      const normalizedHeader = (rows[0] || []).map((item) => String(item || '').trim().toLowerCase());
+      const categoryHeaderTokens = ['category', 'group', '分类', '类别'];
+      const sourceHeaderTokens = ['source', 'source_label', '原始标签', '源标签', '标签路径'];
+      const targetHeaderTokens = ['target', 'target_label', '映射标签', '目标标签'];
+      const findHeaderIndex = (tokens) => normalizedHeader.findIndex((header) => tokens.some((token) => header.includes(token)));
+
+      const categoryIdx = findHeaderIndex(categoryHeaderTokens);
+      const sourceIdx = findHeaderIndex(sourceHeaderTokens);
+      const targetIdx = findHeaderIndex(targetHeaderTokens);
+
+      const out = [];
+      if (sourceIdx >= 0 && categoryIdx >= 0) {
+        for (let i = 1; i < rows.length; i += 1) {
+          const row = Array.isArray(rows[i]) ? rows[i] : [];
+          const category = String(row[categoryIdx] || '').trim();
+          const source = String(row[sourceIdx] || '').trim();
+          if (!category || !source) continue;
+          const target = targetIdx >= 0 ? String(row[targetIdx] || '').trim() : '';
+          out.push({ category, source_label: source, target_label: target || category });
+        }
+        return out;
+      }
+
+      const categoryColumns = (rows[0] || []).map((cell) => String(cell || '').trim());
+      const validColumns = categoryColumns
+        .map((name, idx) => ({ name, idx }))
+        .filter((item) => !!item.name);
+      if (!validColumns.length) return out;
+
+      for (let r = 1; r < rows.length; r += 1) {
+        const row = Array.isArray(rows[r]) ? rows[r] : [];
+        validColumns.forEach((column) => {
+          const source = String(row[column.idx] || '').trim();
+          if (!source) return;
+          out.push({ category: column.name, source_label: source, target_label: column.name });
+        });
+      }
+      return out;
+    },
+    buildPresetMapping(mode) {
+      const key = mode === 'classification' ? 'classification' : 'detection';
+      if (key === 'detection') {
+        const rows = this.normalizePresetDetectionRows(this.presetData.detection);
+        return rows.reduce((acc, row) => {
+          acc[row.source_label] = row.target_label || this.getLeafLabel(row.source_label);
+          return acc;
+        }, {});
+      }
+      const rows = this.normalizePresetClassificationRows(this.presetData.classification);
+      return rows.reduce((acc, row) => {
+        const target = String(row.target_label || '').trim() || String(row.category || '').trim();
+        if (!row.source_label || !target) return acc;
+        acc[row.source_label] = target;
+        return acc;
+      }, {});
+    },
+    async applyPresetToCurrentMapping() {
+      if (!this.presetDetectionCount && !this.presetClassificationCount) {
+        this.loadIllegalLabelPresets({ silent: true });
+      }
+      const mapping = this.buildPresetMapping(this.presetApplyMode);
+      if (!mapping || Object.keys(mapping).length === 0) {
+        this.$message.warning('当前预设为空，请先编辑并保存预设映射');
+        return;
+      }
+      this.$nextTick(() => {
+        const panel = this.$refs.labelMappingPanel;
+        if (!panel || typeof panel.applyExternalMapping !== 'function') {
+          this.$message.warning('当前映射面板未就绪，请稍后重试');
+          return;
+        }
+        const result = panel.applyExternalMapping(mapping);
+        const matched = Number(result && result.matched) || 0;
+        const total = Number(result && result.total) || 0;
+        this.$message.success(`已应用预设映射，匹配 ${matched}/${total} 条标签`);
+      });
+    },
+    async savePresetDialogData() {
+      this.mappingPresetsSaving = true;
+      try {
         const payload = {
-            detection: this.presetData.detection.filter(d => d.source_label),
-            classification: this.presetData.classification.filter(c => c.category && c.source_label)
+          detection: this.normalizePresetDetectionRows(this.presetData.detection),
+          classification: this.normalizePresetClassificationRows(this.presetData.classification),
+          updated_at: new Date().toISOString(),
         };
-        const res = await saveIllegalLabelPresets(this.presetDatasetId, payload);
-        this.presetData.updated_at = res.updated_at;
-        this.$message.success("预设保存成功");
+        window.localStorage.setItem(this.getPresetStorageKey(), JSON.stringify(payload));
+        this.presetData = this.normalizePresetPayload(payload);
+        this.$message.success('预设映射保存成功');
         this.showPresetDialog = false;
-      } catch (e) {
-        this.$message.error("保存预设失败: " + e.message);
+      } catch (error) {
+        this.$message.error(`保存预设失败: ${error && error.message ? error.message : error}`);
       } finally {
         this.mappingPresetsSaving = false;
       }
     },
-    addDetectionPresetRow() {
-        this.presetData.detection.push({ source_label: '', target_label: '' });
+    normalizeMappings(rawLabels, savedItems) {
+      const savedMap = new Map();
+      (Array.isArray(savedItems) ? savedItems : []).forEach((item) => {
+        const raw = String(item && item.raw_label || '').trim();
+        const mapped = String(item && item.mapped_label || '').trim();
+        if (!raw) return;
+        savedMap.set(raw, mapped || raw);
+      });
+      const keys = new Set();
+      (Array.isArray(rawLabels) ? rawLabels : []).forEach((label) => {
+        const raw = String(label || '').trim();
+        if (raw) keys.add(raw);
+      });
+      savedMap.forEach((_value, key) => keys.add(key));
+      return Array.from(keys)
+        .sort((a, b) => a.localeCompare(b, 'zh-CN'))
+        .map((raw) => ({ raw_label: raw, mapped_label: savedMap.get(raw) || raw }));
     },
-    removeDetectionPresetRow(index) {
-        this.presetData.detection.splice(index, 1);
+    buildMappingObjectFromRows(rows) {
+      return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
+        const raw = String(row && row.raw_label || '').trim();
+        const mapped = String(row && row.mapped_label || '').trim();
+        if (!raw || !mapped) return acc;
+        acc[raw] = mapped;
+        return acc;
+      }, {});
     },
-    addClassificationPresetRow() {
-        this.presetData.classification.push({ category: '', source_label: '', target_label: '' });
+    applySliceParamsToPublishForm(sliceParams) {
+      if (!sliceParams || typeof sliceParams !== 'object') return;
+      this.publishForm.slice_size = Number(sliceParams.slice_size) || this.publishForm.slice_size;
+      this.publishForm.slice_overlap = Number(sliceParams.overlap) || 0;
+      this.publishForm.slice_padding = Number(sliceParams.padding) || 0;
+      this.publishForm.slice_min_area_ratio = Number(sliceParams.min_area_ratio) || 0;
+      this.publishForm.slice_min_visibility = Number(sliceParams.min_visibility) || 0;
+      this.publishForm.slice_min_pixel_size = Number(sliceParams.min_pixel_size) || 1;
+      this.publishForm.slice_negative_ratio = Number(sliceParams.negative_ratio) || 0;
+      this.publishForm.slice_empty_positive_action = String(sliceParams.empty_positive_action || 'discard');
     },
-    removeClassificationPresetRow(index) {
-        this.presetData.classification.splice(index, 1);
+    buildPublishConfig() {
+      return {
+        frontend: 'tfs-v3',
+        output_format: 'yolo',
+        conversion: {
+          slice: {
+            enabled: true,
+            slice_size: Number(this.publishForm.slice_size) || 1280,
+            overlap: Number(this.publishForm.slice_overlap) || 0,
+            padding: Number(this.publishForm.slice_padding) || 0,
+            min_area_ratio: Number(this.publishForm.slice_min_area_ratio) || 0,
+            min_visibility: Number(this.publishForm.slice_min_visibility) || 0,
+            min_pixel_size: Number(this.publishForm.slice_min_pixel_size) || 1,
+            negative_ratio: Number(this.publishForm.slice_negative_ratio) || 0,
+            empty_positive_action: String(this.publishForm.slice_empty_positive_action || 'discard'),
+          },
+        },
+      };
     },
-    triggerPresetFileUpload() {
-        if (this.$refs.presetFileInput) {
-            this.$refs.presetFileInput.value = '';
-            this.$refs.presetFileInput.click();
+    getPanelMappingObject() {
+      const panel = this.$refs.labelMappingPanel;
+      if (panel && typeof panel.buildMapping === 'function') {
+        return panel.buildMapping();
+      }
+      return this.buildMappingObjectFromRows(this.mappingRows);
+    },
+    getPanelSliceParams() {
+      const panel = this.$refs.labelMappingPanel;
+      if (panel && typeof panel.buildSliceParams === 'function') {
+        return panel.buildSliceParams();
+      }
+      return {
+        slice_size: this.publishForm.slice_size,
+        overlap: this.publishForm.slice_overlap,
+        padding: this.publishForm.slice_padding,
+        min_area_ratio: this.publishForm.slice_min_area_ratio,
+        min_visibility: this.publishForm.slice_min_visibility,
+        min_pixel_size: this.publishForm.slice_min_pixel_size,
+        negative_ratio: this.publishForm.slice_negative_ratio,
+        empty_positive_action: this.publishForm.slice_empty_positive_action,
+      };
+    },
+    syncPanelFromSavedMappings() {
+      this.$nextTick(() => {
+        const panel = this.$refs.labelMappingPanel;
+        if (!panel || typeof panel.applyExternalMapping !== 'function') return;
+        const mapping = this.buildMappingObjectFromRows(this.mappingRows);
+        if (Object.keys(mapping).length) {
+          panel.applyExternalMapping(mapping);
         }
+      });
     },
-    handlePresetFileChange(e) {
-        const file = e.target.files[0];
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = (e) => {
-            try {
-                const data = new Uint8Array(e.target.result);
-                const workbook = XLSX.read(data, { type: 'array' });
-                
-                const detSheetName = workbook.SheetNames.find(n => n.includes('检测') || n.toLowerCase().includes('detection'));
-                if (detSheetName) {
-                    const detSheet = workbook.Sheets[detSheetName];
-                    const detData = XLSX.utils.sheet_to_json(detSheet, { header: 1 });
-                    const parsedDet = [];
-                    for (let i = 1; i < detData.length; i++) {
-                        const row = detData[i];
-                        if (row[0]) {
-                            parsedDet.push({ source_label: String(row[0]), target_label: String(row[1] || '') });
-                        }
-                    }
-                    if (parsedDet.length) {
-                        this.presetData.detection = parsedDet;
-                    }
-                }
-                
-                const clsSheetName = workbook.SheetNames.find(n => n.includes('分类') || n.toLowerCase().includes('classification'));
-                if (clsSheetName) {
-                    const clsSheet = workbook.Sheets[clsSheetName];
-                    const clsData = XLSX.utils.sheet_to_json(clsSheet, { header: 1 });
-                    const parsedCls = [];
-                    for (let i = 1; i < clsData.length; i++) {
-                        const row = clsData[i];
-                        if (row[0] && row[1]) {
-                            parsedCls.push({ category: String(row[0]), source_label: String(row[1]), target_label: String(row[2] || '') });
-                        }
-                    }
-                    if (parsedCls.length) {
-                        this.presetData.classification = parsedCls;
-                    }
-                }
-                this.$message.success("成功导入 Excel 解析预设内容");
-            } catch (err) {
-                this.$message.error("解析 Excel 失败: " + err.message);
-            }
-        };
-        reader.readAsArrayBuffer(file);
+    async refreshAll() {
+      await this.loadAll();
     },
-    async applyPresetToCurrentMapping() {
-        if (!this.$refs.labelMappingPanel) return;
-        try {
-            this.mappingPresetsLoading = true;
-            const res = await fetchIllegalLabelPresets(this.datasetId);
-            const appliedCount = this.$refs.labelMappingPanel.applyPresets(res, this.presetApplyMode);
-            this.$message.success(`应用预设成功，共更新 ${appliedCount} 条映射（请手动点击保存生效）`);
-        } catch (e) {
-            this.$message.error("应用预设失败: " + e.message);
-        } finally {
-            this.mappingPresetsLoading = false;
+    async loadAll() {
+      if (!this.datasetId) {
+        this.$message.error('未找到非法数据集 ID');
+        return;
+      }
+      this.loading = true;
+      try {
+        const detail = await fetchIllegalDatasetDetail(this.datasetId, { versionsLimit: 50, eventsLimit: 50 });
+        this.detail = detail;
+        this.presetApplyMode = this.datasetTypeValue === 'classification' ? 'classification' : 'detection';
+
+        const [rawPayload, mappingPayload, filePage] = await Promise.all([
+          fetchIllegalDatasetRawLabels(this.datasetId).catch(() => ({ labels: [] })),
+          fetchIllegalDatasetLabelMappings(this.datasetId).catch(() => ({ items: [] })),
+          fetchIllegalDatasetFiles(this.datasetId, { page: 1, pageSize: 100, versionId: this.activeVersionId }).catch(() => ({ items: [] })),
+        ]);
+
+        this.rawLabels = Array.isArray(rawPayload && rawPayload.labels) ? rawPayload.labels : [];
+        const mappingItems = Array.isArray(mappingPayload && mappingPayload.items) ? mappingPayload.items : [];
+        this.mappingRows = this.normalizeMappings(this.rawLabels, mappingItems);
+        this.files = Array.isArray(filePage && filePage.items) ? filePage.items : [];
+
+        if (!this.publishForm.name) {
+          this.publishForm.name = `${this.datasetName}-standard`;
         }
-    }
+        if (!this.publishForm.version_id && this.activeVersionId) {
+          this.publishForm.version_id = this.activeVersionId;
+        }
+
+        await this.loadPreview();
+        this.syncPanelFromSavedMappings();
+      } catch (error) {
+        console.error(error);
+        this.$message.error(`加载非法数据集失败：${error.message || error}`);
+      } finally {
+        this.loading = false;
+      }
+    },
+    async loadPreview() {
+      if (!this.datasetId || !this.activeVersionId) {
+        this.preview = { categories: [], items: [], meta: {} };
+        return;
+      }
+      this.loadingPreview = true;
+      try {
+        this.preview = await fetchIllegalDatasetView(this.datasetId, {
+          versionId: this.activeVersionId,
+          classId: this.previewClassId,
+          page: 1,
+          pageSize: 24,
+        });
+      } catch (error) {
+        console.error(error);
+        this.preview = { categories: [], items: [], meta: {} };
+      } finally {
+        this.loadingPreview = false;
+      }
+    },
+    async handleLabelMappingSave(mapping, { silent = false } = {}) {
+      this.savingMappings = true;
+      try {
+        const items = Object.keys(mapping || {})
+          .map((rawLabel) => ({
+            raw_label: String(rawLabel || '').trim(),
+            mapped_label: String(mapping[rawLabel] || '').trim(),
+          }))
+          .filter((row) => row.raw_label && row.mapped_label);
+        await updateIllegalDatasetLabelMappings(this.datasetId, items);
+        this.mappingRows = this.normalizeMappings(this.rawLabels, items);
+        if (!silent) this.$message.success('映射保存成功');
+        this.syncPanelFromSavedMappings();
+        return true;
+      } catch (error) {
+        console.error(error);
+        this.$message.error(`保存映射失败：${error.message || error}`);
+        return false;
+      } finally {
+        this.savingMappings = false;
+      }
+    },
+    async handlePanelSave(mapping) {
+      await this.handleLabelMappingSave(mapping);
+    },
+    async handleSaveAndConvert(mapping, sliceParams) {
+      this.applySliceParamsToPublishForm(sliceParams);
+      if (!this.publishForm.name) {
+        this.publishForm.name = `${this.datasetName}-standard`;
+      }
+      await this.publishToStandard({ mappingOverride: mapping, sliceParams, skipSaveMappings: false });
+    },
+    async activateVersion(row) {
+      if (!row || !row.version_id) return;
+      try {
+        await activateIllegalDatasetVersion(this.datasetId, row.version_id);
+        this.$message.success(`已切换到版本 v${row.version}`);
+        this.publishForm.version_id = row.version_id;
+        await this.loadAll();
+      } catch (error) {
+        console.error(error);
+        this.$message.error(`激活版本失败：${error.message || error}`);
+      }
+    },
+    async publishToStandard({ mappingOverride = null, sliceParams = null, skipSaveMappings = false } = {}) {
+      const name = String(this.publishForm.name || '').trim();
+      if (!name) {
+        this.$message.warning('请先填写标准数据集名称');
+        return;
+      }
+      if (!this.publishSplitValid) {
+        this.$message.warning('请检查 train / val / test 划分比例，总和必须为 1');
+        return;
+      }
+
+      const effectiveSliceParams = sliceParams || this.getPanelSliceParams();
+      this.applySliceParamsToPublishForm(effectiveSliceParams);
+      const effectiveMapping = mappingOverride || this.getPanelMappingObject();
+
+      if (!skipSaveMappings) {
+        const ok = await this.handleLabelMappingSave(effectiveMapping, { silent: true });
+        if (!ok) return;
+      }
+
+      this.publishing = true;
+      try {
+        const result = await publishIllegalDataset(this.datasetId, {
+          name,
+          description: String(this.publishForm.description || '').trim() || undefined,
+          version_id: this.publishForm.version_id || this.activeVersionId || undefined,
+          label_filters: Array.isArray(this.publishForm.label_filters) ? this.publishForm.label_filters : [],
+          label_mapping_overrides: effectiveMapping,
+          split: {
+            train: Number(this.publishForm.train_ratio) || 0,
+            val: Number(this.publishForm.val_ratio) || 0,
+            test: Number(this.publishForm.test_ratio) || 0,
+            shuffle: !!this.publishForm.split_shuffle,
+            seed: Number(this.publishForm.split_seed) || 0,
+          },
+          publish_config: this.buildPublishConfig(),
+        });
+        const standardDatasetId = result && result.standard_dataset_id;
+        this.$message.success(`标准数据集已创建：#${standardDatasetId}`);
+        if (standardDatasetId) {
+          this.$confirm('标准数据集已生成，是否立即前往详情页查看？', '发布成功', {
+            type: 'success',
+            confirmButtonText: '前往查看',
+            cancelButtonText: '留在当前页',
+          }).then(() => {
+            this.$router.push({ path: '/standard-dataset-detail', query: { id: standardDatasetId } });
+          }).catch(() => {});
+        }
+        await this.loadAll();
+      } catch (error) {
+        console.error(error);
+        this.$message.error(`发布失败：${error.message || error}`);
+      } finally {
+        this.publishing = false;
+      }
+    },
+    handleUploadSuccess() {
+      this.uploadDialogVisible = false;
+      this.uploadFile = null;
+      this.uploading = false;
+      this.uploadProgress = 0;
+      this.$message.success('ZIP 上传完成，已生成新的非法数据集内容');
+      this.loadAll();
+    },
+    handleAppendSuccess() {
+      this.appendDialogVisible = false;
+      this.appendFile = null;
+      this.appending = false;
+      this.appendProgress = 0;
+      this.$message.success('追加上传成功，已生成新版本');
+      this.loadAll();
+    },
+    handleUploadFail(error) {
+      this.$message.error(`上传失败：${error && error.message ? error.message : error || '未知错误'}`);
+    },
   },
-  mounted() {
-    this.datasetId = this.$route.query.id;
-    if (this.datasetId) {
-        this.loadDetail();
-    } else {
-        this.$message.error("未找到数据集ID");
-    }
-  },
-  beforeDestroy() {
-    if (this.conversionStream) {
-        this.conversionStream.close();
-        this.conversionStream = null;
-    }
-  }
 };
 </script>
 
@@ -700,380 +1185,500 @@ export default {
   gap: 24px;
 }
 
-/* Hero Section */
+.glass-panel,
+.detail-hero,
+.section-card {
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
 .detail-hero {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: 32px;
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  gap: 24px;
+  padding: 28px 30px;
 }
 
 .hero-left {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 16px;
+  min-width: 0;
 }
 
 .back-link {
-  background: none;
+  align-self: flex-start;
   border: none;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+  background: transparent;
+  color: #2563eb;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 14px;
   padding: 0;
-  transition: color 0.2s;
-}
-
-.back-link:hover {
-  color: var(--color-primary);
-}
-
-.hero-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .hero-kicker {
-  font-size: 0.75rem;
+  font-size: 12px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--color-primary);
+  color: #64748b;
   font-weight: 700;
 }
 
 .hero-title {
-  font-size: 2rem;
-  font-weight: 800;
-  color: var(--text-main);
   margin: 0;
+  font-size: 32px;
   line-height: 1.2;
+  color: #111827;
 }
 
 .hero-meta {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.meta-pill {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
+.meta-pill,
+.meta-id {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
+.meta-pill.warning {
+  background: #fff7ed;
+  color: #c2410c;
+}
+
+.meta-pill.info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.meta-pill.success {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
 .meta-id {
-  font-size: 0.85rem;
-  color: var(--text-light);
-  font-family: monospace;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.hero-desc {
+  margin: 14px 0 0;
+  color: #4b5563;
+  line-height: 1.8;
+  max-width: 760px;
 }
 
 .hero-right {
-  display: flex;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
+  gap: 14px;
+  min-width: 480px;
 }
 
 .stat-card {
-  text-align: center;
-  background: var(--bg-body);
-  padding: 16px 24px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-light);
-  min-width: 100px;
+  border-radius: 18px;
+  padding: 18px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #edf2f7;
 }
 
 .stat-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  margin-top: 10px;
+  font-size: 28px;
   font-weight: 700;
-  color: var(--text-main);
+  color: #0f172a;
 }
 
 .detail-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 400px;
+  padding: 22px;
 }
 
-.loading-state {
+.loading-state,
+.panel-empty {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  gap: 16px;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
+  gap: 10px;
+  min-height: 220px;
+  color: #64748b;
 }
 
-.loading-state i {
-  font-size: 2rem;
-  color: var(--color-primary);
+.panel-empty {
+  flex-direction: column;
+  padding: 30px 16px;
+  text-align: center;
+}
+
+.panel-empty i {
+  font-size: 28px;
 }
 
 .illegal-section {
   display: flex;
   flex-direction: column;
-  gap: 24px;
-  padding: 24px;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 
 .illegal-banner {
   display: flex;
-  align-items: flex-start;
-  gap: 20px;
-  padding: 24px;
-  border-left: 4px solid var(--color-warning);
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  border-radius: 18px;
+}
+
+.warning-theme {
+  border-color: rgba(245, 158, 11, 0.35);
+  background: linear-gradient(135deg, rgba(255, 247, 237, 0.98) 0%, rgba(255, 251, 235, 0.98) 100%);
 }
 
 .illegal-icon {
-  font-size: 2rem;
-  color: var(--color-warning);
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #d97706;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  flex: 0 0 auto;
 }
 
 .illegal-content {
   flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
+  min-width: 0;
 }
 
 .illegal-title {
-  font-size: 1.25rem;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--text-main);
+  color: #92400e;
 }
 
 .illegal-desc {
-  color: var(--text-secondary);
-  line-height: 1.5;
+  margin-top: 4px;
+  line-height: 1.7;
+  color: #9a3412;
 }
 
 .illegal-badge {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 10px;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 6px 10px;
+  border-radius: 999px;
   background: rgba(245, 158, 11, 0.1);
-  color: #d97706;
-  border-radius: var(--radius-sm);
-  font-size: 0.85rem;
-  font-weight: 500;
-  margin-top: 4px;
-  width: fit-content;
+  color: #92400e;
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .badge-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.illegal-error {
-  color: var(--color-danger);
-  font-size: 0.9rem;
-  margin-top: 4px;
-}
-
-.conversion-progress {
-  margin-top: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  background: var(--bg-body);
-  padding: 16px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-color);
-}
-
-.conversion-progress-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.conversion-progress-label {
-  font-size: 0.85rem;
-  color: var(--text-main);
-  font-weight: 500;
-}
-
-.conversion-reconnect-hint {
-  font-size: 0.85rem;
-  color: var(--color-warning);
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: #f59e0b;
+  box-shadow: 0 0 0 4px rgba(245, 158, 11, 0.16);
 }
 
 .illegal-actions {
   display: flex;
   align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
 }
 
 .preset-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 12px;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: rgba(248, 250, 252, 0.8);
 }
 
 .preset-toolbar-left {
   display: flex;
   align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
 }
 
 .preset-toolbar-right {
   display: flex;
   align-items: center;
-  gap: 16px;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+  color: #64748b;
 }
 
 .preset-mode-select {
-  width: 200px;
+  width: 150px;
+}
+
+.illegal-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 20px;
+}
+
+.main-column,
+.side-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.section-card {
+  padding: 18px;
+}
+
+.section-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.section-sub {
+  color: #64748b;
+  font-size: 13px;
+  margin-top: 4px;
+}
+
+.mapping-panel-wrap {
+  min-height: 420px;
+}
+
+.legacy-mapping-wrap {
+  margin-bottom: 4px;
+}
+
+.publish-tip {
+  margin-bottom: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #fdf6ec;
+  color: #8a5a00;
+  line-height: 1.6;
+}
+
+.split-row {
+  display: grid;
+  grid-template-columns: repeat(6, auto);
+  gap: 8px;
+  align-items: center;
+}
+
+.publish-split-summary {
+  margin-top: 8px;
+  font-size: 12px;
+  color: #606266;
+}
+
+.publish-split-summary.invalid {
+  color: #f56c6c;
+}
+
+.full-width {
+  width: 100%;
+}
+
+.image-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+}
+
+.image-card {
+  border: 1px solid #ebeef5;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.preview-image {
+  width: 100%;
+  height: 150px;
+  display: block;
+  background: #f5f7fa;
+}
+
+.image-meta {
+  padding: 10px 12px;
+}
+
+.image-name {
+  font-weight: 600;
+  color: #303133;
+  word-break: break-all;
+}
+
+.image-desc {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
+}
+
+.info-list {
+  display: grid;
+  gap: 12px;
+}
+
+.info-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-item span {
+  color: #909399;
+  font-size: 12px;
+}
+
+.info-item strong {
+  color: #303133;
+  word-break: break-all;
 }
 
 .empty-state {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 60px;
-  background: var(--bg-body);
-  border-radius: var(--radius-lg);
-  border: 2px dashed var(--border-color);
-  gap: 32px;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
 }
 
 .empty-content {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  max-width: 680px;
 }
 
 .empty-title {
-  font-size: 1.5rem;
+  font-size: 26px;
   font-weight: 700;
-  color: var(--text-main);
+  color: #111827;
 }
 
 .empty-desc {
-  color: var(--text-secondary);
-  font-size: 1.1rem;
+  margin-top: 14px;
+  color: #4b5563;
+  line-height: 1.8;
 }
 
 .empty-tips {
   display: flex;
-  gap: 16px;
-  justify-content: center;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .tip-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.9rem;
-  color: var(--color-success);
-  background: var(--color-success-light);
-  padding: 4px 12px;
-  border-radius: var(--radius-full);
-}
-
-.empty-processing-tip {
-  margin-top: 16px;
-  font-weight: 600;
-  color: var(--color-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.empty-action {
-  width: 100%;
-  max-width: 400px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-.upload-reset-btn {
-  font-size: 0.85rem;
-}
-
-.convert-dialog ::v-deep .el-dialog__body {
-  padding: 24px;
-}
-
-.convert-body {
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-}
-
-.convert-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.convert-label {
-  font-weight: 600;
-  color: var(--text-main);
-  width: 70px;
-}
-
-.convert-hint {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  margin-top: 8px;
-  padding: 8px;
-  background: var(--bg-body);
-  border-radius: var(--radius-sm);
+  color: #334155;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 8px 12px;
+  border-radius: 999px;
 }
 
 .preset-dialog-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  gap: 8px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
 }
 
 .preset-dialog-stats {
   display: flex;
-  gap: 16px;
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: #64748b;
+  flex-wrap: wrap;
 }
 
 .preset-dialog-actions {
   display: flex;
+  align-items: center;
   gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 1280px) {
+  .detail-hero {
+    flex-direction: column;
+  }
+
+  .hero-right {
+    min-width: 0;
+    grid-template-columns: repeat(2, minmax(120px, 1fr));
+  }
+
+  .illegal-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .detail-hero {
+    padding: 20px;
+  }
+
+  .detail-body,
+  .section-card {
+    padding: 16px;
+  }
+
+  .hero-right {
+    grid-template-columns: 1fr;
+  }
+
+  .illegal-banner,
+  .empty-state {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .illegal-actions {
+    justify-content: flex-start;
+  }
+
+  .split-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 </style>

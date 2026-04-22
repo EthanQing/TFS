@@ -110,7 +110,7 @@ export default {
       this.connecting = true;
 
       const wsBase = this.deriveWsBase();
-      const url = `${wsBase}/api/v2/training-runs/${encodeURIComponent(
+      const url = `${wsBase}/api/v3/training-runs/${encodeURIComponent(
         this.jobId
       )}/logs/stream?which=${encodeURIComponent(this.which)}&tail=500`;
 

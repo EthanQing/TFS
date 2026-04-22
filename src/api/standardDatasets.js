@@ -5,7 +5,7 @@
 import {
     API_BASE, WS_BASE,
     safeJson, postJson, putJson, deleteJson, getJson,
-    xhrUploadJson, chunkedUpload,
+    xhrUploadJson,
     toAbsUrl, encodePathSegments, formatMb,
     pickErrorMessage, createReconnectingWs,
 } from './apiUtils';
@@ -27,12 +27,11 @@ export function buildStandardThumbnailUrl(datasetId, relPath, { size = null } = 
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
 
-export async function fetchStandardDatasets({ page = 1, pageSize = 50, format = null } = {}) {
+export async function fetchStandardDatasets({ page = 1, pageSize = 50 } = {}) {
     try {
         const params = new URLSearchParams();
         params.set('page', String(page));
         params.set('page_size', String(pageSize));
-        if (format) params.set('format', format);
 
         const url = `${PREFIX}?${params.toString()}`;
         const data = await getJson(url);
@@ -42,6 +41,7 @@ export async function fetchStandardDatasets({ page = 1, pageSize = 50, format = 
             dataset_name: item.name,
             dataset_type: item.dataset_type || item.type || 'detection',
             dataset_id: item.standard_dataset_id,
+            format: 'yolo',
             num_images: item.statistics?.num_images || 0,
             num_classes: item.statistics?.num_classes || 0,
             dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
@@ -52,12 +52,11 @@ export async function fetchStandardDatasets({ page = 1, pageSize = 50, format = 
     }
 }
 
-export async function createStandardDataset({ name, dataset_type, description = null, format = 'yolo' } = {}) {
+export async function createStandardDataset({ name, dataset_type, description = null } = {}) {
     return postJson(PREFIX, {
         name,
         dataset_type,
         description: description || undefined,
-        format,
     });
 }
 
@@ -103,11 +102,6 @@ export function uploadStandardDatasetArchive(
         formData,
         { onProgress, onUploadDone }
     );
-}
-
-export function uploadStandardDatasetChunked(datasetId, file, opts = {}) {
-    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
-    return chunkedUpload(`${PREFIX}/${encodeURIComponent(datasetId)}`, file, opts);
 }
 
 // ── Events ────────────────────────────────────────────────────────────────

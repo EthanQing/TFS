@@ -33,7 +33,6 @@ const VersionManager = () => import('@/views/Models/VersionManager.vue')
 const Hyperparameter = () => import('@/views/Training/Hyperparameter.vue')
 const BaseChart = () => import('@/components/Chart/BaseChart.vue') // Kept as route for now if used as demo
 const AlarmRule = () => import('@/views/Configuration/AlarmRule.vue')
-const DataConversion = () => import('@/views/Datasets/components/DataConversion.vue')
 const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
 const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
@@ -87,15 +86,11 @@ export default new VueRouter({
             path: '/deployment',
             component: DeploymentCenter
         }, {
-            // Backward-compatible entry (old route)
             path: '/deploymentprocess',
             redirect: { path: '/deployment' }
         }, {
             path: '/modelinferencetest',
             redirect: { path: '/deployment', query: { tool: 'inference-test' } }
-        }, {
-            path: '/dataconversiontool',
-            component: DataConversion
         },
         {
             path: '/modelframeselect',

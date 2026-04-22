@@ -112,50 +112,63 @@
   </div>
 </template>
 
+
 <script>
-import { uploadIllegalDatasetArchive } from '@/api/illegalDatasets';
+import {
+  uploadIllegalDatasetArchive,
+  appendIllegalDatasetArchive,
+} from '@/api/illegalDatasets';
 import { uploadStandardDatasetArchive } from '@/api/standardDatasets';
 
+const DATASET_KIND_ILLEGAL = 'illegal';
+const DATASET_KIND_STANDARD = 'standard';
+
 export default {
-  name: "UploadZip",
+  name: 'UploadZip',
   props: {
     datasetId: {
       type: [String, Number],
-      required: true
+      required: true,
+    },
+    datasetKind: {
+      type: String,
+      default: '',
+    },
+    mode: {
+      type: String,
+      default: 'upload',
     },
     isIllegal: {
       type: Boolean,
-      default: false
+      default: false,
     },
-    // 支持外部状态管理
     externalFile: {
       type: [File, Object],
-      default: null
+      default: null,
     },
     externalUploading: {
       type: Boolean,
-      default: null
+      default: null,
     },
     externalProgress: {
       type: Number,
-      default: null
-    }
+      default: null,
+    },
   },
   data() {
     return {
       internalFile: null,
       isDragover: false,
-      errorMessage: "",
+      errorMessage: '',
       internalUploading: false,
       internalProgress: 0,
-      uploadStage: "idle", // idle | uploading | processing
+      uploadStage: 'idle',
       cancelUploadRequest: null,
       uploadSuccess: false,
       successTimer: null,
     };
   },
   computed: {
-    // 优先使用外部状态，否则使用内部状态
     selectedFile: {
       get() {
         return this.externalFile !== null ? this.externalFile : this.internalFile;
@@ -163,7 +176,7 @@ export default {
       set(val) {
         this.internalFile = val;
         this.$emit('update:externalFile', val);
-      }
+      },
     },
     isUploading: {
       get() {
@@ -172,7 +185,7 @@ export default {
       set(val) {
         this.internalUploading = val;
         this.$emit('update:externalUploading', val);
-      }
+      },
     },
     progress: {
       get() {
@@ -181,8 +194,19 @@ export default {
       set(val) {
         this.internalProgress = val;
         this.$emit('update:externalProgress', val);
-      }
-    }
+      },
+    },
+    resolvedDatasetKind() {
+      const kind = String(this.datasetKind || '').trim().toLowerCase();
+      if (kind === DATASET_KIND_STANDARD) return DATASET_KIND_STANDARD;
+      if (kind === DATASET_KIND_ILLEGAL) return DATASET_KIND_ILLEGAL;
+      return this.isIllegal ? DATASET_KIND_ILLEGAL : DATASET_KIND_STANDARD;
+    },
+    resolvedMode() {
+      const mode = String(this.mode || 'upload').trim().toLowerCase();
+      if (this.resolvedDatasetKind === DATASET_KIND_ILLEGAL && mode === 'append') return 'append';
+      return 'upload';
+    },
   },
   beforeDestroy() {
     if (this.successTimer) clearTimeout(this.successTimer);
@@ -195,117 +219,92 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     },
-    
     clearFile() {
       this.selectedFile = null;
-      this.errorMessage = "";
+      this.errorMessage = '';
       if (this.$refs.fileInput) {
-        this.$refs.fileInput.value = "";
+        this.$refs.fileInput.value = '';
       }
     },
-
-    // 处理文件选择
     handleFileSelect(event) {
       const file = event.target.files[0];
       this.validateAndSetFile(file);
     },
-
-    // 处理拖放事件
     handleDragOver(event) {
       if (this.isUploading) return;
       event.preventDefault();
       this.isDragover = true;
     },
-
     handleDragLeave() {
       this.isDragover = false;
     },
-
     handleDrop(event) {
       if (this.isUploading) return;
       event.preventDefault();
       this.isDragover = false;
-
       if (event.dataTransfer.files.length) {
-        const file = event.dataTransfer.files[0];
-        this.validateAndSetFile(file);
+        this.validateAndSetFile(event.dataTransfer.files[0]);
       }
     },
-
-    // 验证并设置文件
     validateAndSetFile(file) {
-      this.errorMessage = "";
+      this.errorMessage = '';
       this.uploadSuccess = false;
-
       if (!file) {
         this.selectedFile = null;
         return;
       }
-
-      // 验证文件类型
-      if (!file.name.endsWith(".zip")) {
-        this.errorMessage = "请上传 .zip 格式的压缩文件";
+      if (!String(file.name || '').toLowerCase().endsWith('.zip')) {
+        this.errorMessage = '请上传 .zip 格式的压缩文件';
         this.selectedFile = null;
         return;
       }
-
       this.selectedFile = file;
     },
-
-    // 上传文件 - 使用API接口
+    getUploader() {
+      if (this.resolvedDatasetKind === DATASET_KIND_ILLEGAL) {
+        return this.resolvedMode === 'append' ? appendIllegalDatasetArchive : uploadIllegalDatasetArchive;
+      }
+      return uploadStandardDatasetArchive;
+    },
     async uploadFile() {
       if (!this.selectedFile) return;
       if (!this.datasetId) {
-        this.errorMessage = "请先创建并保存数据集";
+        this.errorMessage = '请先创建并保存数据集';
         return;
       }
 
       this.isUploading = true;
       this.progress = 0;
-      this.uploadStage = "uploading";
+      this.uploadStage = 'uploading';
       this.cancelUploadRequest = null;
       this.uploadSuccess = false;
-      this.errorMessage = "";
+      this.errorMessage = '';
 
       try {
-        const uploadFn = this.isIllegal ? uploadIllegalDatasetArchive : uploadStandardDatasetArchive;
-        const req = uploadFn(this.datasetId, this.selectedFile, {
+        const req = this.getUploader()(this.datasetId, this.selectedFile, {
           onProgress: ({ loaded, total, percent }) => {
             const l = Number(loaded) || 0;
             const t = Number(total) || 0;
-            const pct = (percent !== null && percent !== undefined)
-              ? Number(percent) || 0
-              : (t > 0 ? Math.round((l / t) * 100) : 0);
+            const pct = percent !== null && percent !== undefined ? Number(percent) || 0 : (t > 0 ? Math.round((l / t) * 100) : 0);
             this.progress = Math.max(0, Math.min(100, pct));
           },
           onUploadDone: () => {
-            this.uploadStage = "processing";
+            this.uploadStage = 'processing';
             this.progress = Math.max(this.progress, 100);
           },
         });
         this.cancelUploadRequest = req.cancel;
+        await req.promise;
 
-        const result = await req.promise;
-
-        const payload = result && (result.dataset || result.data || result);
-        const returnedId = payload && (payload.dataset_id || payload.id);
-        const displayId = returnedId || this.datasetId;
-        
-        // 上传成功处理
         this.isUploading = false;
         this.progress = 100;
         this.uploadSuccess = true;
-        
-        // 自动隐藏成功弹窗
         this.successTimer = setTimeout(() => {
           this.uploadSuccess = false;
           this.clearFile();
         }, 3000);
-        
-        // 通知父组件上传成功
         this.$emit('upload-success', this.datasetId);
       } catch (error) {
-        // 上传失败处理
         this.isUploading = false;
         this.uploadSuccess = false;
         const msg = error && error.message ? String(error.message) : '上传失败';
@@ -314,16 +313,17 @@ export default {
           this.$emit('upload-fail', 'cancelled');
         } else {
           this.errorMessage = `上传失败: ${msg}`;
-          this.$emit('upload-fail', msg);
+          this.$emit('upload-fail', error || msg);
         }
       } finally {
         this.cancelUploadRequest = null;
-        this.uploadStage = "idle";
+        this.uploadStage = 'idle';
       }
     },
   },
 };
 </script>
+
 
 <style scoped>
 .file-upload-container {

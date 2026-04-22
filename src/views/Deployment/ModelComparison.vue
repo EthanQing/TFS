@@ -1090,14 +1090,7 @@ export default {
                 if (this.filterStatus) filters.status = this.filterStatus;
                 if (this.projectFilter) filters.project_id = this.projectFilter;
 
-                // Client-side search for name since API v2 doesn't fully support search query param yet (based on previous exploration)
-                // Actually, if we use server-side pagination, client-side filtering is weird. 
-                // But let's stick to what we have. If backend supported search, we'd pass it in `filters`.
-                // For now, allow server filter by status/project, and maybe client-side name filter if list is small?
-                // No, with pagination we should try to pass search if possible or just rely on server.
-                // Since I cannot easily change backend search logic now, I will invoke fetchTrainingJobsPage.
-                // If the user searches by name, it might only search within the page if backend ignores it.
-                // Let's assume for this task we just add the project filter supported by backend.
+                // 当前列表接口主要支持状态/项目筛选；名称搜索先做页内过滤。
 
                 const res = await fetchTrainingJobsPage(this.currentPage, this.pageSize, filters);
 
@@ -1121,15 +1114,13 @@ export default {
         getDatasetScopeKey(row) {
             const datasetId =
                 row?.project?.dataset?.dataset_id ||
+                row?.project?.standard_dataset_id ||
                 row?.project?.dataset_id ||
+                row?.standard_dataset_id ||
                 row?.dataset_id ||
                 null;
             if (datasetId != null && String(datasetId).trim()) {
                 return `dataset:${String(datasetId).trim()}`;
-            }
-            const datasetVersionId = row?.dataset_version_id || row?.dataset_version?.version_id || null;
-            if (datasetVersionId != null && String(datasetVersionId).trim()) {
-                return `dataset_version:${String(datasetVersionId).trim()}`;
             }
             return null;
         },

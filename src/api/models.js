@@ -46,7 +46,7 @@ export async function FetchArchitectureDetail() {
         }
 
         const list = (Array.isArray(data) ? data : []).filter(isArchitectureVisible);
-        // 兼容字段：旧前端用 model_family/model_variant/arch_id
+        // 前端统一展示字段
         return list.map((it) => ({
             ...it,
             arch_id: it.arch_id || it.architecture_id || it.id,

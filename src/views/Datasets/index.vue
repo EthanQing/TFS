@@ -51,16 +51,6 @@
           </el-select>
         </div>
 
-        <div class="filter-group" v-if="activeTab === 'standard'">
-          <el-select v-model="filterFormat" placeholder="全部格式" class="filter-select">
-             <el-option
-              v-for="item in formatOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            ></el-option>
-          </el-select>
-        </div>
       </div>
       
       <div class="toolbar-right">
@@ -87,7 +77,7 @@
         >
           <div class="card-media" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
             <span class="card-type-badge">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
-            <span v-if="activeTab === 'standard' && d.format" class="card-format-badge coco">{{ d.format.toUpperCase() }}</span>
+            <span v-if="activeTab === 'standard' && d.format" class="card-format-badge">{{ d.format.toUpperCase() }}</span>
             <div class="card-overlay"></div>
           </div>
           <div class="card-body">
@@ -124,7 +114,7 @@
         <div class="empty-title">暂无{{ activeTab === 'illegal' ? '非法' : '标准' }}数据集</div>
         <div class="empty-desc">
             <template v-if="activeTab === 'illegal'">
-                非法数据集用于原始数据导入、标注、版本管理和格式转换。
+                非法数据集用于原始数据导入、标签映射、版本管理和发布标准数据集。
             </template>
             <template v-else>
                 标准数据集用于正式的模型训练，可通过非法数据集发布或直接导入。
@@ -171,12 +161,6 @@
                   ></el-option>
               </el-select>
             </el-form-item>
-            <el-form-item label="数据集格式" prop="format" v-if="activeTab === 'standard'">
-              <el-select v-model="form.format" placeholder="选择格式" :disabled="!!createdDatasetId" style="width: 100%">
-                  <el-option label="YOLO" value="yolo"></el-option>
-                  <el-option label="COCO" value="coco"></el-option>
-              </el-select>
-            </el-form-item>
         </el-form>
 
         <div class="dialog-footer-actions">
@@ -218,7 +202,6 @@ export default {
       loading: false,
       searchQuery: "",
       filterType: "all",
-      filterFormat: "all",
       activeSort: null,
       
       typeOptions: [
@@ -232,11 +215,6 @@ export default {
         { value: "segmentation", label: "图像分割" },
         { value: "classification", label: "图像分类" },
       ],
-      formatOptions: [
-        { value: "all", label: "全部格式" },
-        { value: "yolo", label: "YOLO" },
-        { value: "coco", label: "COCO" },
-      ],
       sortOptions: [
         { value: "category", label: "类别" },
         { value: "image", label: "图片数" },
@@ -246,11 +224,10 @@ export default {
       datasets: [],
       
       dialogFormVisible: false,
-      form: { name: "", type: "", format: "yolo" },
+      form: { name: "", type: "" },
       rules: {
         name: [{ required: true, message: "请输入数据集名称", trigger: "blur" }],
         type: [{ required: true, message: "请选择任务类型", trigger: "change" }],
-        format: [{ required: true, message: "请选择格式", trigger: "change" }],
       },
       showPopup: false,
       currentDatasetId: null,
@@ -276,10 +253,6 @@ export default {
       if (this.filterType !== 'all' && this.filterType) {
         result = result.filter(dataset => dataset.dataset_type === this.filterType);
       }
-      if (this.activeTab === 'standard' && this.filterFormat !== 'all' && this.filterFormat) {
-        result = result.filter(dataset => (dataset.format || 'yolo') === this.filterFormat);
-      }
-      
       if (this.activeSort === 'category') {
         result.sort((a, b) => (b.num_classes || 0) - (a.num_classes || 0));
       } else if (this.activeSort === 'image') {
@@ -293,7 +266,6 @@ export default {
   methods: {
     handleTabClick() {
       this.filterType = 'all';
-      this.filterFormat = 'all';
       this.activeSort = null;
       this.searchQuery = "";
       this.fetchDatasetsList();
@@ -323,7 +295,6 @@ export default {
       this.creatingDataset = false;
       this.form.name = "";
       this.form.type = "";
-      this.form.format = "yolo";
       this.$nextTick(() => { if (this.$refs.formRef) this.$refs.formRef.clearValidate(); });
     },
     goToCreatedDetail() {
@@ -347,7 +318,7 @@ export default {
             const payload = { name: this.form.name, dataset_type: this.form.type };
             ds = await createIllegalDataset(payload);
         } else {
-            const payload = { name: this.form.name, dataset_type: this.form.type, format: this.form.format };
+            const payload = { name: this.form.name, dataset_type: this.form.type };
             ds = await createStandardDataset(payload);
         }
         
@@ -692,9 +663,9 @@ export default {
   z-index: 2;
 }
 
-.card-format-badge.coco {
-    background: #FFC107; /* Amber */
-    color: #3e2723;
+.card-format-badge {
+    background: #eff8ff;
+    color: #175cd3;
 }
 
 .card-more {

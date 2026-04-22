@@ -121,7 +121,7 @@ async function getProjectMap({ force = false } = {}) {
   if (!force && _projCache.pending) return _projCache.pending;
 
   _projCache.pending = (async () => {
-    const res = await fetch(`${API_BASE}/api/v2/projects?page=1&page_size=500`);
+    const res = await fetch(`${API_BASE}/api/v3/projects?page=1&page_size=500`);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
     const items = pickPageItems(data);
@@ -192,12 +192,14 @@ async function mapTrainingRunToJob(run) {
 
   return {
     ...obj,
-    // Legacy field names used by the front-end UI
+    // Front-end display aliases
     job_id: obj.job_id || obj.run_id || obj.id,
     job_name: obj.job_name || obj.name || "",
     status: mapRunStatus(obj.status),
     parameters: mapParametersOut(obj.parameters),
     model_size_mb: Number.isFinite(modelSizeMb) ? modelSizeMb : null,
+    standard_dataset_id: obj.standard_dataset_id != null ? Number(obj.standard_dataset_id) : null,
+    dataset_id: obj.standard_dataset_id != null ? Number(obj.standard_dataset_id) : (obj.dataset_id != null ? Number(obj.dataset_id) : null),
 
     // Helpful nested objects for display
     architecture,
@@ -212,7 +214,7 @@ async function mapTrainingRunToJob(run) {
   };
 }
 
-// createTrainingJob 创建训练任务接口（v2: training-runs）
+// createTrainingJob 创建训练任务接口
 export async function createTrainingJob(trainParameters) {
   try {
     const tp = trainParameters && typeof trainParameters === "object" ? trainParameters : {};
@@ -248,7 +250,6 @@ export async function createTrainingJob(trainParameters) {
       "project_name",
       "dataset_name",
       "dataset_id",
-      "dataset_version_id",
       "name",
       "job_name",
       "architecture_id",
@@ -295,7 +296,7 @@ export async function createTrainingJob(trainParameters) {
   }
 }
 
-// startTrainingJob 启动训练任务接口（v2: queue）
+// startTrainingJob 启动训练任务接口
 export async function startTrainingJob(jobId) {
   try {
     const id = normStr(jobId);
@@ -319,7 +320,7 @@ export async function uploadPretrainedWeights(file) {
     if (!file) throw new Error("Missing file");
     const formData = new FormData();
     formData.append("file", file);
-    const res = await fetch(`${API_BASE}/api/v2/pretrain-models/upload`, {
+    const res = await fetch(`${API_BASE}/api/v3/pretrain-models/upload`, {
       method: "POST",
       body: formData,
     });
@@ -332,7 +333,7 @@ export async function uploadPretrainedWeights(file) {
   }
 }
 
-// fetchTrainingJobs 获取训练任务列表接口（v2: Page{items}）
+// fetchTrainingJobs 获取训练任务列表接口
 export async function fetchTrainingJobs(page = 1, pageSize = 500) {
   try {
     const data = await fetchTrainingJobsPage(page, pageSize);
@@ -377,7 +378,7 @@ export async function fetchTrainingJobsPage(page = 1, pageSize = 20, filters = {
   }
 }
 
-// FetchTrainingJobsStatus 获取训练任务状态接口（v2: GET run）
+// FetchTrainingJobsStatus 获取训练任务状态接口
 export async function FetchTrainingJobsStatus(jobId) {
   try {
     const id = normStr(jobId);
@@ -401,7 +402,7 @@ export async function FetchTrainingJobsStatus(jobId) {
   }
 }
 
-// FetchTrainingJobsMetrics_detailed 获取训练任务指标接口（v2: epoch metrics list -> series map）
+// FetchTrainingJobsMetrics_detailed 获取训练任务指标接口
 export async function FetchTrainingJobsMetrics_detailed(jobId) {
   try {
     const id = normStr(jobId);
@@ -611,7 +612,7 @@ export function openTrainingRunMetricsStream(runId, handlers = {}, options = {})
   };
 }
 
-// DeleteTrainingJob 删除训练任务接口（v2: request_delete -> DELETE run）
+// DeleteTrainingJob 删除训练任务接口
 export async function DeleteTrainingJob(jobId, { force = false } = {}) {
   try {
     const id = normStr(jobId);
@@ -633,7 +634,7 @@ export async function DeleteTrainingJob(jobId, { force = false } = {}) {
   }
 }
 
-// CancelTrainingJob 取消训练任务接口（v2: request_cancel -> POST run/cancel）
+// CancelTrainingJob 取消训练任务接口
 export async function CancelTrainingJob(jobId) {
   try {
     const id = normStr(jobId);
@@ -650,7 +651,7 @@ export async function CancelTrainingJob(jobId) {
   }
 }
 
-// ResumeTrainingJob 恢复训练任务接口（v2: POST run/resume）
+// ResumeTrainingJob 恢复训练任务接口
 export async function ResumeTrainingJob(jobId) {
   try {
     const id = normStr(jobId);
@@ -667,7 +668,7 @@ export async function ResumeTrainingJob(jobId) {
   }
 }
 
-// FetchTrainingJobParameters 获取训练任务参数接口（v2: GET run -> parameters）
+// FetchTrainingJobParameters 获取训练任务参数接口
 export async function FetchTrainingJobParameters(jobId) {
   try {
     const id = normStr(jobId);
@@ -681,7 +682,7 @@ export async function FetchTrainingJobParameters(jobId) {
   }
 }
 
-// FetchTrainingJobModelSize 获取训练任务模型大小接口（v2: from result.model_size_mb）
+// FetchTrainingJobModelSize 获取训练任务模型大小接口
 export async function FetchTrainingJobModelSize(jobId) {
   try {
     const id = normStr(jobId);
@@ -699,7 +700,7 @@ export async function FetchTrainingJobModelSize(jobId) {
   }
 }
 
-// ExportModel 导出模型（v2: artifacts -> 返回可下载的静态文件 URL）
+// ExportModel 导出模型
 export async function ExportModel(jobId, options = {}) {
   try {
     const id = normStr(jobId);
@@ -730,7 +731,7 @@ export async function ExportModel(jobId, options = {}) {
   }
 }
 
-// CompareTrainingRuns 对比训练任务接口（v2: training-runs/compare）
+// CompareTrainingRuns 对比训练任务接口
 export async function CompareTrainingRuns(runIds) {
   try {
     const payload = { run_ids: Array.isArray(runIds) ? runIds : [] };

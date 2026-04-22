@@ -15,7 +15,7 @@
             </span>
             <span v-if="projectInfo?.dataset" class="meta-chip">
               <i class="el-icon-folder"></i>
-              数据集: {{ projectInfo.dataset.dataset_name }}
+              标准数据集: {{ projectInfo.dataset.dataset_name }}
             </span>
           </div>
         </div>
@@ -527,7 +527,8 @@ export default {
 
           // Try to enhance with full dataset info from referenceStore
           await loadDatasets();
-          const ds = referenceStore.datasets.find(d => d.dataset_id === this.projectInfo.dataset_id);
+          const standardDatasetId = this.projectInfo.standard_dataset_id ?? this.projectInfo.dataset_id;
+          const ds = referenceStore.datasets.find(d => d.dataset_id === standardDatasetId);
           if (ds) {
             this.projectInfo.dataset = {
               dataset_id: ds.dataset_id,
@@ -536,11 +537,11 @@ export default {
           }
         } catch (e) {
           console.warn('Failed to enhance dataset info:', e);
-          // Fallback: if we have dataset_id but no dataset object, try to create a minimal one
-          if (this.projectInfo.dataset_id && !this.projectInfo.dataset) {
+          const standardDatasetId = this.projectInfo.standard_dataset_id ?? this.projectInfo.dataset_id;
+          if (standardDatasetId && !this.projectInfo.dataset) {
             this.projectInfo.dataset = {
-              dataset_id: this.projectInfo.dataset_id,
-              dataset_name: `Dataset #${this.projectInfo.dataset_id}`
+              dataset_id: standardDatasetId,
+              dataset_name: `Standard Dataset #${standardDatasetId}`
             };
           }
         }

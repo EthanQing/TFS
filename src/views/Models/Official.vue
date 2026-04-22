@@ -205,44 +205,44 @@ export default {
       uploadingPretrain: false,
       pretrainUploadError: "",
       modelMetrics: {
-        // YOLO26 series (COCO mAP@50-95 / T4 TensorRT10 FP16 ms)
+        // YOLO26 series (benchmark mAP@50-95 / T4 TensorRT10 FP16 ms)
         YOLO26n: { accuracy: 40.5, speedMs: 1.7 },
         YOLO26s: { accuracy: 48.0, speedMs: 2.9 },
         YOLO26m: { accuracy: 52.5, speedMs: 4.7 },
         YOLO26l: { accuracy: 54.6, speedMs: 7.0 },
         YOLO26x: { accuracy: 56.9, speedMs: 11.8 },
-        // YOLO12 series (COCO mAP@50-95 / T4 TensorRT10 FP16 ms)
+        // YOLO12 series (benchmark mAP@50-95 / T4 TensorRT10 FP16 ms)
         YOLO12n: { accuracy: 40.6, speedMs: 1.6 },
         YOLO12s: { accuracy: 48.0, speedMs: 2.6 },
         YOLO12m: { accuracy: 52.5, speedMs: 4.9 },
         YOLO12l: { accuracy: 53.7, speedMs: 6.8 },
         YOLO12x: { accuracy: 55.2, speedMs: 11.2 },
-        // YOLO11 series (COCO mAP@50-95 / T4 TensorRT10 FP16 ms)
+        // YOLO11 series (benchmark mAP@50-95 / T4 TensorRT10 FP16 ms)
         YOLO11n: { accuracy: 39.5, speedMs: 1.5 },
         YOLO11s: { accuracy: 47.0, speedMs: 2.5 },
         YOLO11m: { accuracy: 51.5, speedMs: 4.7 },
         YOLO11l: { accuracy: 53.4, speedMs: 6.2 },
         YOLO11x: { accuracy: 54.7, speedMs: 11.3 },
-        // YOLOv10 series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
+        // YOLOv10 series (benchmark mAP@50-95 / T4 TensorRT FP16 ms)
         YOLOv10n: { accuracy: 38.5, speedMs: 1.8 },
         YOLOv10s: { accuracy: 46.3, speedMs: 2.5 },
         YOLOv10m: { accuracy: 51.1, speedMs: 4.7 },
         YOLOv10l: { accuracy: 53.2, speedMs: 7.3 },
         YOLOv10x: { accuracy: 54.4, speedMs: 10.7 },
         YOLOv10b: { accuracy: 52.5, speedMs: 5.7 },
-        // YOLOv9 series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
+        // YOLOv9 series (benchmark mAP@50-95 / T4 TensorRT FP16 ms)
         YOLOv9s: { accuracy: 46.8, speedMs: 3.5 },
         YOLOv9m: { accuracy: 51.4, speedMs: 6.4 },
         YOLOv9c: { accuracy: 53.0, speedMs: 7.2 },
         YOLOv9e: { accuracy: 55.6, speedMs: 15.8 },
         YOLOv9t: { accuracy: 38.3, speedMs: 2.3 },
-        // YOLOv8 series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
+        // YOLOv8 series (benchmark mAP@50-95 / T4 TensorRT FP16 ms)
         YOLOv8n: { accuracy: 37.3, speedMs: 7.2 },
         YOLOv8s: { accuracy: 44.9, speedMs: 10.8 },
         YOLOv8m: { accuracy: 50.2, speedMs: 15.9 },
         YOLOv8l: { accuracy: 52.9, speedMs: 22.5 },
         YOLOv8x: { accuracy: 53.9, speedMs: 29.8 },
-        // RT-DETR series (COCO mAP@50-95 / T4 TensorRT FP16 ms)
+        // RT-DETR series (benchmark mAP@50-95 / T4 TensorRT FP16 ms)
         "RT-DETR-l": { accuracy: 53.0, speedMs: 8.7 },
         "RT-DETR-x": { accuracy: 54.8, speedMs: 13.5 },
         // YOLOv8-seg series
@@ -251,7 +251,7 @@ export default {
         "YOLOv8m-seg": { accuracy: 40.2, speedMs: 20.4 },
         "YOLOv8l-seg": { accuracy: 42.1, speedMs: 35.6 },
         "YOLOv8x-seg": { accuracy: 43.4, speedMs: 48.2 },
-        // PaddleDetection PP-YOLOE+ series (COCO mAP / T4 FP16 ms)
+        // PaddleDetection PP-YOLOE+ series (benchmark mAP / T4 FP16 ms)
         "PP-YOLOE_s": { accuracy: 43.1, speedMs: 8.5 },
         "PP-YOLOE_m": { accuracy: 48.9, speedMs: 14.2 },
         "PP-YOLOE_l": { accuracy: 51.4, speedMs: 20.8 },
@@ -265,7 +265,7 @@ export default {
   },
   computed: {
     datasetLabel() {
-      return this.selectedProject?.dataset?.dataset_name || "No dataset linked";
+      return this.selectedProject?.dataset?.dataset_name || "No standard dataset linked";
     },
     sectionTitle() {
       return this.taskType === 'segmentation' ? '分割架构' : '检测架构';

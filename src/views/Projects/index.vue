@@ -62,7 +62,7 @@
           <div class="card-body">
             <div class="card-top-row">
               <span class="card-pill">
-                {{ project.dataset?.dataset_name || '无数据集' }}
+                {{ project.dataset?.dataset_name || '无标准数据集' }}
               </span>
               <div class="card-menu" @click.stop>
                 <el-dropdown trigger="click" @command="handleProjectCommand($event, project)">
@@ -125,7 +125,7 @@
             <el-form-item label="描述" prop="description">
               <el-input type="textarea" :rows="2" v-model="form.description" autocomplete="off" placeholder="选填描述"></el-input>
             </el-form-item>
-            <el-form-item label="关联数据集" prop="dataset">
+            <el-form-item label="关联标准数据集" prop="dataset">
               <el-select v-model="form.dataset" placeholder="选择数据集" clearable filterable style="width: 100%">
                 <el-option
                   v-for="dataset in datasetList"
@@ -171,7 +171,7 @@ export default {
       datasetList: [],
       rules: {
         name: [{ required: true, message: "请输入项目名称", trigger: "blur" }],
-        dataset: [{ required: true, message: "请选择数据集", trigger: "blur" }]
+        dataset: [{ required: true, message: "请选择标准数据集", trigger: "blur" }]
       },
     };
   },
@@ -255,7 +255,7 @@ export default {
       if (!this.projects.length || !this.datasetList.length) return;
       const dsMap = new Map(this.datasetList.map(d => [Number(d.dataset_id), d]));
       this.projects = this.projects.map(p => {
-        const ds = dsMap.get(Number(p.dataset_id));
+        const ds = dsMap.get(Number(p.standard_dataset_id ?? p.dataset_id));
         return ds ? { ...p, dataset: { dataset_id: ds.dataset_id, dataset_name: ds.dataset_name, dataset_type: ds.dataset_type } } : p;
       });
     },
@@ -283,16 +283,16 @@ export default {
         const newProject = {
           project_name: this.form.name,
           description: this.form.description,
-          dataset_id: this.form.dataset,
+          standard_dataset_id: this.form.dataset,
           created_by:''
         };
         try {
           const result = await createProject({
             ...newProject,
-            task_type: (this.datasetList.find(d => Number(d.dataset_id) === Number(newProject.dataset_id))?.dataset_type) || 'detection'
+            task_type: (this.datasetList.find(d => Number(d.dataset_id) === Number(newProject.standard_dataset_id))?.dataset_type) || 'detection'
           });
           const created = result || newProject;
-          const ds = this.datasetList.find(d => Number(d.dataset_id) === Number(created.dataset_id));
+          const ds = this.datasetList.find(d => Number(d.dataset_id) === Number(created.standard_dataset_id ?? created.dataset_id));
           if (ds) created.dataset = { dataset_id: ds.dataset_id, dataset_name: ds.dataset_name, dataset_type: ds.dataset_type };
           
           this.projects.unshift(created);

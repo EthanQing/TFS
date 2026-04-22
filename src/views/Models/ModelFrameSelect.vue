@@ -389,7 +389,7 @@ export default {
                     { title: '边缘编排', body: 'CPU+iGPU+VPU 协同，平衡延迟与功耗，适合边缘场景。', tags: ['边缘', '多设备'] }
                 ],
                 paddlepaddle: [
-                    { title: '检测训练', body: '使用 PP-YOLOE+ 或 PicoDet，配合 COCO 数据格式获得最佳精度。', tags: ['PP-YOLOE', '检测'] },
+                    { title: '检测训练', body: '使用 PP-YOLOE+ 或 PicoDet，配合标准 YOLO 数据集进行训练。', tags: ['PP-YOLOE', '检测'] },
                     { title: '部署推理', body: '导出 Paddle Inference 模型，结合 PaddleSlim 量化实现高效部署。', tags: ['Inference', 'PaddleSlim'] }
                 ]
             };

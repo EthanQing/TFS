@@ -95,10 +95,6 @@ export default {
       value1: 0.32,
       value2: 0.5,
       activeTab: "image", // 默认激活"图片"标签
-      // 数据集类型接口返回
-      datasetType: null,
-      datasetTypeLoading: false,
-      datasetTypeError: "",
       // 原 ClickShowImg 状态
       imageUrl: "",
       resizeObserver: null,
@@ -111,8 +107,6 @@ export default {
     this.getJobId();
     // 默认显示图片视图
     this.initDefaultView();
-    // 调用接口：根据路由query中的 jobId 获取数据集类型
-    this.fetchDatasetType();
     // 初始化图片预览区
     if (previewStore.imageUrl) this.imageUrl = previewStore.imageUrl;
     this.$nextTick(() => { this.redraw(); });
@@ -128,7 +122,6 @@ export default {
   activated() {
     // 当使用keep-alive缓存的组件被激活时，检查jobId
     this.getJobId();
-    this.fetchDatasetType();
   },
   beforeDestroy() {
     window.removeEventListener('preview-inference-updated', this._onResult);
@@ -152,11 +145,6 @@ export default {
         if (!modelVersionId) {
           this.$message && this.$message.error("No model version found. Register a model version first.");
           return;
-        }
-
-        // If datasetType not loaded, try once.
-        if (!this.datasetType) {
-          await this.fetchDatasetType();
         }
 
         // Get current image URL/file
@@ -317,25 +305,6 @@ export default {
     initDefaultView() {
       // 默认激活图片视图（不再依赖子路由）
       this.activeTab = 'image';
-    },
-    // 调用后端接口：获取数据集类型（传入路由 query 中的 jobId）
-    async fetchDatasetType() {
-      try {
-        // 优先使用路由 query 的 jobId
-        const qid = this.$route?.query?.jobId || this.jobId;
-        if (!qid) return; // 无 jobId 不调用
-        this.datasetTypeLoading = true;
-        this.datasetTypeError = "";
-        const res = await FetchDatasetType(qid);
-        this.datasetType = res || null;
-        // 可按需调试
-        console.log("datasetType", this.datasetType);
-      } catch (e) {
-        this.datasetTypeError = e?.message || String(e);
-        console.error("FetchDatasetType error:", this.datasetTypeError);
-      } finally {
-        this.datasetTypeLoading = false;
-      }
     },
     // 以下为原 ClickShowImg 组件方法
     openFilePicker() {

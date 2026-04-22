@@ -6,77 +6,73 @@
           <i class="el-icon-arrow-left"></i> 返回数据集列表
         </button>
         <div class="hero-content">
-            <div class="hero-kicker">标准数据集概览</div>
-            <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
-            <div class="hero-meta">
-            <span class="meta-pill">{{ getDatasetTypeLabel(datasetType) }}</span>
+          <div class="hero-kicker">标准数据集</div>
+          <h1 class="hero-title">{{ datasetName || '未命名标准数据集' }}</h1>
+          <div class="hero-meta">
+            <span class="meta-pill success">{{ datasetTypeLabel }}</span>
+            <span class="meta-pill info">{{ datasetFormat }}</span>
             <span class="meta-id">ID: {{ datasetId || '-' }}</span>
-            </div>
+          </div>
+          <p class="hero-desc">
+            标准数据集是训练链路唯一可直接使用的数据输入，输出格式固定为 YOLO。
+          </p>
         </div>
       </div>
       <div class="hero-right">
         <div class="stat-card">
           <div class="stat-label">图片数</div>
-          <div class="stat-value">{{ formatImageCount(numImages) }}</div>
+          <div class="stat-value">{{ formatNumber(totalImages) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">类别数</div>
-          <div class="stat-value">{{ numClasses || 0 }}</div>
+          <div class="stat-value">{{ formatNumber(classCount) }}</div>
         </div>
         <div class="stat-card">
           <div class="stat-label">大小</div>
-          <div class="stat-value">{{ formatDatasetSize(datasetSize) }}</div>
+          <div class="stat-value">{{ datasetSizeText }}</div>
         </div>
       </div>
     </header>
 
     <section class="detail-body glass-panel">
-      <div v-if="detailLoading" class="loading-state">
+      <div v-if="loading" class="loading-state">
         <i class="el-icon-loading"></i>
-        <span>正在加载数据集详情...</span>
+        <span>正在加载标准数据集详情...</span>
       </div>
+
       <template v-else>
-        <!-- For Standard Dataset, directly show the gallery layout, or an empty state if no images -->
-        <div v-if="isDatasetEmpty" class="empty-state">
+        <div v-if="isEmpty" class="empty-state">
           <div class="empty-content">
-            <div class="empty-title">{{ emptyStateTitle }}</div>
-            <div class="empty-desc">{{ emptyStateDesc }}</div>
-            <div class="empty-tips">
-              <span class="tip-item"><i class="el-icon-check"></i> 仅支持 .zip 文件</span>
-              <span class="tip-item"><i class="el-icon-check"></i> 请保持符合 YOLO/COCO 的文件夹结构</span>
+            <div class="empty-title">当前标准数据集还是空的</div>
+            <div class="empty-desc">
+              请上传一个符合 YOLO 结构的 ZIP 包。标准数据集不支持追加版本，如需新内容请创建或发布一个新的标准数据集。
             </div>
-            <div v-if="zipUploading" class="empty-processing-tip">
-              {{ emptyProcessingTip }}
+            <div class="empty-tips">
+              <span class="tip-item"><i class="el-icon-check"></i> 输出格式固定为 YOLO</span>
+              <span class="tip-item"><i class="el-icon-check"></i> 标准数据集不可追加版本</span>
             </div>
           </div>
           <div class="empty-action">
             <UploadZip
               :dataset-id="datasetId"
-              :is-illegal="false"
-              :external-file.sync="zipUploadFile"
-              :external-uploading.sync="zipUploading"
-              :external-progress.sync="zipUploadProgress"
+              dataset-kind="standard"
+              mode="upload"
+              :external-file.sync="uploadFile"
+              :external-uploading.sync="uploading"
+              :external-progress.sync="uploadProgress"
               @upload-success="handleUploadSuccess"
               @upload-fail="handleUploadFail"
-            ></UploadZip>
-            <el-button
-              v-if="zipUploading"
-              type="text"
-              class="upload-reset-btn"
-              @click="resetRecoveredZipUploadState"
-            >
-              清除当前处理状态
-            </el-button>
+            />
           </div>
         </div>
-        
+
         <div v-else class="gallery-layout">
           <aside class="sidebar-panel glass-panel-sm">
             <div class="panel-head">
               <div class="panel-title">类别</div>
               <div class="panel-sub">按类别筛选图片</div>
             </div>
-            
+
             <div class="search-box">
               <el-input
                 v-model="input"
@@ -84,39 +80,42 @@
                 prefix-icon="el-icon-search"
                 class="glass-input"
                 clearable
-                @input="handleSearchInput"
-                @clear="clearSearch"
-              ></el-input>
+              />
             </div>
 
             <ul class="class-list" v-if="filteredClassList.length || !input.trim()">
               <li
                 class="all-option"
-                :class="{ 'selected': selectedClass === null }"
+                :class="{ selected: selectedClassId === null }"
                 @click="selectClass(null)"
               >
                 <div class="class-info">
-                    <span class="dot all"></span>
-                    <span class="class-name">全部类别</span>
+                  <span class="dot all"></span>
+                  <span class="class-name">全部类别</span>
                 </div>
-                <span class="class-count">{{ datasetDetail ? datasetDetail.total_images : 0 }}</span>
+                <span class="class-count">{{ formatNumber(totalImages) }}</span>
               </li>
               <li
                 v-for="(classInfo, idx) in filteredClassList"
                 :key="getClassId(classInfo, idx)"
-                :class="{ 'selected': isSelectedClass(classInfo) }"
-                @click="selectClass(classInfo)"
+                :class="{ selected: isSelectedClass(classInfo) }"
+                @click="selectClass(classInfo.class_id)"
               >
                 <div class="class-info">
                   <span class="dot"></span>
-                  <span class="class-name" v-html="input.trim() ? highlightText(getClassName(classInfo), input) : getClassName(classInfo)"></span>
+                  <span class="class-name">{{ getClassName(classInfo) }}</span>
                 </div>
-                <span class="class-count">{{ classInfo && classInfo.image_count ? classInfo.image_count : 0 }}</span>
+                <span class="class-count">{{ classInfo && classInfo.count ? classInfo.count : 0 }}</span>
               </li>
             </ul>
             <div v-else class="no-results">
               <div class="no-desc">未找到类别 "{{ input }}"</div>
               <el-button type="text" @click="clearSearch">清除搜索</el-button>
+            </div>
+
+            <div class="dataset-info-card">
+              <div class="info-line"><span>来源</span><strong>{{ sourceText }}</strong></div>
+              <div class="info-line"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong></div>
             </div>
           </aside>
 
@@ -124,69 +123,60 @@
             <div class="panel-head">
               <div>
                 <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
-                <div v-if="viewStatusText" class="panel-subtitle">{{ viewStatusText }}</div>
-              </div>
-              <div class="panel-actions">
-                <el-button
-                  size="small"
-                  type="success"
-                  plain
-                  @click="openAugmentationDialog"
-                >
-                  <i class="el-icon-magic-stick"></i> 样本扩增
-                </el-button>
-                <div class="action-card" v-if="allowAppendUpload">
-                    <!-- Placeholder for append upload later if supported natively -->
-                    <el-button size="small" type="primary" plain @click="handleAddImage">
-                      <i class="el-icon-plus"></i> 追加图片
-                    </el-button>
+                <div class="panel-subtitle">
+                  {{ selectedClassId === null ? '显示全部类别图片' : `当前类别：${selectedClassName}` }}
                 </div>
               </div>
+              <div class="panel-actions">
+                <el-button size="small" @click="refreshAll">刷新</el-button>
+                <el-button size="small" type="success" plain @click="openAugmentationDialog">
+                  <i class="el-icon-magic-stick"></i> 样本扩增
+                </el-button>
+              </div>
             </div>
-            
+
             <div v-if="selectedImages.length === 0" class="no-images">
               <i class="el-icon-picture-outline"></i>
               <span>暂无图片显示</span>
             </div>
             <div v-else class="image-grid">
-                <div
-                class="image-card"
+              <div
                 v-for="(image, index) in selectedImages"
                 :key="`${image.image_name}-${index}`"
+                class="image-card"
                 @click="openImagePreview(image)"
-                >
+              >
                 <div class="image-wrapper">
-                    <img
+                  <img
                     :src="image.thumbnail_url || image.image_url"
                     :alt="image.image_name"
                     loading="lazy"
                     @error="handleImageError($event, image)"
-                    />
+                  />
                 </div>
                 <div class="image-overlay">
-                    <div class="image-name">{{ image.image_name }}</div>
-                    <div class="image-meta">{{ image.objects_count }} 个对象</div>
+                  <div class="image-name">{{ image.image_name }}</div>
+                  <div class="image-meta">{{ image.objects_count }} 个对象</div>
                 </div>
-                </div>
+              </div>
             </div>
           </main>
         </div>
       </template>
     </section>
 
-    <!-- Preview Modal -->
     <div v-if="showImagePreview" class="preview-modal" @click="closeImagePreview">
       <div class="modal-card glass-panel" @click.stop>
         <button class="close-btn" @click="closeImagePreview"><i class="el-icon-close"></i></button>
         <div class="modal-image-wrapper">
           <div ref="previewCanvasWrap" class="modal-canvas-wrap">
             <img
-            ref="previewModalImage"
-            :src="previewImage.image_url"
-            :alt="previewImage.image_name"
-            class="modal-image"
-            @load="handlePreviewImageLoad"
-            @error="handleModalImageError"
+              ref="previewModalImage"
+              :src="previewImage.image_url"
+              :alt="previewImage.image_name"
+              class="modal-image"
+              @load="handlePreviewImageLoad"
+              @error="handleModalImageError"
             />
             <canvas ref="previewCanvas" class="modal-overlay-canvas"></canvas>
           </div>
@@ -194,14 +184,14 @@
         <div class="modal-info">
           <h3>{{ previewImage.image_name }}</h3>
           <div class="modal-meta-row">
-              <span class="label">对象数:</span> 
-              <span class="value">{{ previewImage.objects_count }}</span>
+            <span class="label">对象数:</span>
+            <span class="value">{{ previewImage.objects_count }}</span>
           </div>
           <div class="modal-meta-row" v-if="previewImage.classes_in_image?.length">
             <span class="label">包含类别:</span>
             <span class="value">{{ getClassNames(previewImage.classes_in_image) }}</span>
           </div>
-          <div class="modal-meta-row" v-if="isDetectionDataset">
+          <div class="modal-meta-row">
             <span class="label">标注显示:</span>
             <span class="value" v-if="previewAnnotationsLoading">加载中...</span>
             <span class="value error" v-else-if="previewAnnotationsError">{{ previewAnnotationsError }}</span>
@@ -212,391 +202,416 @@
       </div>
     </div>
 
-    <!-- Upload Dialog -->
-    <el-dialog
-      v-if="allowAppendUpload"
-      title="追加上传"
-      :visible.sync="showUploadDialog"
-      width="520px"
-      :close-on-click-modal="false"
-      class="upload-dialog"
-    >
-        <UploadZip
-            :dataset-id="datasetId"
-            :is-illegal="false"
-            :external-file.sync="zipUploadFile"
-            :external-uploading.sync="zipUploading"
-            :external-progress.sync="zipUploadProgress"
-            @upload-success="handleUploadSuccess"
-            @upload-fail="handleUploadFail"
-        ></UploadZip>
-    </el-dialog>
-
-    <el-dialog
-      title="样本扩增"
-      :visible.sync="showAugmentationDialog"
-      width="1000px"
-      :append-to-body="true"
-      class="augmentation-dialog preview-enabled"
-    >
+    <el-dialog title="样本扩增" :visible.sync="showAugmentationDialog" width="1000px" append-to-body class="augmentation-dialog preview-enabled">
       <ManualAugmentationPanel
         v-if="showAugmentationDialog"
         :dataset-id="datasetId"
-        @published="handleAugmentationPublished"
+        @published="handlePublished"
       />
     </el-dialog>
-
   </div>
 </template>
 
 <script>
-import {
-  fetchStandardDataset,
-  fetchStandardDatasetView,
-  fetchStandardDatasetAnnotations,
-  fetchStandardDatasetStatistics
-} from '@/api/standardDatasets';
 import UploadZip from '@/components/Upload/index.vue';
 import ManualAugmentationPanel from '@/views/Datasets/components/ManualAugmentationPanel.vue';
+import {
+  fetchStandardDatasetAnnotations,
+  fetchStandardDatasetDetail,
+  fetchStandardDatasetView,
+} from '@/api/standardDatasets';
 
 export default {
   name: 'StandardDatasetDetail',
   components: { UploadZip, ManualAugmentationPanel },
   data() {
     return {
-      datasetId: '',
-      datasetName: '',
-      datasetType: '',
-      numClasses: 0,
-      numImages: 0,
-      datasetSize: '',
-      detailLoading: false,
-
-      // View
-      datasetDetail: null,
+      datasetId: this.$route.query.id || '',
+      loading: false,
+      detail: null,
       input: '',
-      selectedClass: null,
+      selectedClassId: null,
       selectedImages: [],
-      classList: [],
-      viewStatusText: '',
-      viewRequestToken: 0,
-      searchTimeout: null,
-      
-      // Upload ZIP
-      zipUploadFile: null,
-      zipUploading: false,
-      zipUploadProgress: 0,
-      showUploadDialog: false,
-      allowAppendUpload: true, // we assume append via zip is supported
-
-      // Preview
+      categories: [],
+      uploadFile: null,
+      uploading: false,
+      uploadProgress: 0,
+      showAugmentationDialog: false,
       showImagePreview: false,
       previewImage: null,
       previewAnnotationsLoading: false,
       previewAnnotationsError: '',
       previewAnnotationData: null,
-      previewBoxCount: 0,
-      
-      showAugmentationDialog: false,
+      previewRequestToken: 0,
+      viewRequestToken: 0,
     };
   },
   computed: {
-    isDatasetEmpty() {
-      return this.numImages === 0;
+    dataset() {
+      return this.detail && this.detail.dataset ? this.detail.dataset : null;
     },
-    emptyStateTitle() {
-      if (this.zipUploadProgress > 0 && this.zipUploadProgress < 100 && !this.zipUploading) return "上传已中断";
-      return "数据集为空";
+    statistics() {
+      return this.detail && this.detail.statistics ? this.detail.statistics : null;
     },
-    emptyStateDesc() {
-      return "请上传ZIP压缩包。格式必须为所选的标准格式（YOLO/COCO）";
+    datasetName() {
+      return (this.dataset && (this.dataset.name || this.dataset.dataset_name)) || '标准数据集';
     },
-    emptyProcessingTip() {
-      if (this.zipUploadProgress >= 100) return "正在服务器端解压并处理数据，这可能需要几分钟...";
-      return `正在上传... ${this.zipUploadProgress}%`;
+    datasetTypeLabel() {
+      return this.typeLabel(this.dataset && this.dataset.dataset_type);
+    },
+    datasetFormat() {
+      return 'YOLO';
+    },
+    totalImages() {
+      return Number(this.statistics && this.statistics.total_images) || 0;
+    },
+    classCount() {
+      return Array.isArray(this.categories) ? this.categories.length : 0;
+    },
+    datasetSizeText() {
+      const mb = Number(this.statistics && this.statistics.total_size_mb);
+      if (Number.isFinite(mb) && mb > 0) return `${mb.toFixed(2)} MB`;
+      return '0 MB';
+    },
+    isEmpty() {
+      return this.totalImages <= 0;
     },
     filteredClassList() {
-      if (!this.input.trim()) return this.classList;
-      const term = this.input.trim().toLowerCase();
-      return this.classList.filter(c => {
-        const name = this.getClassName(c).toLowerCase();
-        return name.includes(term);
-      });
+      const query = String(this.input || '').trim().toLowerCase();
+      if (!query) return this.categories;
+      return this.categories.filter((item) => String(item && item.name || '').toLowerCase().includes(query));
     },
-    isDetectionDataset() {
-      return this.datasetType === 'detection' || !this.datasetType;
-    }
+    selectedClassName() {
+      if (this.selectedClassId === null || this.selectedClassId === undefined) return '全部类别';
+      const row = (this.categories || []).find((item) => Number(item.class_id) === Number(this.selectedClassId));
+      return row ? row.name : `class_${this.selectedClassId}`;
+    },
+    sourceText() {
+      const dataset = this.dataset || {};
+      const publishConfig = dataset && typeof dataset.publish_config === 'object' ? dataset.publish_config : {};
+      const sourceType = String(dataset.source_type || '').trim();
+      if (sourceType === 'illegal_publish') {
+        const sourceId = publishConfig.source_illegal_dataset_id;
+        const sourceName = String(publishConfig.source_illegal_dataset_name || '').trim();
+        const sourceVersion = publishConfig.source_version;
+        if (sourceName && sourceVersion) return `${sourceName} · v${sourceVersion}`;
+        if (sourceName) return sourceName;
+        if (sourceId && sourceVersion) return `非法数据集 #${sourceId} · v${sourceVersion}`;
+        if (sourceId) return `非法数据集 #${sourceId}`;
+        return '非法数据集发布';
+      }
+      if (sourceType === 'augmentation_publish') return '数据增强发布';
+      if (sourceType) return sourceType;
+      return '直接上传';
+    },
+    previewBoxCount() {
+      return Array.isArray(this.previewAnnotationData && this.previewAnnotationData.boxes)
+        ? this.previewAnnotationData.boxes.length
+        : 0;
+    },
+  },
+  watch: {
+    '$route.query.id'(nextId) {
+      if (!nextId || String(nextId) === String(this.datasetId)) return;
+      this.datasetId = nextId;
+      this.selectedClassId = null;
+      this.input = '';
+      this.closeImagePreview();
+      this.loadAll();
+    },
+  },
+  mounted() {
+    document.addEventListener('keydown', this.handleKeydown);
+    window.addEventListener('resize', this.handlePreviewResize);
+    this.loadAll();
+  },
+  beforeDestroy() {
+    document.removeEventListener('keydown', this.handleKeydown);
+    window.removeEventListener('resize', this.handlePreviewResize);
   },
   methods: {
     goBack() {
       this.$router.push('/datasets');
     },
-    formatImageCount(count) {
-      if (!count) return '0';
-      if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
-      return count.toString();
+    typeLabel(value) {
+      const map = { detection: '目标检测', segmentation: '图像分割', classification: '图像分类' };
+      return map[String(value || '')] || value || '-';
     },
-    formatDatasetSize(sizeStr) {
-      if (!sizeStr) return '0MB';
-      if (typeof sizeStr === 'string' && sizeStr.includes('MB')) return sizeStr;
-      if (typeof sizeStr === 'number') return sizeStr.toFixed(1) + 'MB';
-      return sizeStr;
+    formatNumber(value) {
+      const n = Number(value) || 0;
+      return n.toLocaleString();
     },
-    getDatasetTypeLabel(type) {
-      const map = { 'detection': '目标检测', 'segmentation': '图像分割', 'classification': '图像分类' };
-      return map[type] || type || '未知';
-    },
-    async loadDetail() {
-      try {
-        this.detailLoading = true;
-        const data = await fetchStandardDataset(this.datasetId);
-        if (!data) throw new Error("Dataset not found");
-        
-        this.datasetName = data.name || data.dataset_name;
-        this.datasetType = data.dataset_type || data.type;
-        
-        // statistics
-        const stats = await fetchStandardDatasetStatistics(this.datasetId);
-        this.numClasses = stats.num_classes || 0;
-        this.numImages = stats.num_images || 0;
-        this.datasetSize = stats.dataset_size_mb || '0MB';
-
-        if (!this.isDatasetEmpty) {
-            this.loadView();
-        }
-
-      } catch (e) {
-        this.$message.error("Failed to load standard dataset details: " + e.message);
-      } finally {
-        this.detailLoading = false;
-      }
-    },
-    async loadView() {
-      try {
-        this.viewRequestToken++;
-        const token = this.viewRequestToken;
-        const cid = this.selectedClass ? this.getClassId(this.selectedClass) : null;
-        this.viewStatusText = '加载中...';
-        
-        const res = await fetchStandardDatasetView(this.datasetId, { classId: cid, page: 1, pageSize: 200 });
-        if (token !== this.viewRequestToken) return;
-
-        this.datasetDetail = res;
-        this.classList = Array.isArray(res.categories) ? res.categories : [];
-        this.selectedImages = Array.isArray(res.items) ? res.items : [];
-        
-        if (res.meta) {
-            if (res.meta.thumbnail_status === 'processing') {
-                this.viewStatusText = `正在生成缩略图 (${Math.round(res.meta.thumbnail_progress || 0)}%)`;
-                setTimeout(() => this.loadView(), 3000);
-            } else if (res.meta.view_index_status === 'processing') {
-                this.viewStatusText = `正在建立视图索引...`;
-                setTimeout(() => this.loadView(), 3000);
-            } else {
-                this.viewStatusText = '';
-            }
-        } else {
-            this.viewStatusText = '';
-        }
-
-      } catch (e) {
-        this.viewStatusText = '加载视图失败';
-        console.error("View load failed:", e);
-      }
-    },
-    
-    // UI actions
-    handleSearchInput() {
-      clearTimeout(this.searchTimeout);
-      this.searchTimeout = setTimeout(() => {}, 300);
+    formatDate(value) {
+      if (!value) return '-';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return '-';
+      return date.toLocaleString();
     },
     clearSearch() {
       this.input = '';
     },
-    selectClass(classInfo) {
-      if (this.isSelectedClass(classInfo)) return;
-      this.selectedClass = classInfo;
-      this.loadView();
+    getClassId(classInfo, idx) {
+      return classInfo && classInfo.class_id !== undefined ? classInfo.class_id : idx;
+    },
+    getClassName(classInfo) {
+      return classInfo && classInfo.name ? classInfo.name : '-';
     },
     isSelectedClass(classInfo) {
-      if (!this.selectedClass && !classInfo) return true;
-      if (!this.selectedClass || !classInfo) return false;
-      return this.getClassId(this.selectedClass) === this.getClassId(classInfo);
+      return Number(this.selectedClassId) === Number(classInfo && classInfo.class_id);
     },
-    getClassId(c) {
-      return c ? (c.id != null ? String(c.id) : String(c.name)) : '';
+    async refreshAll() {
+      await this.loadAll();
     },
-    getClassName(c) {
-      return c ? (c.name || c.id || 'Unknown') : '';
+    async loadAll() {
+      if (!this.datasetId) {
+        this.$message.error('未找到标准数据集 ID');
+        return;
+      }
+      this.loading = true;
+      try {
+        const detail = await fetchStandardDatasetDetail(this.datasetId, { eventsLimit: 20 });
+        this.detail = detail;
+        await this.loadView();
+      } catch (error) {
+        console.error(error);
+        this.$message.error(`加载标准数据集失败：${error.message || error}`);
+      } finally {
+        this.loading = false;
+      }
     },
-    getClassNames(ids) {
-        if (!Array.isArray(ids)) return '';
-        const names = ids.map(id => {
-            const cat = this.classList.find(c => String(c.id) === String(id));
-            return cat ? cat.name : String(id);
+    async loadView() {
+      if (!this.datasetId || this.isEmpty) {
+        this.categories = [];
+        this.selectedImages = [];
+        return;
+      }
+      const token = ++this.viewRequestToken;
+      try {
+        const firstPage = await fetchStandardDatasetView(this.datasetId, {
+          classId: this.selectedClassId,
+          page: 1,
+          pageSize: 120,
         });
-        return names.join(', ');
+        if (token !== this.viewRequestToken) return;
+        this.categories = Array.isArray(firstPage && firstPage.categories) ? firstPage.categories : [];
+        this.selectedImages = Array.isArray(firstPage && firstPage.items) ? firstPage.items : [];
+        const totalPages = Number(firstPage && firstPage.meta && firstPage.meta.total_pages) || 1;
+        if (totalPages > 1) {
+          this.loadRemainingViewPages({
+            token,
+            classId: this.selectedClassId,
+            startPage: 2,
+            totalPages,
+          });
+        }
+      } catch (error) {
+        console.error(error);
+        if (token !== this.viewRequestToken) return;
+        this.categories = [];
+        this.selectedImages = [];
+      }
     },
-    highlightText(text, term) {
-      if (!term || !text) return text;
-      const t = String(term).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      const regex = new RegExp(`(${t})`, 'gi');
-      return String(text).replace(regex, '<span class="highlight">$1</span>');
+    async loadRemainingViewPages({ token, classId, startPage, totalPages }) {
+      for (let page = startPage; page <= totalPages; page += 1) {
+        if (token !== this.viewRequestToken) return;
+        try {
+          const pageData = await fetchStandardDatasetView(this.datasetId, {
+            classId,
+            page,
+            pageSize: 120,
+          });
+          if (token !== this.viewRequestToken) return;
+          const items = Array.isArray(pageData && pageData.items) ? pageData.items : [];
+          if (items.length) {
+            this.selectedImages = this.selectedImages.concat(items);
+          }
+        } catch (_) {
+          return;
+        }
+      }
     },
-
-    // Preview
-    openImagePreview(image) {
-      this.previewImage = image;
+    selectClass(classId) {
+      this.selectedClassId = classId === null || classId === undefined || classId === '' ? null : Number(classId);
+      this.loadView();
+    },
+    handleImageError(event, image) {
+      const img = event.target;
+      if (!img || !image || !image.image_url) return;
+      if (img.dataset.fallback === 'original') return;
+      img.dataset.fallback = 'original';
+      img.src = image.image_url;
+    },
+    async openImagePreview(image) {
+      this.previewImage = image ? { ...image } : null;
       this.showImagePreview = true;
-      this.previewBoxCount = 0;
+      this.previewAnnotationsLoading = true;
       this.previewAnnotationsError = '';
       this.previewAnnotationData = null;
-      if (this.isDetectionDataset) {
-        this.loadPreviewAnnotations(image);
+      const token = ++this.previewRequestToken;
+
+      this.$nextTick(() => {
+        const img = this.$refs.previewModalImage;
+        if (img && img.complete) this.handlePreviewImageLoad();
+      });
+
+      try {
+        const data = await fetchStandardDatasetAnnotations(this.datasetId, image.image_name);
+        if (token !== this.previewRequestToken) return;
+        this.previewAnnotationData = data;
+        this.previewAnnotationsLoading = false;
+        this.previewImage = {
+          ...this.previewImage,
+          objects_count: Number(data && data.object_count) || 0,
+        };
+        this.$nextTick(() => this.redrawPreviewAnnotations());
+      } catch (error) {
+        if (token !== this.previewRequestToken) return;
+        this.previewAnnotationsLoading = false;
+        this.previewAnnotationsError = error && error.message ? String(error.message) : '标注加载失败';
+        this.$nextTick(() => this.redrawPreviewAnnotations());
       }
     },
     closeImagePreview() {
       this.showImagePreview = false;
       this.previewImage = null;
+      this.previewAnnotationsLoading = false;
+      this.previewAnnotationsError = '';
+      this.previewAnnotationData = null;
+      this.previewRequestToken += 1;
+      this.clearPreviewCanvas();
     },
-    handleImageError(e, image) {
-      const img = e.target;
-      if (image && image.image_url && img.src !== image.image_url) {
-        img.src = image.image_url;
-      }
+    handleModalImageError(event) {
+      if (event && event.target) event.target.style.display = 'none';
+      this.clearPreviewCanvas();
     },
     handlePreviewImageLoad() {
-      this.drawAnnotations();
+      this.fitPreviewCanvasToImage();
+      this.redrawPreviewAnnotations();
     },
-    handleModalImageError(e) {
-      this.previewAnnotationsError = '图片加载失败';
-    },
-    async loadPreviewAnnotations(image) {
-      this.previewRequestToken++;
-      const token = this.previewRequestToken;
-      this.previewAnnotationsLoading = true;
-      try {
-        const data = await fetchStandardDatasetAnnotations(this.datasetId, image.image_path);
-        if (token !== this.previewRequestToken) return;
-        this.previewAnnotationData = data;
-        this.previewBoxCount = Array.isArray(data.boxes) ? data.boxes.length : 0;
-        this.$nextTick(() => {
-          this.drawAnnotations();
-        });
-      } catch (e) {
-        if (token === this.previewRequestToken) {
-          this.previewAnnotationsError = e.message || '获取标注失败';
-          this.previewAnnotationData = null;
-        }
-      } finally {
-        if (token === this.previewRequestToken) {
-          this.previewAnnotationsLoading = false;
-        }
-      }
-    },
-    drawAnnotations() {
-      if (!this.previewAnnotationData || !this.isDetectionDataset || !this.showImagePreview) return;
-      const canvas = this.$refs.previewCanvas;
-      const img = this.$refs.previewModalImage;
-      const wrap = this.$refs.previewCanvasWrap;
-      if (!canvas || !img || !wrap) return;
-
-      const imgW = img.naturalWidth;
-      const imgH = img.naturalHeight;
-      if (!imgW || !imgH) return;
-
-      canvas.width = wrap.clientWidth;
-      canvas.height = wrap.clientHeight;
-      const ctx = canvas.getContext('2d');
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      const rect = img.getBoundingClientRect();
-      const wrapRect = wrap.getBoundingClientRect();
-      const offsetX = rect.left - wrapRect.left;
-      const offsetY = rect.top - wrapRect.top;
-      const drawW = rect.width;
-      const drawH = rect.height;
-
-      const boxes = this.previewAnnotationData.boxes || [];
-      ctx.lineWidth = 2;
-      ctx.font = '12px sans-serif';
-      ctx.textBaseline = 'top';
-
-      boxes.forEach(box => {
-        let x, y, w, h;
-        if (box.x1 !== undefined && box.x2 !== undefined) {
-          x = box.x1 * drawW;
-          y = box.y1 * drawH;
-          w = (box.x2 - box.x1) * drawW;
-          h = (box.y2 - box.y1) * drawH;
-        } else if (box.cx !== undefined && box.w !== undefined) {
-          w = box.w * drawW;
-          h = box.h * drawH;
-          x = (box.cx - box.w / 2) * drawW;
-          y = (box.cy - box.h / 2) * drawH;
-        } else {
-          return;
-        }
-
-        const absX = offsetX + x;
-        const absY = offsetY + y;
-        
-        ctx.strokeStyle = 'rgba(0, 255, 0, 0.8)';
-        ctx.strokeRect(absX, absY, w, h);
-
-        const className = this.getClassName(this.classList.find(c => c.id === box.class_id)) || box.class_name || `Cls ${box.class_id}`;
-        const textW = ctx.measureText(className).width + 6;
-        const textH = 16;
-        ctx.fillStyle = 'rgba(0, 255, 0, 0.8)';
-        ctx.fillRect(absX, Math.max(offsetY, absY - textH), textW, textH);
-        ctx.fillStyle = '#000';
-        ctx.fillText(className, absX + 3, Math.max(offsetY, absY - textH) + 2);
+    handlePreviewResize() {
+      if (!this.showImagePreview) return;
+      this.$nextTick(() => {
+        this.fitPreviewCanvasToImage();
+        this.redrawPreviewAnnotations();
       });
     },
+    fitPreviewCanvasToImage() {
+      const canvas = this.$refs.previewCanvas;
+      const wrap = this.$refs.previewCanvasWrap;
+      if (!canvas || !wrap) return;
+      const width = wrap.clientWidth || 0;
+      const height = wrap.clientHeight || 0;
+      if (!width || !height) return;
+      if (canvas.width !== width) canvas.width = width;
+      if (canvas.height !== height) canvas.height = height;
+    },
+    clearPreviewCanvas() {
+      const canvas = this.$refs.previewCanvas;
+      const ctx = canvas ? canvas.getContext('2d') : null;
+      if (!ctx || !canvas) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    },
+    getPreviewRenderedImageRect() {
+      const wrap = this.$refs.previewCanvasWrap;
+      const img = this.$refs.previewModalImage;
+      if (!wrap || !img) return null;
 
-    // ZIP upload
-    handleAddImage() {
-        this.showUploadDialog = true;
-    },
-    handleUploadSuccess() {
-      this.zipUploading = false;
-      this.zipUploadProgress = 0;
-      this.zipUploadFile = null;
-      this.showUploadDialog = false;
-      this.$message.success("数据上传并入库成功！");
-      this.loadDetail();
-    },
-    handleUploadFail(err) {
-      this.zipUploading = false;
-      this.zipUploadProgress = 0;
-      this.zipUploadFile = null;
-      this.$message.error("上传失败：" + (err.message || String(err)));
-      this.loadDetail();
-    },
-    resetRecoveredZipUploadState() {
-      this.zipUploadFile = null;
-      this.zipUploading = false;
-      this.zipUploadProgress = 0;
-    },
+      const wrapRect = wrap.getBoundingClientRect();
+      const imgRect = img.getBoundingClientRect();
+      if (!wrapRect.width || !wrapRect.height || !imgRect.width || !imgRect.height) return null;
 
-    // Augmentation
+      return {
+        offsetX: imgRect.left - wrapRect.left,
+        offsetY: imgRect.top - wrapRect.top,
+        drawW: imgRect.width,
+        drawH: imgRect.height,
+        naturalW: img.naturalWidth || Number(this.previewAnnotationData && this.previewAnnotationData.width) || 0,
+        naturalH: img.naturalHeight || Number(this.previewAnnotationData && this.previewAnnotationData.height) || 0,
+      };
+    },
+    getAnnotationColor(classId = 0) {
+      const palette = ['#2563eb', '#dc2626', '#16a34a', '#d97706', '#7c3aed', '#0891b2', '#db2777', '#4f46e5', '#ea580c', '#059669'];
+      const idx = Math.abs(Number(classId) || 0) % palette.length;
+      return palette[idx];
+    },
+    redrawPreviewAnnotations() {
+      const canvas = this.$refs.previewCanvas;
+      const ctx = canvas ? canvas.getContext('2d') : null;
+      if (!ctx || !canvas) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      const boxes = Array.isArray(this.previewAnnotationData && this.previewAnnotationData.boxes)
+        ? this.previewAnnotationData.boxes
+        : [];
+      if (!boxes.length) return;
+
+      const rect = this.getPreviewRenderedImageRect();
+      if (!rect || !rect.naturalW || !rect.naturalH) return;
+      const { offsetX, offsetY, drawW, drawH, naturalW, naturalH } = rect;
+
+      ctx.lineWidth = 2;
+      ctx.font = '13px sans-serif';
+      ctx.textBaseline = 'top';
+
+      boxes.forEach((box) => {
+        const color = this.getAnnotationColor(box.class_id);
+        const x = offsetX + (Number(box.x1) || 0) * drawW / naturalW;
+        const y = offsetY + (Number(box.y1) || 0) * drawH / naturalH;
+        const w = Math.max(0, ((Number(box.x2) || 0) - (Number(box.x1) || 0)) * drawW / naturalW);
+        const h = Math.max(0, ((Number(box.y2) || 0) - (Number(box.y1) || 0)) * drawH / naturalH);
+
+        ctx.strokeStyle = color;
+        ctx.strokeRect(x, y, w, h);
+
+        const label = String(box.class_name || `class_${box.class_id ?? 0}`);
+        const textW = ctx.measureText(label).width + 10;
+        const textH = 20;
+        const textX = x;
+        const textY = Math.max(offsetY, y - textH);
+
+        ctx.fillStyle = color;
+        ctx.fillRect(textX, textY, textW, textH);
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, textX + 5, textY + 3);
+      });
+    },
+    getClassNames(classIds) {
+      if (!this.categories || !classIds) return '';
+      return classIds
+        .map((id) => {
+          const classInfo = this.categories.find((cls) => Number(cls.class_id) === Number(id));
+          return classInfo ? classInfo.name : `class_${id}`;
+        })
+        .join(', ');
+    },
+    handleKeydown(event) {
+      if (event.key === 'Escape' && this.showImagePreview) {
+        this.closeImagePreview();
+      }
+    },
     openAugmentationDialog() {
+      if (this.isEmpty) return;
       this.showAugmentationDialog = true;
     },
-    handleAugmentationPublished() {
+    handleUploadSuccess() {
+      this.uploadFile = null;
+      this.uploading = false;
+      this.uploadProgress = 0;
+      this.$message.success('标准数据集上传成功');
+      this.loadAll();
+    },
+    handleUploadFail(error) {
+      this.$message.error(`上传失败：${error && error.message ? error.message : error || '未知错误'}`);
+    },
+    handlePublished(payload) {
       this.showAugmentationDialog = false;
-      this.$message.success("增强数据集已发布！");
-      this.loadDetail();
-    }
+      const nextId = payload && payload.standard_dataset_id;
+      this.$message.success(`增强结果已发布为新的标准数据集 #${nextId}`);
+      if (nextId) {
+        this.$router.push({ path: '/standard-dataset-detail', query: { id: nextId } });
+      }
+    },
   },
-  mounted() {
-    this.datasetId = this.$route.query.id;
-    if (this.datasetId) {
-        this.loadDetail();
-    } else {
-        this.$message.error("未找到数据集ID");
-    }
-  }
 };
 </script>
 
@@ -607,586 +622,517 @@ export default {
   gap: 24px;
 }
 
-/* Hero Section */
+.glass-panel,
+.glass-panel-sm,
 .detail-hero {
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  padding: 32px;
+  border: 1px solid #e5e7eb;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+.detail-hero {
   display: flex;
   justify-content: space-between;
-  align-items: center;
-  box-shadow: var(--shadow-sm);
-  border: 1px solid var(--border-color);
+  gap: 24px;
+  padding: 28px 30px;
 }
 
 .hero-left {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 16px;
+  min-width: 0;
 }
 
 .back-link {
-  background: none;
+  align-self: flex-start;
   border: none;
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+  background: transparent;
+  color: #2563eb;
   cursor: pointer;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 14px;
   padding: 0;
-  transition: color 0.2s;
-}
-
-.back-link:hover {
-  color: var(--color-primary);
-}
-
-.hero-content {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
 }
 
 .hero-kicker {
-  font-size: 0.75rem;
+  font-size: 12px;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--color-primary);
+  color: #64748b;
   font-weight: 700;
 }
 
 .hero-title {
-  font-size: 2rem;
-  font-weight: 800;
-  color: var(--text-main);
   margin: 0;
+  font-size: 32px;
   line-height: 1.2;
+  color: #111827;
 }
 
 .hero-meta {
   display: flex;
-  align-items: center;
-  gap: 12px;
-  margin-top: 4px;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
 }
 
-.meta-pill {
-  background: var(--color-primary-light);
-  color: var(--color-primary);
-  padding: 4px 10px;
-  border-radius: var(--radius-full);
-  font-size: 0.75rem;
+.meta-pill,
+.meta-id {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 13px;
   font-weight: 600;
 }
 
+.meta-pill.success {
+  background: #ecfdf3;
+  color: #027a48;
+}
+
+.meta-pill.info {
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
 .meta-id {
-  font-size: 0.85rem;
-  color: var(--text-light);
-  font-family: monospace;
+  background: #f8fafc;
+  color: #475569;
+}
+
+.hero-desc {
+  margin: 14px 0 0;
+  color: #4b5563;
+  line-height: 1.8;
+  max-width: 760px;
 }
 
 .hero-right {
-  display: flex;
-  gap: 24px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  gap: 14px;
+  min-width: 360px;
 }
 
 .stat-card {
-  text-align: center;
-  background: var(--bg-body);
-  padding: 16px 24px;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-light);
-  min-width: 100px;
+  border-radius: 18px;
+  padding: 18px 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  border: 1px solid #edf2f7;
 }
 
 .stat-label {
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  margin-bottom: 4px;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .stat-value {
-  font-size: 1.5rem;
+  margin-top: 10px;
+  font-size: 28px;
   font-weight: 700;
-  color: var(--text-main);
+  color: #0f172a;
 }
 
 .detail-body {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 400px;
+  padding: 22px;
 }
 
 .loading-state {
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100%;
-  gap: 16px;
-  color: var(--text-secondary);
-  font-size: 1.1rem;
-}
-
-.loading-state i {
-  font-size: 2rem;
-  color: var(--color-primary);
+  gap: 10px;
+  min-height: 240px;
+  color: #64748b;
 }
 
 .empty-state {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  justify-content: center;
-  padding: 60px;
-  background: var(--bg-body);
-  border-radius: var(--radius-lg);
-  border: 2px dashed var(--border-color);
-  gap: 32px;
-  height: 100%;
+  justify-content: space-between;
+  gap: 24px;
+  padding: 24px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, #f8fafc 0%, #eff6ff 100%);
 }
 
 .empty-content {
-  text-align: center;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  max-width: 680px;
 }
 
 .empty-title {
-  font-size: 1.5rem;
+  font-size: 26px;
   font-weight: 700;
-  color: var(--text-main);
+  color: #111827;
 }
 
 .empty-desc {
-  color: var(--text-secondary);
-  font-size: 1.1rem;
+  margin-top: 14px;
+  color: #4b5563;
+  line-height: 1.8;
 }
 
 .empty-tips {
   display: flex;
-  gap: 16px;
-  justify-content: center;
-  margin-top: 8px;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 16px;
 }
 
 .tip-item {
-  display: flex;
+  display: inline-flex;
   align-items: center;
   gap: 6px;
-  font-size: 0.9rem;
-  color: var(--color-success);
-  background: var(--color-success-light);
-  padding: 4px 12px;
-  border-radius: var(--radius-full);
+  color: #334155;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 8px 12px;
+  border-radius: 999px;
 }
 
-.empty-processing-tip {
-  margin-top: 16px;
-  font-weight: 600;
-  color: var(--color-primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-}
-
-.empty-action {
-  width: 100%;
-  max-width: 400px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
-}
-
-/* Gallery Layout */
 .gallery-layout {
-  display: flex;
-  gap: 24px;
-  flex: 1;
-  height: calc(100vh - 280px);
-  min-height: 500px;
+  display: grid;
+  grid-template-columns: 300px minmax(0, 1fr);
+  gap: 20px;
 }
 
-.sidebar-panel {
-  width: 280px;
-  flex-shrink: 0;
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-light);
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+.sidebar-panel,
+.images-panel,
+.extra-section {
+  padding: 18px;
 }
 
 .panel-head {
-  padding: 20px;
-  border-bottom: 1px solid var(--border-light);
   display: flex;
-  justify-content: space-between;
   align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 16px;
 }
 
 .panel-title {
-  font-size: 1.125rem;
+  font-size: 18px;
   font-weight: 700;
-  color: var(--text-main);
+  color: #111827;
 }
 
-.panel-sub {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
+.panel-sub,
+.panel-subtitle {
+  color: #64748b;
+  font-size: 13px;
   margin-top: 4px;
 }
 
 .search-box {
-  padding: 16px;
-  border-bottom: 1px solid var(--border-light);
-}
-
-.glass-input ::v-deep .el-input__inner {
-  background: var(--bg-body);
-  border: 1px solid var(--border-color);
-  border-radius: var(--radius-md);
+  margin-bottom: 16px;
 }
 
 .class-list {
   list-style: none;
-  padding: 12px;
   margin: 0;
-  overflow-y: auto;
-  flex: 1;
+  padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 8px;
 }
 
 .class-list li {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 10px 12px;
-  border-radius: var(--radius-md);
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid #e5e7eb;
+  border-radius: 14px;
   cursor: pointer;
-  transition: all 0.2s;
-  background: transparent;
-  border: 1px solid transparent;
+  transition: all 0.2s ease;
 }
 
-.class-list li:hover {
-  background: var(--bg-body);
-}
-
+.class-list li:hover,
 .class-list li.selected {
-  background: var(--color-primary-light);
-  border-color: var(--color-primary-subtle);
+  border-color: #93c5fd;
+  background: #eff6ff;
 }
 
 .class-info {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.class-info .dot {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--color-primary);
-}
-
-.class-info .dot.all {
-  background: var(--color-success);
+  gap: 10px;
+  min-width: 0;
 }
 
 .class-name {
-  font-size: 0.95rem;
-  color: var(--text-main);
+  color: #111827;
   font-weight: 500;
-}
-
-.class-list li.selected .class-name {
-  color: var(--color-primary-dark);
-  font-weight: 600;
+  word-break: break-word;
 }
 
 .class-count {
-  font-size: 0.8rem;
-  color: var(--text-secondary);
-  background: var(--bg-body);
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  min-width: 32px;
-  text-align: center;
+  color: #64748b;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
-.class-list li.selected .class-count {
-  background: white;
-  color: var(--color-primary);
-  font-weight: 600;
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #60a5fa;
+  flex: 0 0 auto;
 }
 
-.no-results {
-  padding: 32px 16px;
-  text-align: center;
-  color: var(--text-secondary);
+.dot.all {
+  background: #10b981;
 }
 
-.images-panel {
-  flex: 1;
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  border: 1px solid var(--border-light);
+.dataset-info-card {
+  margin-top: 18px;
+  border-top: 1px dashed #dbe4ee;
+  padding-top: 16px;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  gap: 12px;
 }
 
-.count-badge {
-  display: inline-block;
-  background: var(--bg-body);
-  color: var(--text-secondary);
-  font-size: 0.85rem;
-  padding: 2px 8px;
-  border-radius: var(--radius-full);
-  margin-left: 8px;
-  vertical-align: middle;
+.info-line {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.info-line span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.info-line strong {
+  color: #111827;
+  word-break: break-word;
 }
 
 .panel-actions {
   display: flex;
-  align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.action-card {
-  display: flex;
-  align-items: center;
-  background: var(--bg-body);
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-color);
-  padding: 2px;
-}
-
-.no-images {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
+.count-badge {
+  display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-light);
-  gap: 16px;
+  min-width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  font-size: 13px;
+  margin-left: 8px;
+}
+
+.no-images,
+.no-results {
+  padding: 36px 16px;
+  color: #64748b;
+  text-align: center;
 }
 
 .no-images i {
-  font-size: 4rem;
+  font-size: 32px;
+  display: block;
+  margin-bottom: 10px;
 }
 
 .image-grid {
-  flex: 1;
-  padding: 20px;
-  overflow-y: auto;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
-  align-content: start;
 }
 
 .image-card {
   position: relative;
-  aspect-ratio: 1;
-  border-radius: var(--radius-md);
   overflow: hidden;
-  background: var(--bg-body);
+  border-radius: 18px;
   cursor: pointer;
-  border: 1px solid var(--border-color);
-  transition: all 0.2s;
-}
-
-.image-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--color-primary-subtle);
+  background: #0f172a;
+  min-height: 180px;
 }
 
 .image-wrapper {
   width: 100%;
   height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #000;
+  min-height: 180px;
 }
 
 .image-wrapper img {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  object-fit: cover;
 }
 
 .image-overlay {
   position: absolute;
-  bottom: 0;
   left: 0;
   right: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.8), transparent);
-  padding: 16px 12px 12px;
-  color: white;
-  pointer-events: none;
+  bottom: 0;
+  padding: 14px 16px;
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0) 0%, rgba(15, 23, 42, 0.88) 100%);
+  color: #fff;
 }
 
 .image-name {
-  font-size: 0.85rem;
-  font-weight: 500;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-weight: 600;
+  word-break: break-word;
 }
 
 .image-meta {
-  font-size: 0.75rem;
-  opacity: 0.8;
   margin-top: 4px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.85);
 }
 
-/* Modal */
+.extra-section {
+  margin-top: 20px;
+}
+
 .preview-modal {
   position: fixed;
   inset: 0;
-  z-index: 2000;
-  background: rgba(0,0,0,0.85);
-  backdrop-filter: blur(8px);
+  background: rgba(15, 23, 42, 0.72);
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 40px;
+  z-index: 3000;
+  padding: 24px;
 }
 
 .modal-card {
   position: relative;
-  width: 100%;
-  max-width: 1200px;
-  height: 90vh;
-  display: flex;
-  background: var(--bg-card);
-  border-radius: var(--radius-lg);
-  overflow: hidden;
-  box-shadow: var(--shadow-xl);
+  width: min(1180px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  padding: 24px;
+  overflow: auto;
 }
 
 .close-btn {
   position: absolute;
   top: 16px;
   right: 16px;
-  width: 40px;
-  height: 40px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  background: rgba(255,255,255,0.1);
   border: none;
-  color: var(--text-main);
-  font-size: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #f8fafc;
   cursor: pointer;
-  z-index: 10;
-  transition: all 0.2s;
-}
-
-.close-btn:hover {
-  background: var(--bg-body);
-  color: var(--color-danger);
-  transform: rotate(90deg);
+  color: #334155;
 }
 
 .modal-image-wrapper {
-  flex: 1;
-  background: #000;
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  margin-right: 340px;
 }
 
 .modal-canvas-wrap {
   position: relative;
   width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  min-height: 480px;
+  background: #020617;
+  border-radius: 16px;
+  overflow: hidden;
 }
 
 .modal-image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
+  width: 100%;
+  display: block;
 }
 
 .modal-overlay-canvas {
   position: absolute;
   inset: 0;
-  width: 100%;
-  height: 100%;
   pointer-events: none;
 }
 
 .modal-info {
-  width: 320px;
-  background: var(--bg-card);
-  border-left: 1px solid var(--border-light);
-  padding: 32px 24px;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  overflow-y: auto;
+  position: absolute;
+  top: 24px;
+  right: 24px;
+  width: 300px;
+  padding: 16px;
+  border-radius: 16px;
+  background: #f8fafc;
 }
 
 .modal-info h3 {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--text-main);
-  margin: 0;
-  word-break: break-all;
+  margin: 0 0 16px;
+  color: #0f172a;
 }
 
 .modal-meta-row {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 8px;
+  margin-bottom: 10px;
+  line-height: 1.6;
 }
 
 .modal-meta-row .label {
-  font-size: 0.85rem;
-  color: var(--text-secondary);
-  text-transform: uppercase;
+  min-width: 64px;
+  color: #64748b;
 }
 
 .modal-meta-row .value {
-  font-size: 1rem;
-  color: var(--text-main);
-  font-weight: 500;
+  color: #111827;
+  word-break: break-word;
 }
 
 .modal-meta-row .value.error {
-  color: var(--color-danger);
+  color: #dc2626;
 }
 
 .modal-meta-row .value.muted {
-  color: var(--text-light);
-  font-style: italic;
+  color: #94a3b8;
 }
 
-.panel-subtitle {
-  font-size: 0.85rem;
-  color: var(--color-primary);
-  margin-top: 4px;
+@media (max-width: 1200px) {
+  .detail-hero,
+  .gallery-layout {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+
+  .hero-right {
+    min-width: 0;
+  }
+
+  .modal-image-wrapper {
+    margin-right: 0;
+  }
+
+  .modal-info {
+    position: static;
+    width: 100%;
+    margin-top: 16px;
+  }
+}
+
+@media (max-width: 768px) {
+  .detail-hero {
+    padding: 20px;
+  }
+
+  .hero-right {
+    grid-template-columns: 1fr;
+  }
+
+  .detail-body,
+  .sidebar-panel,
+  .images-panel,
+  .extra-section {
+    padding: 16px;
+  }
+
+  .empty-state {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 </style>

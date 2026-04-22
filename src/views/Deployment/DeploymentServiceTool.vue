@@ -39,7 +39,7 @@
         </el-form-item>
         <el-form-item label="部署平台">
           <el-select v-model="platform" disabled>
-            <el-option label="local (v1)" value="local" />
+            <el-option label="local gateway" value="local" />
           </el-select>
         </el-form-item>
         <el-form-item label="复用已有部署 (可选)">
@@ -285,7 +285,7 @@ export default {
       if (!this.modelVersionId && this.modelVersions.length) this.modelVersionId = this.modelVersions[0].model_version_id;
     },
     async loadModelVersions(projectId) {
-      const url = `${API_BASE}/api/v2/model-versions?project_id=${encodeURIComponent(projectId)}&page=1&page_size=500`;
+      const url = `${API_BASE}/api/v3/model-versions?project_id=${encodeURIComponent(projectId)}&page=1&page_size=500`;
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail || data?.message || "Failed to load model versions");

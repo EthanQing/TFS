@@ -69,7 +69,7 @@ export default {
   computed: {
     isDataActive() {
       const p = this.$route.path;
-      return p === "/datasets" || p.startsWith("/datadetail") || p.startsWith("/standard-dataset-detail") || p.startsWith("/illegal-dataset-detail") || p.includes("/imagespart");
+      return p === "/datasets" || p.startsWith("/standard-dataset-detail") || p.startsWith("/illegal-dataset-detail") || p.includes("/imagespart");
     },
     isProjectActive() {
       const p = this.$route.path;

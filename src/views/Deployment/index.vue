@@ -314,7 +314,7 @@
         <el-dialog title="Create Release Pipeline" :visible.sync="dialogFormVisible" width="600px" custom-class="glass-dialog">
             <el-form :model="newProcessForm" :rules="rules" ref="formRef" label-position="top">
                 <el-form-item label="Pipeline Name" prop="name">
-                    <el-input v-model="newProcessForm.name" placeholder="e.g. Production Release v2"></el-input>
+                    <el-input v-model="newProcessForm.name" placeholder="e.g. Production Release v3"></el-input>
                 </el-form-item>
                 <el-form-item label="Description" prop="description">
                     <el-input

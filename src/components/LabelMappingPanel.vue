@@ -1,6 +1,5 @@
 <template>
   <div v-loading="loading" class="label-mapping-panel">
-    <!-- Header -->
     <div class="panel-header">
       <div class="panel-title-row">
         <h3 class="panel-title"><i class="el-icon-s-operation"></i> 标签映射</h3>
@@ -36,7 +35,6 @@
       </div>
     </div>
 
-    <!-- Tree-based Mapping Table -->
     <div class="mapping-table-wrap">
       <table class="mapping-table">
         <thead>
@@ -54,99 +52,95 @@
             v-for="node in displayNodes"
             :key="node.key"
             class="mapping-row"
-              :class="{
-                'is-virtual': node.isVirtual,
-                'is-discarded': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded
-              }"
-            >
-              <td class="col-expand">
-                <i
-                  v-if="node.hasChildren"
-                  :class="expandedGroups[node.key] ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"
-                  class="expand-icon"
-                  @click="toggleGroup(node.key)"
-                />
-              </td>
-              <td class="col-source" :style="{ paddingLeft: (node.depth * 24 + 12) + 'px' }">
-                <span class="source-label" :class="{ 'line-through': !node.isVirtual && node.exactRow.discarded }">
-                  <span class="label-part" :class="'depth-' + Math.min(node.depth, 4)">{{ node.segment }}</span>
-                  <span v-if="node.isVirtual" class="virtual-tag" title="此节点未作为独立标签出现过，仅作为其他标签的共用层级目录">(目录组)</span>
-                </span>
-              </td>
-              <td class="col-arrow">
-                <i class="el-icon-right arrow-icon" :class="{ 'text-muted': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded }" />
-              </td>
-              <td class="col-target">
-                <!-- Virtual Group Folder Label -->
-                <template v-if="node.isVirtual">
-                  <template v-if="node.allDescendantsDiscarded">
-                    <span class="discard-badge">子项全丢弃</span>
-                  </template>
-                  <template v-else>
+            :class="{
+              'is-virtual': node.isVirtual,
+              'is-discarded': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded
+            }"
+          >
+            <td class="col-expand">
+              <i
+                v-if="node.hasChildren"
+                :class="expandedGroups[node.key] ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"
+                class="expand-icon"
+                @click="toggleGroup(node.key)"
+              />
+            </td>
+            <td class="col-source" :style="{ paddingLeft: (node.depth * 24 + 12) + 'px' }">
+              <span class="source-label" :class="{ 'line-through': !node.isVirtual && node.exactRow.discarded }">
+                <span class="label-part" :class="'depth-' + Math.min(node.depth, 4)">{{ node.segment }}</span>
+                <span v-if="node.isVirtual" class="virtual-tag" title="此节点未作为独立标签出现过，仅作为其他标签的共用层级目录">(目录组)</span>
+              </span>
+            </td>
+            <td class="col-arrow">
+              <i class="el-icon-right arrow-icon" :class="{ 'text-muted': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded }" />
+            </td>
+            <td class="col-target">
+              <template v-if="node.isVirtual">
+                <template v-if="node.allDescendantsDiscarded">
+                  <span class="discard-badge">子项全丢弃</span>
+                </template>
+                <template v-else>
+                  <el-select
+                    :value="!node.mixedTargets ? node.commonTarget : ''"
+                    size="mini"
+                    class="target-input virtual-input"
+                    :placeholder="node.mixedTargets ? '多种映射 (选中以统一)' : '统一设置所有子项'"
+                    filterable
+                    allow-create
+                    @change="(val) => setCascadeTarget(node, val)"
+                  >
+                    <el-option v-for="opt in node.availableTargets" :key="opt" :label="opt" :value="opt" />
+                  </el-select>
+                </template>
+              </template>
+
+              <template v-else>
+                <template v-if="node.exactRow.discarded">
+                  <span class="discard-badge">已丢弃</span>
+                </template>
+                <template v-else>
+                  <div class="target-input-group">
                     <el-select
-                      :value="!node.mixedTargets ? node.commonTarget : ''"
+                      v-model="node.exactRow.targetLabel"
                       size="mini"
-                      class="target-input virtual-input"
-                      :placeholder="node.mixedTargets ? '多种映射 (选中以统一)' : '统一设置所有子项'"
+                      class="target-input"
+                      placeholder="映射当前项"
                       filterable
                       allow-create
-                      @change="(val) => setCascadeTarget(node, val)"
+                      @change="onTargetEdited(node.exactRow)"
                     >
                       <el-option v-for="opt in node.availableTargets" :key="opt" :label="opt" :value="opt" />
                     </el-select>
-                  </template>
-                </template>
-
-                <!-- Real Exact Label -->
-                <template v-else>
-                  <template v-if="node.exactRow.discarded">
-                    <span class="discard-badge">已丢弃</span>
-                  </template>
-                  <template v-else>
-                    <div class="target-input-group">
-                      <el-select
-                        v-model="node.exactRow.targetLabel"
+                    <el-tooltip v-if="node.hasChildren" content="将左侧设置的映射向下应用到所有子项" placement="top">
+                      <el-button
+                        class="cascade-btn"
+                        type="primary"
+                        plain
+                        icon="el-icon-download"
                         size="mini"
-                        class="target-input"
-                        placeholder="映射当前项"
-                        filterable
-                        allow-create
-                        @change="onTargetEdited(node.exactRow)"
-                      >
-                        <el-option v-for="opt in node.availableTargets" :key="opt" :label="opt" :value="opt" />
-                      </el-select>
-                      <el-tooltip v-if="node.hasChildren" content="将左侧设置的映射向下应用到所有子项" placement="top">
-                        <el-button
-                          class="cascade-btn"
-                          type="primary"
-                          plain
-                          icon="el-icon-download"
-                          size="mini"
-                          @click="setCascadeTarget(node, node.exactRow.targetLabel)"
-                        />
-                      </el-tooltip>
-                    </div>
-                  </template>
+                        @click="setCascadeTarget(node, node.exactRow.targetLabel)"
+                      />
+                    </el-tooltip>
+                  </div>
                 </template>
-              </td>
-              <td class="col-count">
-                <span v-if="node.isVirtual" class="count-tag">{{ node.descendantCount }} 子项</span>
-                <span v-else-if="node.hasChildren" class="count-tag" title="包含本项本身及嵌套的所有子类">1 + {{ node.descendantCount }} 子项</span>
-                <span v-else class="count-num">1</span>
-              </td>
-              <td class="col-action">
-                <!-- VIRTUAL -->
-                <template v-if="node.isVirtual">
-                  <el-button v-if="!node.allDescendantsDiscarded" type="text" size="mini" class="action-discard" @click="discardAll(node, true)" title="丢弃所有子项"><i class="el-icon-delete" /></el-button>
-                  <el-button v-else type="text" size="mini" class="action-restore" @click="discardAll(node, false)" title="恢复所有子项"><i class="el-icon-refresh-left" /></el-button>
-                </template>
-                <!-- REAL -->
-                <template v-else>
-                  <el-button v-if="!node.exactRow.discarded" type="text" size="mini" class="action-discard" @click="toggleDiscard(node.exactRow, true)" title="丢弃此标签"><i class="el-icon-delete" /></el-button>
-                  <el-button v-else type="text" size="mini" class="action-restore" @click="toggleDiscard(node.exactRow, false)" title="恢复此标签"><i class="el-icon-refresh-left" /></el-button>
-                </template>
-              </td>
-            </tr>
+              </template>
+            </td>
+            <td class="col-count">
+              <span v-if="node.isVirtual" class="count-tag">{{ node.descendantCount }} 子项</span>
+              <span v-else-if="node.hasChildren" class="count-tag">1 + {{ node.descendantCount }} 子项</span>
+              <span v-else class="count-num">1</span>
+            </td>
+            <td class="col-action">
+              <template v-if="node.isVirtual">
+                <el-button v-if="!node.allDescendantsDiscarded" type="text" size="mini" class="action-discard" @click="discardAll(node, true)" title="丢弃所有子项"><i class="el-icon-delete" /></el-button>
+                <el-button v-else type="text" size="mini" class="action-restore" @click="discardAll(node, false)" title="恢复所有子项"><i class="el-icon-refresh-left" /></el-button>
+              </template>
+              <template v-else>
+                <el-button v-if="!node.exactRow.discarded" type="text" size="mini" class="action-discard" @click="toggleDiscard(node.exactRow, true)" title="丢弃此标签"><i class="el-icon-delete" /></el-button>
+                <el-button v-else type="text" size="mini" class="action-restore" @click="toggleDiscard(node.exactRow, false)" title="恢复此标签"><i class="el-icon-refresh-left" /></el-button>
+              </template>
+            </td>
+          </tr>
         </tbody>
       </table>
       <div v-if="displayNodes.length === 0 && !loading" class="no-data">
@@ -156,7 +150,6 @@
       </div>
     </div>
 
-    <!-- Footer: Stats + Actions -->
     <div class="panel-footer">
       <div class="stats-row">
         <span class="stat"><strong>{{ rows.length }}</strong> 原始标签</span>
@@ -201,7 +194,6 @@
       </div>
     </div>
 
-    <!-- Slice Parameters Dialog -->
     <el-dialog
       title="裁剪参数设置"
       :visible.sync="showSliceDialog"
@@ -316,15 +308,14 @@ export default {
         emptyPositiveAction: 'discard',
       },
       presets: [
-        { mode: 'root',  label: '取根节点' },
-        { mode: 'leaf',  label: '取叶子节点' },
+        { mode: 'root', label: '取根节点' },
+        { mode: 'leaf', label: '取叶子节点' },
         { mode: 'level', label: '取第N级' },
-        { mode: 'full',  label: '完整保留' },
+        { mode: 'full', label: '完整保留' },
       ],
     };
   },
   computed: {
-    /** Build a trie (prefix tree) from all source labels */
     trie() {
       var root = { children: {}, directRows: [] };
       for (var i = 0; i < this.rows.length; i++) {
@@ -342,8 +333,6 @@ export default {
       }
       return root;
     },
-
-    /** Flatten the trie into a display list respecting expand/collapse state */
     displayNodes() {
       var result = [];
       var sep = this.separator;
@@ -367,20 +356,18 @@ export default {
           var child = parentNode.children[seg];
           var parts = parentParts.concat(seg);
           var key = parts.join(sep);
-
           var allRows = getAllRows(child);
           var directRows = child.directRows;
           var descendantRows = allRows.filter(function(r) { return directRows.indexOf(r) === -1; });
           var hasChildren = descendantRows.length > 0;
           var isVirtual = directRows.length === 0;
 
-          // Search filter
           if (q) {
-             var match = false;
-             var fullLabel = key.toLowerCase();
-             if (fullLabel.includes(q)) match = true;
-             else if (allRows.some(function(r) { return r.sourceLabel.toLowerCase().includes(q) || r.targetLabel.toLowerCase().includes(q); })) match = true;
-             if (!match) continue;
+            var match = false;
+            var fullLabel = key.toLowerCase();
+            if (fullLabel.includes(q)) match = true;
+            else if (allRows.some(function(r) { return r.sourceLabel.toLowerCase().includes(q) || r.targetLabel.toLowerCase().includes(q); })) match = true;
+            if (!match) continue;
           }
 
           var activeDescendants = descendantRows.filter(function(r) { return !r.discarded; });
@@ -389,7 +376,6 @@ export default {
           var tKeys = Object.keys(tSet);
 
           result.push({
-            type: 'node',
             key: key,
             depth: depth,
             segment: seg,
@@ -404,32 +390,27 @@ export default {
             mixedTargets: tKeys.length > 1,
             availableTargets: (function() {
               var s = {};
-              if (q && directRows.length > 0) {
-                 self.splitLabel(directRows[0].sourceLabel).forEach(function(p) { s[p] = true; });
-              }
               descendantRows.forEach(function(r) {
-                 self.splitLabel(r.sourceLabel).forEach(function(p) { s[p] = true; });
+                self.splitLabel(r.sourceLabel).forEach(function(p) { s[p] = true; });
               });
               if (!isVirtual && directRows.length > 0) {
-                 self.splitLabel(directRows[0].sourceLabel).forEach(function(p) { s[p] = true; });
+                self.splitLabel(directRows[0].sourceLabel).forEach(function(p) { s[p] = true; });
               }
               return Object.keys(s).sort();
-            })()
+            })(),
           });
 
           if (expanded[key] && hasChildren) {
-             walk(child, depth + 1, parts);
+            walk(child, depth + 1, parts);
           }
         }
       }
 
-      // Root orphan catch
       var rootOrphans = this.trie.directRows;
       for (var ri = 0; ri < rootOrphans.length; ri++) {
         var orphan = rootOrphans[ri];
         if (q && !orphan.sourceLabel.toLowerCase().includes(q) && !orphan.targetLabel.toLowerCase().includes(q)) continue;
         result.push({
-          type: 'node',
           key: '__orphan__' + ri,
           depth: 0,
           segment: orphan.sourceLabel || '(空标签)',
@@ -441,14 +422,13 @@ export default {
           allDescendantsDiscarded: false,
           mixedTargets: false,
           commonTarget: '',
-          availableTargets: []
+          availableTargets: [],
         });
       }
 
       walk(this.trie, 0, []);
       return result;
     },
-
     discardedCount() {
       return this.rows.filter(function(r) { return r.discarded; }).length;
     },
@@ -515,11 +495,11 @@ export default {
       var parts = this.splitLabel(label);
       if (!parts.length) return label;
       switch (mode) {
-        case 'root':  return parts[0];
-        case 'leaf':  return parts[parts.length - 1];
+        case 'root': return parts[0];
+        case 'leaf': return parts[parts.length - 1];
         case 'level': return parts[Math.min(level - 1, parts.length - 1)];
-        case 'full':  return parts.join('_');
-        default:      return label;
+        case 'full': return parts.join('_');
+        default: return label;
       }
     },
     applyPreset(mode) {
@@ -558,9 +538,7 @@ export default {
       node.descendantRows.forEach(function(row) {
         row.discarded = discard;
         if (discard) row.targetLabel = '';
-        else if (self.activePreset) {
-          row.targetLabel = self.computeTarget(row.sourceLabel, self.activePreset, self.levelValue);
-        }
+        else if (self.activePreset) row.targetLabel = self.computeTarget(row.sourceLabel, self.activePreset, self.levelValue);
       });
     },
     toggleGroup(key) {
@@ -572,9 +550,7 @@ export default {
     toggleDiscard(row, discard) {
       row.discarded = discard;
       if (discard) row.targetLabel = '';
-      else if (this.activePreset) {
-        row.targetLabel = this.computeTarget(row.sourceLabel, this.activePreset, this.levelValue);
-      }
+      else if (this.activePreset) row.targetLabel = this.computeTarget(row.sourceLabel, this.activePreset, this.levelValue);
     },
     buildMapping() {
       var mapping = {};
@@ -683,7 +659,6 @@ export default {
   flex: 1;
 }
 
-/* Header */
 .panel-header {
   padding: 16px 20px 12px;
   border-bottom: 1px solid #f1f5f9;
@@ -739,7 +714,6 @@ export default {
   width: 220px;
 }
 
-/* Table */
 .mapping-table-wrap {
   flex: 1;
   overflow-y: auto;
@@ -772,7 +746,6 @@ export default {
   vertical-align: middle;
 }
 
-/* Column widths */
 .col-expand { width: 32px; text-align: center; }
 .col-source { min-width: 200px; }
 .col-arrow { width: 32px; text-align: center; }
@@ -780,7 +753,6 @@ export default {
 .col-count { width: 90px; text-align: left; }
 .col-action { width: 60px; text-align: center; }
 
-/* Mapping Row */
 .mapping-row {
   background: #fff;
   transition: background 0.15s;
@@ -796,7 +768,6 @@ export default {
   opacity: 0.65;
 }
 
-/* Expand Icon */
 .expand-icon {
   cursor: pointer;
   color: #94a3b8;
@@ -807,7 +778,6 @@ export default {
   color: #6366f1;
 }
 
-/* Source Label & Tags */
 .source-label {
   display: inline-flex;
   align-items: center;
@@ -840,7 +810,6 @@ export default {
   background: #fff;
 }
 
-/* Arrow */
 .arrow-icon {
   color: #6366f1;
   font-size: 0.9rem;
@@ -849,7 +818,6 @@ export default {
   color: #cbd5e1;
 }
 
-/* Target Inputs */
 .target-input {
   width: 100%;
 }
@@ -870,7 +838,6 @@ export default {
   padding: 6px 8px;
 }
 
-/* Counts & Badges */
 .count-tag {
   font-size: 0.7rem;
   color: #64748b;
@@ -894,12 +861,10 @@ export default {
   font-weight: 500;
 }
 
-/* Action buttons */
 .action-discard { color: #94a3b8 !important; }
 .action-discard:hover { color: #ef4444 !important; }
 .action-restore { color: #6366f1 !important; }
 
-/* No data */
 .no-data {
   display: flex;
   flex-direction: column;
@@ -911,7 +876,6 @@ export default {
 }
 .no-data i { font-size: 1.25rem; }
 
-/* Footer */
 .panel-footer {
   padding: 12px 20px;
   border-top: 1px solid #f1f5f9;
@@ -954,7 +918,6 @@ export default {
   gap: 8px;
 }
 
-/* Slice Parameters Dialog */
 .slice-dialog-hint {
   font-size: 0.82rem;
   color: #64748b;

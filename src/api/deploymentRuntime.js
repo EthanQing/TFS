@@ -250,7 +250,7 @@ export async function callServingInfer(deploymentId, payload = {}) {
     form.append("iou", String(iou));
     form.append("show_labels", showLabels ? "1" : "0");
     form.append("show_confidence", showConfidence ? "1" : "0");
-    res = await fetch(`${API_BASE}/api/v2/serving/deployments/${encodeURIComponent(String(id))}/infer`, {
+    res = await fetch(`${API_BASE}/api/v3/serving/deployments/${encodeURIComponent(String(id))}/infer`, {
       method: "POST",
       headers,
       body: form,
@@ -263,7 +263,7 @@ export async function callServingInfer(deploymentId, payload = {}) {
       show_labels: showLabels,
       show_confidence: showConfidence,
     };
-    res = await fetch(`${API_BASE}/api/v2/serving/deployments/${encodeURIComponent(String(id))}/infer`, {
+    res = await fetch(`${API_BASE}/api/v3/serving/deployments/${encodeURIComponent(String(id))}/infer`, {
       method: "POST",
       headers: { ...headers, "Content-Type": "application/json" },
       body: JSON.stringify(body),
