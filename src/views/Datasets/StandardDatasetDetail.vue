@@ -125,10 +125,21 @@
                 <div class="panel-title">图片列表 <span class="count-badge">{{ selectedImages.length }}</span></div>
                 <div class="panel-subtitle">
                   {{ selectedClassId === null ? '显示全部类别图片' : `当前类别：${selectedClassName}` }}
+                  <span v-if="hasSplit" class="split-hint">· 当前划分 {{ splitSummaryText }}</span>
                 </div>
               </div>
               <div class="panel-actions">
                 <el-button size="small" @click="refreshAll">刷新</el-button>
+                <el-button
+                  v-if="canSplitDataset"
+                  size="small"
+                  type="primary"
+                  plain
+                  :loading="splitSubmitting || splitLoading"
+                  @click="openSplitDialog"
+                >
+                  数据集划分
+                </el-button>
                 <el-button size="small" type="success" plain @click="openAugmentationDialog">
                   <i class="el-icon-magic-stick"></i> 样本扩增
                 </el-button>
@@ -202,6 +213,43 @@
       </div>
     </div>
 
+    <el-dialog
+      title="数据集划分"
+      :visible.sync="showSplitDialog"
+      width="420px"
+      :close-on-click-modal="!splitSubmitting"
+      :close-on-press-escape="!splitSubmitting"
+      append-to-body
+      class="split-dialog"
+    >
+      <div class="split-body">
+        <div class="split-row">
+          <label class="split-label">训练</label>
+          <el-input-number v-model="splitForm.train" :min="0" :max="100" size="small" />
+          <span class="split-suffix">%</span>
+        </div>
+        <div class="split-row">
+          <label class="split-label">验证</label>
+          <el-input-number v-model="splitForm.val" :min="0" :max="100" size="small" />
+          <span class="split-suffix">%</span>
+        </div>
+        <div class="split-row">
+          <label class="split-label">测试</label>
+          <el-input-number v-model="splitForm.test" :min="0" :max="100" size="small" />
+          <span class="split-suffix">%</span>
+        </div>
+        <div class="split-sum" :class="{ invalid: !splitValid }">
+          总和：{{ splitSum }}%
+        </div>
+      </div>
+      <div slot="footer" class="dialog-footer">
+        <el-button :disabled="splitSubmitting" @click="showSplitDialog = false">取消</el-button>
+        <el-button type="primary" :loading="splitSubmitting" :disabled="!splitValid" @click="submitSplit">
+          开始划分
+        </el-button>
+      </div>
+    </el-dialog>
+
     <el-dialog title="样本扩增" :visible.sync="showAugmentationDialog" width="1000px" append-to-body class="augmentation-dialog preview-enabled">
       <ManualAugmentationPanel
         v-if="showAugmentationDialog"
@@ -218,7 +266,9 @@ import ManualAugmentationPanel from '@/views/Datasets/components/ManualAugmentat
 import {
   fetchStandardDatasetAnnotations,
   fetchStandardDatasetDetail,
+  fetchStandardDatasetSplitSummary,
   fetchStandardDatasetView,
+  splitStandardDataset,
 } from '@/api/standardDatasets';
 
 export default {
@@ -237,6 +287,7 @@ export default {
       uploading: false,
       uploadProgress: 0,
       showAugmentationDialog: false,
+      showSplitDialog: false,
       showImagePreview: false,
       previewImage: null,
       previewAnnotationsLoading: false,
@@ -244,6 +295,14 @@ export default {
       previewAnnotationData: null,
       previewRequestToken: 0,
       viewRequestToken: 0,
+      splitSubmitting: false,
+      splitLoading: false,
+      splitSummary: null,
+      splitForm: {
+        train: 90,
+        val: 7,
+        test: 3,
+      },
     };
   },
   computed: {
@@ -275,6 +334,28 @@ export default {
     },
     isEmpty() {
       return this.totalImages <= 0;
+    },
+    canSplitDataset() {
+      return String(this.dataset && this.dataset.dataset_type || '').toLowerCase() === 'detection' && !this.isEmpty;
+    },
+    splitSum() {
+      const train = Number(this.splitForm.train) || 0;
+      const val = Number(this.splitForm.val) || 0;
+      const test = Number(this.splitForm.test) || 0;
+      return Math.round((train + val + test) * 100) / 100;
+    },
+    splitValid() {
+      return Math.abs(this.splitSum - 100) < 0.05;
+    },
+    hasSplit() {
+      const summary = this.splitSummary;
+      if (!summary) return false;
+      return ((Number(summary.train_count) || 0) + (Number(summary.val_count) || 0) + (Number(summary.test_count) || 0)) > 0;
+    },
+    splitSummaryText() {
+      if (!this.hasSplit) return '未划分';
+      const summary = this.splitSummary || {};
+      return `训练 ${summary.train_count || 0} / 验证 ${summary.val_count || 0} / 测试 ${summary.test_count || 0}`;
     },
     filteredClassList() {
       const query = String(this.input || '').trim().toLowerCase();
@@ -316,6 +397,8 @@ export default {
       this.datasetId = nextId;
       this.selectedClassId = null;
       this.input = '';
+      this.showSplitDialog = false;
+      this.splitSummary = null;
       this.closeImagePreview();
       this.loadAll();
     },
@@ -371,9 +454,13 @@ export default {
       try {
         const detail = await fetchStandardDatasetDetail(this.datasetId, { eventsLimit: 20 });
         this.detail = detail;
-        await this.loadView();
+        await Promise.all([
+          this.loadView(),
+          this.loadSplitSummary(),
+        ]);
       } catch (error) {
         console.error(error);
+        this.splitSummary = null;
         this.$message.error(`加载标准数据集失败：${error.message || error}`);
       } finally {
         this.loading = false;
@@ -430,6 +517,61 @@ export default {
         }
       }
     },
+    async loadSplitSummary() {
+      if (!this.datasetId || !this.canSplitDataset) {
+        this.splitSummary = null;
+        return;
+      }
+      this.splitLoading = true;
+      try {
+        const summary = await fetchStandardDatasetSplitSummary(this.datasetId);
+        this.splitSummary = summary || null;
+      } catch (error) {
+        console.warn('加载数据集划分摘要失败:', error);
+        this.splitSummary = null;
+      } finally {
+        this.splitLoading = false;
+      }
+    },
+    openSplitDialog() {
+      if (!this.canSplitDataset) return;
+      if (this.hasSplit && this.splitSummary) {
+        this.splitForm = {
+          train: Math.round((Number(this.splitSummary.train_ratio) || 0) * 10000) / 100,
+          val: Math.round((Number(this.splitSummary.val_ratio) || 0) * 10000) / 100,
+          test: Math.round((Number(this.splitSummary.test_ratio) || 0) * 10000) / 100,
+        };
+      } else {
+        this.splitForm = { train: 90, val: 7, test: 3 };
+      }
+      this.showSplitDialog = true;
+    },
+    async submitSplit() {
+      if (!this.datasetId) return;
+      if (!this.splitValid) {
+        this.$message.warning('训练 / 验证 / 测试比例总和必须为 100%');
+        return;
+      }
+      this.splitSubmitting = true;
+      try {
+        const summary = await splitStandardDataset(this.datasetId, {
+          train_ratio: (Number(this.splitForm.train) || 0) / 100,
+          val_ratio: (Number(this.splitForm.val) || 0) / 100,
+          test_ratio: (Number(this.splitForm.test) || 0) / 100,
+          seed: 42,
+          shuffle: true,
+          overwrite: true,
+        });
+        this.splitSummary = summary || null;
+        this.$message.success('数据集划分完成');
+        this.showSplitDialog = false;
+        await this.loadAll();
+      } catch (error) {
+        this.$message.error(`数据集划分失败：${error && error.message ? error.message : error || '未知错误'}`);
+      } finally {
+        this.splitSubmitting = false;
+      }
+    },
     selectClass(classId) {
       this.selectedClassId = classId === null || classId === undefined || classId === '' ? null : Number(classId);
       this.loadView();
@@ -455,7 +597,7 @@ export default {
       });
 
       try {
-        const data = await fetchStandardDatasetAnnotations(this.datasetId, image.image_name);
+        const data = await fetchStandardDatasetAnnotations(this.datasetId, image.image_path || image.image_name);
         if (token !== this.previewRequestToken) return;
         this.previewAnnotationData = data;
         this.previewAnnotationsLoading = false;
@@ -824,6 +966,10 @@ export default {
   margin-top: 4px;
 }
 
+.split-hint {
+  color: #475569;
+}
+
 .search-box {
   margin-bottom: 16px;
 }
@@ -914,6 +1060,37 @@ export default {
 .panel-actions {
   display: flex;
   gap: 10px;
+}
+
+.split-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.split-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.split-label {
+  width: 56px;
+  color: #111827;
+  font-weight: 600;
+}
+
+.split-suffix {
+  color: #64748b;
+}
+
+.split-sum {
+  font-size: 13px;
+  color: #64748b;
+}
+
+.split-sum.invalid {
+  color: #dc2626;
 }
 
 .count-badge {

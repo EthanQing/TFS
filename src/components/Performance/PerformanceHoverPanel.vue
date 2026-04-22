@@ -4,7 +4,7 @@
       <div class="panel-header">
         <div>
           <div class="panel-title">性能监控</div>
-          <div class="panel-subtitle">默认节点：backend</div>
+          <div class="panel-subtitle">当前主机资源概览</div>
         </div>
         <div class="panel-time">更新 {{ updatedText }}</div>
       </div>
@@ -57,7 +57,7 @@
         <div v-if="error" class="inline-error">{{ error }}</div>
 
         <div class="panel-footer">
-          点击按钮进入性能监控页面
+          点击按钮进入本机性能监控页面
         </div>
       </template>
     </div>
@@ -145,7 +145,7 @@ export default {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
   margin-bottom: 16px;
 }

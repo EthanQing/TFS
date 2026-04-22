@@ -2,17 +2,18 @@
   <div class="performance-page page-container">
     <header class="monitor-hero">
       <div class="hero-main">
-        <div class="hero-eyebrow">Global Runtime Monitor</div>
+        <div class="hero-eyebrow">Single Host Monitor</div>
         <h1 class="hero-title">性能监控</h1>
         <p class="hero-subtitle">
-          全局查看 backend 节点的 CPU、内存与显存使用情况，并跟踪最近 {{ historyMinutes }} 分钟的变化趋势。
+          统一查看当前主机的 CPU、内存、GPU 利用率与显存使用情况，并跟踪最近 {{ historyMinutes }} 分钟的变化趋势。
         </p>
       </div>
       <div class="hero-side">
         <div class="hero-chip">
           <i class="el-icon-data-analysis"></i>
-          <span>默认节点：{{ nodeId }}</span>
+          <span>单机监控</span>
         </div>
+        <div class="hero-chip hero-chip-secondary">{{ gpuCountText }}</div>
         <div class="hero-meta">最近更新：{{ lastUpdatedText }}</div>
         <el-button
           type="primary"
@@ -59,11 +60,11 @@
       <section class="detail-panel glass-panel">
         <div class="section-header">
           <div>
-            <h2>当前资源详情</h2>
-            <p>悬浮小面板与详情页保持同一口径，方便快速定位资源占用情况。</p>
+            <h2>当前主机资源详情</h2>
+            <p>悬浮小面板与详情页保持同一口径，方便快速定位整机资源占用情况。</p>
           </div>
           <div class="section-side">
-            <span class="section-chip">{{ nodeId }} / {{ nodeType }}</span>
+            <span class="section-chip">CPU / 内存 / GPU / 显存</span>
           </div>
         </div>
 
@@ -92,11 +93,72 @@
         <div v-if="error" class="inline-error">{{ error }}</div>
       </section>
 
+      <section class="gpu-panel glass-panel">
+        <div class="section-header">
+          <div>
+            <h2>GPU 设备详情</h2>
+            <p>单机模式下展示当前主机上所有 GPU 的实时利用率和显存占用。</p>
+          </div>
+          <div class="section-side">
+            <span class="section-chip">{{ gpuCountText }}</span>
+          </div>
+        </div>
+
+        <div v-if="!gpuDevices.length" class="chart-state">
+          <i class="el-icon-data-analysis"></i>
+          <span>当前主机未检测到可用 GPU，或暂时无法读取 GPU 指标。</span>
+        </div>
+        <div v-else class="gpu-grid">
+          <article
+            v-for="gpu in gpuDevices"
+            :key="gpu.key"
+            class="gpu-card"
+          >
+            <div class="gpu-card-header">
+              <div>
+                <div class="gpu-card-title">{{ gpu.title }}</div>
+                <div class="gpu-card-name">{{ gpu.name }}</div>
+              </div>
+              <div class="gpu-card-meta">{{ gpu.utilizationText }}</div>
+            </div>
+            <div v-if="gpu.uuid" class="gpu-uuid">{{ gpu.uuid }}</div>
+
+            <div class="gpu-metric-list">
+              <div class="gpu-metric-row">
+                <div class="gpu-metric-top">
+                  <span class="gpu-metric-label">GPU 利用率</span>
+                  <span class="gpu-metric-value">{{ gpu.utilizationText }}</span>
+                </div>
+                <el-progress
+                  :percentage="progressValue(gpu.utilizationPercent)"
+                  :show-text="false"
+                  :stroke-width="8"
+                  color="#8b5cf6"
+                ></el-progress>
+              </div>
+
+              <div class="gpu-metric-row">
+                <div class="gpu-metric-top">
+                  <span class="gpu-metric-label">显存占用</span>
+                  <span class="gpu-metric-value">{{ gpu.memoryText }}</span>
+                </div>
+                <el-progress
+                  :percentage="progressValue(gpu.memoryPercent)"
+                  :show-text="false"
+                  :stroke-width="8"
+                  color="#ec4899"
+                ></el-progress>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+
       <section class="trend-panel glass-panel">
         <div class="section-header">
           <div>
             <h2>最近 {{ historyMinutes }} 分钟趋势</h2>
-            <p>每 {{ stepSeconds }} 秒采样一次，展示 CPU / 内存 / 显存占比变化。</p>
+            <p>每 {{ stepSeconds }} 秒采样一次，展示 CPU / 内存 / GPU 利用率 / 显存占比变化。</p>
           </div>
           <div class="section-side">
             <span class="section-chip">{{ historyPoints.length }} 个采样点</span>
@@ -127,8 +189,7 @@ import { metricsStore, subscribe, unsubscribe, refresh } from "@/store/metricsSt
 import {
   DEFAULT_HISTORY_MINUTES,
   DEFAULT_HISTORY_STEP_SECONDS,
-  DEFAULT_MONITOR_NODE_ID,
-  DEFAULT_MONITOR_NODE_TYPE,
+  buildGpuDeviceItems,
   buildResourceItems,
   buildSystemMetricTrendOptions,
   formatMetricDateTime,
@@ -142,8 +203,6 @@ export default {
   },
   data() {
     return {
-      nodeId: DEFAULT_MONITOR_NODE_ID,
-      nodeType: DEFAULT_MONITOR_NODE_TYPE,
       historyMinutes: DEFAULT_HISTORY_MINUTES,
       stepSeconds: DEFAULT_HISTORY_STEP_SECONDS,
     };
@@ -172,6 +231,12 @@ export default {
     },
     resourceItems() {
       return buildResourceItems(this.summary);
+    },
+    gpuDevices() {
+      return buildGpuDeviceItems(this.summary);
+    },
+    gpuCountText() {
+      return this.gpuDevices.length ? `${this.gpuDevices.length} 张 GPU` : "未检测到 GPU";
     },
     lastUpdatedText() {
       if (this.summary?.timestamp) return formatMetricDateTime(this.summary.timestamp);
@@ -266,6 +331,11 @@ export default {
   font-weight: 600;
 }
 
+.hero-chip-secondary {
+  background: rgba(15, 23, 42, 0.05);
+  color: var(--text-secondary);
+}
+
 .hero-meta {
   font-size: 0.82rem;
   color: var(--text-secondary);
@@ -273,7 +343,7 @@ export default {
 
 .summary-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -315,6 +385,7 @@ export default {
 }
 
 .detail-panel,
+.gpu-panel,
 .trend-panel {
   padding: 1.5rem;
   border-radius: 22px;
@@ -347,7 +418,7 @@ export default {
 
 .detail-list {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 1rem;
 }
 
@@ -391,6 +462,83 @@ export default {
   color: var(--color-danger);
 }
 
+.gpu-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.gpu-card {
+  padding: 1.1rem;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(248, 250, 252, 0.96) 100%);
+  border: 1px solid rgba(226, 232, 240, 0.95);
+}
+
+.gpu-card-header {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.gpu-card-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text-main);
+}
+
+.gpu-card-name {
+  margin-top: 0.25rem;
+  font-size: 0.84rem;
+  color: var(--text-secondary);
+}
+
+.gpu-card-meta {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #8b5cf6;
+}
+
+.gpu-uuid {
+  margin-top: 0.5rem;
+  font-size: 0.72rem;
+  color: var(--text-light);
+  word-break: break-all;
+}
+
+.gpu-metric-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin-top: 1rem;
+}
+
+.gpu-metric-row {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.gpu-metric-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.gpu-metric-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--text-main);
+}
+
+.gpu-metric-value {
+  font-size: 0.78rem;
+  color: var(--text-secondary);
+  text-align: right;
+}
+
 .chart-state,
 .state-panel {
   min-height: 260px;
@@ -423,7 +571,8 @@ export default {
 
 @media (max-width: 1200px) {
   .summary-grid,
-  .detail-list {
+  .detail-list,
+  .gpu-grid {
     grid-template-columns: 1fr;
   }
 }

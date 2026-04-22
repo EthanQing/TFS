@@ -36,6 +36,7 @@ const AlarmRule = () => import('@/views/Configuration/AlarmRule.vue')
 const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
 const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
+const PerformanceMonitor = () => import('@/views/Monitoring/PerformanceMonitor.vue')
 
 export default new VueRouter({
     routes: [
@@ -101,9 +102,8 @@ export default new VueRouter({
             component: FormatConversion
         },
         {
-            // 暂时屏蔽性能监控页面，统一回到数据集首页
             path: '/performance-monitor',
-            redirect: { path: '/datasets' }
+            component: PerformanceMonitor
         },
 
         {

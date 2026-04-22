@@ -4,7 +4,7 @@
  */
 import {
     API_BASE, WS_BASE,
-    safeJson, postJson, putJson, deleteJson, getJson,
+    safeJson, postJson, deleteJson, getJson,
     xhrUploadJson,
     toAbsUrl, encodePathSegments, formatMb,
     pickErrorMessage, createReconnectingWs,
@@ -111,6 +111,41 @@ export async function fetchStandardDatasetEvents(datasetId, { page = 1, pageSize
     return getJson(url);
 }
 
+// ── Split ─────────────────────────────────────────────────────────────────
+
+export async function fetchStandardDatasetSplitSummary(datasetId, { page = 1, pageSize = 1, split = null } = {}) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    const params = new URLSearchParams();
+    params.set('page', String(page));
+    params.set('page_size', String(pageSize));
+    if (split != null && split !== '') params.set('split', String(split));
+    const url = `${PREFIX}/${encodeURIComponent(datasetId)}/split?${params.toString()}`;
+    const data = await getJson(url);
+    return data && data.summary ? data.summary : data;
+}
+
+export async function splitStandardDataset(
+    datasetId,
+    {
+        train_ratio = 0.9,
+        val_ratio = 0.07,
+        test_ratio = 0.03,
+        seed = 42,
+        shuffle = true,
+        overwrite = true,
+    } = {}
+) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/split`, {
+        train_ratio,
+        val_ratio,
+        test_ratio,
+        seed,
+        shuffle: !!shuffle,
+        overwrite: !!overwrite,
+    });
+}
+
 // ── View / Annotations / Statistics / Files ──────────────────────────────
 
 export async function fetchStandardDatasetView(datasetId, { classId = null, page = 1, pageSize = 50 } = {}) {
@@ -124,15 +159,20 @@ export async function fetchStandardDatasetView(datasetId, { classId = null, page
     return {
         dataset_id: data.dataset_id,
         categories: data.categories || [],
-        items: (data.items || []).map(item => ({
-            ...item,
-            image_name: item.name,
-            image_path: item.name,
-            image_url: toAbsUrl(item.url),
-            thumbnail_url: toAbsUrl(item.thumbnail_url),
-            objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
-            classes_in_image: item.classes || [],
-        })),
+        items: (data.items || []).map(item => {
+            const relPath = String(item.path || item.name || '').trim();
+            return {
+                ...item,
+                image_name: item.name,
+                image_path: relPath || item.name,
+                image_url: toAbsUrl(item.url),
+                thumbnail_url: relPath
+                    ? buildStandardThumbnailUrl(datasetId, relPath, { size: 320 })
+                    : toAbsUrl(item.thumbnail_url),
+                objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
+                classes_in_image: item.classes || [],
+            };
+        }),
         meta: {
             page: Number(data?.meta?.page || 1) || 1,
             page_size: Number(data?.meta?.page_size || pageSize || 50) || 50,

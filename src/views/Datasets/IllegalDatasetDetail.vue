@@ -5,17 +5,17 @@
         <button class="back-link" type="button" @click="goBack">
           <i class="el-icon-arrow-left"></i> 返回数据集列表
         </button>
-        <div class="hero-content">
-          <div class="hero-kicker">数据集概览</div>
-          <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
-          <div class="hero-meta">
+          <div class="hero-content">
+            <div class="hero-kicker">数据集概览</div>
+            <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
+            <div class="hero-meta">
             <span class="meta-pill info">{{ datasetTypeLabel }}</span>
             <span class="meta-pill warning">非法数据集</span>
             <span v-if="activeVersion" class="meta-pill success">当前版本 v{{ activeVersion.version }}</span>
             <span class="meta-id">ID: {{ datasetId || '-' }}</span>
           </div>
           <p class="hero-desc">
-            非法数据集会长期保留原始数据与标签映射；你可以在原有详情页体验基础上继续管理版本，并反复发布新的标准数据集。
+            非法数据集会长期保留原始数据与标签映射；你可以在原有详情页体验基础上继续管理版本，并通过“保存并转换”反复生成新的标准数据集。
           </p>
         </div>
       </div>
@@ -54,11 +54,11 @@
             <div class="illegal-content">
               <div class="illegal-title">非法数据集</div>
               <div class="illegal-desc">
-                请先按原来的方式配置标签映射与切片参数；当前非法数据集会被保留，可继续追加版本并多次发布为新的 YOLO 标准数据集。
+                请先按原来的方式配置标签映射与切片参数；当前非法数据集会被保留，可继续追加版本，并直接通过“保存并转换”生成新的 YOLO 标准数据集。
               </div>
               <div class="illegal-badge">
                 <span class="badge-dot"></span>
-                当前激活版本：{{ activeVersion ? `v${activeVersion.version}` : '未生成版本' }} · 发布输出固定为 YOLO
+                当前激活版本：{{ activeVersion ? `v${activeVersion.version}` : '未生成版本' }} · 转换输出固定为 YOLO
               </div>
             </div>
             <div class="illegal-actions">
@@ -112,15 +112,15 @@
         </div>
 
         <div v-if="isEmpty" class="empty-state">
-          <div class="empty-content">
-            <div class="empty-title">当前非法数据集还是空的</div>
-            <div class="empty-desc">
-              请先上传原始 ZIP 数据。上传后即可继续使用旧版标签映射界面配置映射，并发布为新的标准数据集。
-            </div>
-            <div class="empty-tips">
-              <span class="tip-item"><i class="el-icon-check"></i> 非法数据集会保留原始数据</span>
+            <div class="empty-content">
+              <div class="empty-title">当前非法数据集还是空的</div>
+              <div class="empty-desc">
+                请先上传原始 ZIP 数据。上传后即可继续使用旧版标签映射界面配置映射，并转换为新的标准数据集。
+              </div>
+              <div class="empty-tips">
+                <span class="tip-item"><i class="el-icon-check"></i> 非法数据集会保留原始数据</span>
               <span class="tip-item"><i class="el-icon-check"></i> 每次上传都会形成独立版本</span>
-              <span class="tip-item"><i class="el-icon-check"></i> 可反复发布多个标准数据集</span>
+              <span class="tip-item"><i class="el-icon-check"></i> 可反复转换多个标准数据集</span>
             </div>
           </div>
           <div class="empty-action">
@@ -206,74 +206,6 @@
           </div>
 
           <aside class="side-column">
-            <section class="section-card">
-              <div class="section-head">
-                <div>
-                  <div class="section-title">发布为标准数据集</div>
-                  <div class="section-sub">会复用左侧映射与切片参数，输出固定为 YOLO</div>
-                </div>
-              </div>
-              <div class="section-tip publish-tip">
-                发布会创建一个全新的标准数据集，不会删除或绑定当前非法数据集本体。
-              </div>
-              <el-form :model="publishForm" label-position="top" size="small">
-                <el-form-item label="标准数据集名称">
-                  <el-input v-model.trim="publishForm.name" placeholder="例如：道路目标训练集" />
-                </el-form-item>
-                <el-form-item label="说明">
-                  <el-input v-model.trim="publishForm.description" type="textarea" :rows="2" placeholder="可选" />
-                </el-form-item>
-                <el-form-item label="来源版本">
-                  <el-select v-model="publishForm.version_id" style="width: 100%" placeholder="默认使用当前激活版本">
-                    <el-option
-                      v-for="item in versions"
-                      :key="item.version_id"
-                      :label="`v${item.version} · ${versionStatusLabel(item.status)}`"
-                      :value="item.version_id"
-                    />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="标签筛选（可选）">
-                  <el-select
-                    v-model="publishForm.label_filters"
-                    multiple
-                    collapse-tags
-                    filterable
-                    style="width: 100%"
-                    placeholder="不筛选则保留全部标签"
-                  >
-                    <el-option v-for="label in publishTargetLabels" :key="label" :label="label" :value="label" />
-                  </el-select>
-                </el-form-item>
-                <el-form-item label="数据切分">
-                  <div class="split-row">
-                    <el-input-number v-model="publishForm.train_ratio" :min="0" :max="1" :step="0.05" :precision="2" />
-                    <span>train</span>
-                    <el-input-number v-model="publishForm.val_ratio" :min="0" :max="1" :step="0.05" :precision="2" />
-                    <span>val</span>
-                    <el-input-number v-model="publishForm.test_ratio" :min="0" :max="1" :step="0.05" :precision="2" />
-                    <span>test</span>
-                  </div>
-                  <div class="publish-split-summary" :class="{ invalid: !publishSplitValid }">
-                    当前总和：{{ publishSplitTotal.toFixed(2) }}
-                  </div>
-                </el-form-item>
-                <el-form-item label="划分行为">
-                  <el-row :gutter="12">
-                    <el-col :span="12">
-                      <el-switch v-model="publishForm.split_shuffle" active-text="发布时打乱顺序" />
-                    </el-col>
-                    <el-col :span="12">
-                      <el-input-number v-model="publishForm.split_seed" :min="0" :max="999999" controls-position="right" class="full-width" />
-                    </el-col>
-                  </el-row>
-                </el-form-item>
-                <el-button type="success" :loading="publishing" style="width: 100%" @click="publishToStandard()">
-                  发布新的标准数据集
-                </el-button>
-              </el-form>
-            </section>
-
             <section class="section-card">
               <div class="section-head">
                 <div class="section-title">版本列表</div>
@@ -466,15 +398,7 @@ export default {
         updated_at: null,
       },
       publishForm: {
-        name: '',
-        description: '',
         version_id: null,
-        label_filters: [],
-        train_ratio: 0.8,
-        val_ratio: 0.2,
-        test_ratio: 0,
-        split_shuffle: true,
-        split_seed: 42,
         slice_size: 1280,
         slice_overlap: 0.2,
         slice_padding: 64,
@@ -567,12 +491,6 @@ export default {
         .map((row) => String(row && row.mapped_label || '').trim())
         .filter((value) => value && value !== '__DISCARD__');
       return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'zh-CN'));
-    },
-    publishSplitTotal() {
-      return (Number(this.publishForm.train_ratio) || 0) + (Number(this.publishForm.val_ratio) || 0) + (Number(this.publishForm.test_ratio) || 0);
-    },
-    publishSplitValid() {
-      return Math.abs(this.publishSplitTotal - 1) < 0.001;
     },
     presetApplyOptions() {
       return [
@@ -984,6 +902,23 @@ export default {
         empty_positive_action: this.publishForm.slice_empty_positive_action,
       };
     },
+    buildDefaultStandardDatasetName() {
+      const base = String(this.datasetName || `illegal-${this.datasetId}` || 'illegal-dataset').trim() || 'illegal-dataset';
+      const versionText = this.activeVersion && this.activeVersion.version ? `v${this.activeVersion.version}` : 'v0';
+      const now = new Date();
+      const pad = (value, size = 2) => String(value).padStart(size, '0');
+      const stamp = [
+        now.getFullYear(),
+        pad(now.getMonth() + 1),
+        pad(now.getDate()),
+      ].join('') + '-' + [
+        pad(now.getHours()),
+        pad(now.getMinutes()),
+        pad(now.getSeconds()),
+        pad(now.getMilliseconds(), 3),
+      ].join('');
+      return `${base}-standard-${versionText}-${stamp}`;
+    },
     syncPanelFromSavedMappings() {
       this.$nextTick(() => {
         const panel = this.$refs.labelMappingPanel;
@@ -1019,12 +954,7 @@ export default {
         this.mappingRows = this.normalizeMappings(this.rawLabels, mappingItems);
         this.files = Array.isArray(filePage && filePage.items) ? filePage.items : [];
 
-        if (!this.publishForm.name) {
-          this.publishForm.name = `${this.datasetName}-standard`;
-        }
-        if (!this.publishForm.version_id && this.activeVersionId) {
-          this.publishForm.version_id = this.activeVersionId;
-        }
+        this.publishForm.version_id = this.activeVersionId || null;
 
         await this.loadPreview();
         this.syncPanelFromSavedMappings();
@@ -1082,9 +1012,6 @@ export default {
     },
     async handleSaveAndConvert(mapping, sliceParams) {
       this.applySliceParamsToPublishForm(sliceParams);
-      if (!this.publishForm.name) {
-        this.publishForm.name = `${this.datasetName}-standard`;
-      }
       await this.publishToStandard({ mappingOverride: mapping, sliceParams, skipSaveMappings: false });
     },
     async activateVersion(row) {
@@ -1100,19 +1027,10 @@ export default {
       }
     },
     async publishToStandard({ mappingOverride = null, sliceParams = null, skipSaveMappings = false } = {}) {
-      const name = String(this.publishForm.name || '').trim();
-      if (!name) {
-        this.$message.warning('请先填写标准数据集名称');
-        return;
-      }
-      if (!this.publishSplitValid) {
-        this.$message.warning('请检查 train / val / test 划分比例，总和必须为 1');
-        return;
-      }
-
       const effectiveSliceParams = sliceParams || this.getPanelSliceParams();
       this.applySliceParamsToPublishForm(effectiveSliceParams);
       const effectiveMapping = mappingOverride || this.getPanelMappingObject();
+      const name = this.buildDefaultStandardDatasetName();
 
       if (!skipSaveMappings) {
         const ok = await this.handleLabelMappingSave(effectiveMapping, { silent: true });
@@ -1123,23 +1041,15 @@ export default {
       try {
         const result = await publishIllegalDataset(this.datasetId, {
           name,
-          description: String(this.publishForm.description || '').trim() || undefined,
           version_id: this.publishForm.version_id || this.activeVersionId || undefined,
-          label_filters: Array.isArray(this.publishForm.label_filters) ? this.publishForm.label_filters : [],
+          label_filters: [],
           label_mapping_overrides: effectiveMapping,
-          split: {
-            train: Number(this.publishForm.train_ratio) || 0,
-            val: Number(this.publishForm.val_ratio) || 0,
-            test: Number(this.publishForm.test_ratio) || 0,
-            shuffle: !!this.publishForm.split_shuffle,
-            seed: Number(this.publishForm.split_seed) || 0,
-          },
           publish_config: this.buildPublishConfig(),
         });
         const standardDatasetId = result && result.standard_dataset_id;
-        this.$message.success(`标准数据集已创建：#${standardDatasetId}`);
+        this.$message.success(`标准数据集已转换完成：#${standardDatasetId}`);
         if (standardDatasetId) {
-          this.$confirm('标准数据集已生成，是否立即前往详情页查看？', '发布成功', {
+          this.$confirm('标准数据集已生成，是否立即前往详情页查看？', '转换成功', {
             type: 'success',
             confirmButtonText: '前往查看',
             cancelButtonText: '留在当前页',
@@ -1150,7 +1060,7 @@ export default {
         await this.loadAll();
       } catch (error) {
         console.error(error);
-        this.$message.error(`发布失败：${error.message || error}`);
+        this.$message.error(`转换失败：${error.message || error}`);
       } finally {
         this.publishing = false;
       }

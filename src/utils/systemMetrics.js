@@ -124,8 +124,16 @@ export function getProgressValue(value) {
   return Math.min(100, Math.max(0, Number(n.toFixed(1))));
 }
 
+function formatGpuCount(count) {
+  const n = Math.max(0, Number(count) || 0);
+  return `${n} 张 GPU`;
+}
+
 export function buildResourceItems(metric) {
   const normalized = metric ? normalizeSystemMetric(metric) : normalizeSystemMetric({});
+  const gpuMemoryPercent = normalized.gpuAvailable
+    ? derivePercent(normalized.gpuUsedMb, normalized.gpuTotalMb)
+    : null;
   return [
     {
       key: "cpu",
@@ -149,15 +157,50 @@ export function buildResourceItems(metric) {
     },
     {
       key: "gpu",
-      label: "显存",
+      label: "GPU",
       percent: normalized.gpuAvailable ? normalized.gpuPercent : null,
       headlineValue: normalized.gpuAvailable ? formatPercent(normalized.gpuPercent) : "N/A",
-      detailValue: normalized.gpuAvailable ? formatUsage(normalized.gpuUsedMb, normalized.gpuTotalMb) : "不可用",
+      detailValue: normalized.gpuAvailable ? formatGpuCount(normalized.gpuCount) : "不可用",
       available: normalized.gpuAvailable,
       color: "#8b5cf6",
-      detailHint: normalized.gpuAvailable ? "已用 / 总量" : "当前节点无 GPU",
+      detailHint: normalized.gpuAvailable ? "平均利用率" : "当前主机无 GPU",
+    },
+    {
+      key: "gpu-memory",
+      label: "显存",
+      percent: gpuMemoryPercent,
+      headlineValue: normalized.gpuAvailable ? formatPercent(gpuMemoryPercent) : "N/A",
+      detailValue: normalized.gpuAvailable ? formatUsage(normalized.gpuUsedMb, normalized.gpuTotalMb) : "不可用",
+      available: normalized.gpuAvailable,
+      color: "#ec4899",
+      detailHint: normalized.gpuAvailable ? "已用 / 总量" : "当前主机无 GPU",
     },
   ];
+}
+
+export function buildGpuDeviceItems(metric) {
+  const normalized = metric ? normalizeSystemMetric(metric) : normalizeSystemMetric({});
+  return (Array.isArray(normalized.gpus) ? normalized.gpus : []).map((gpu, index) => {
+    const gpuIndex = Math.max(0, Number(gpu.gpu_index ?? gpu.gpuIndex ?? index) || 0);
+    const utilizationPercent = clampPercent(gpu.utilization_percent ?? gpu.utilizationPercent);
+    const memoryUsedMb = toNumberOrNull(gpu.memory_used_mb ?? gpu.memoryUsedMb);
+    const memoryTotalMb = toNumberOrNull(gpu.memory_total_mb ?? gpu.memoryTotalMb);
+    const memoryPercent =
+      clampPercent(gpu.memory_percent ?? gpu.memoryPercent) ?? derivePercent(memoryUsedMb, memoryTotalMb);
+
+    return {
+      key: `gpu-${gpuIndex}`,
+      gpuIndex,
+      title: `GPU ${gpuIndex}`,
+      name: String(gpu.name || `GPU ${gpuIndex}`),
+      uuid: gpu.uuid ? String(gpu.uuid) : "",
+      utilizationPercent,
+      utilizationText: formatPercent(utilizationPercent),
+      memoryPercent,
+      memoryText: formatUsage(memoryUsedMb, memoryTotalMb),
+      progressPercent: utilizationPercent ?? memoryPercent,
+    };
+  });
 }
 
 export function mergeHistoryPoints(...groups) {
@@ -187,7 +230,7 @@ export function buildSystemMetricTrendOptions(points = []) {
   const labels = normalizedPoints.map((item) => formatMetricTime(item.timestamp));
 
   return {
-    color: ["#2563eb", "#10b981", "#8b5cf6"],
+    color: ["#2563eb", "#10b981", "#8b5cf6", "#ec4899"],
     tooltip: {
       trigger: "axis",
       backgroundColor: "rgba(15, 23, 42, 0.92)",
@@ -269,11 +312,20 @@ export function buildSystemMetricTrendOptions(points = []) {
         areaStyle: { opacity: 0.08 },
       },
       {
-        name: "显存",
+        name: "GPU",
         type: "line",
         smooth: true,
         symbol: "none",
         data: normalizedPoints.map((item) => item.gpuPercent),
+        lineStyle: { width: 3 },
+        areaStyle: { opacity: 0.08 },
+      },
+      {
+        name: "显存",
+        type: "line",
+        smooth: true,
+        symbol: "none",
+        data: normalizedPoints.map((item) => derivePercent(item.gpuUsedMb, item.gpuTotalMb)),
         lineStyle: { width: 3 },
         areaStyle: { opacity: 0.08 },
       },

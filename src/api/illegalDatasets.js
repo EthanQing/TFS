@@ -225,15 +225,20 @@ export async function fetchIllegalDatasetView(datasetId, { versionId = null, cla
         dataset_id: data.dataset_id,
         version_id: data.version_id,
         categories: data.categories || [],
-        items: (data.items || []).map(item => ({
-            ...item,
-            image_name: item.name,
-            image_path: item.name,
-            image_url: toAbsUrl(item.url),
-            thumbnail_url: toAbsUrl(item.thumbnail_url),
-            objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
-            classes_in_image: item.classes || [],
-        })),
+        items: (data.items || []).map(item => {
+            const relPath = String(item.path || item.name || '').trim();
+            return {
+                ...item,
+                image_name: item.name,
+                image_path: relPath || item.name,
+                image_url: toAbsUrl(item.url),
+                thumbnail_url: relPath
+                    ? buildIllegalThumbnailUrl(datasetId, relPath, { versionId, size: 320 })
+                    : toAbsUrl(item.thumbnail_url),
+                objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
+                classes_in_image: item.classes || [],
+            };
+        }),
         meta: {
             page: Number(data?.meta?.page || 1) || 1,
             page_size: Number(data?.meta?.page_size || pageSize || 50) || 50,
