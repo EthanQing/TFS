@@ -18,13 +18,6 @@
       <aside class="deploy-sidebar glass-panel">
         <div class="sidebar-header">工具箱</div>
         <ul class="tool-list">
-          <li :class="{ active: activeTool === 'deploy-service' }" @click="setActiveTool('deploy-service')">
-            <i class="el-icon-s-operation"></i>
-            <div class="tool-info">
-              <span class="tool-name">模型部署服务</span>
-              <span class="tool-desc">流水线·进度·日志·重试</span>
-            </div>
-          </li>
           <li :class="{ active: activeTool === 'conversion' }" @click="setActiveTool('conversion')">
             <i class="el-icon-refresh"></i>
             <div class="tool-info">
@@ -44,6 +37,13 @@
             <div class="tool-info">
               <span class="tool-name">推理测试</span>
               <span class="tool-desc">单图 / 批量 / 视频</span>
+            </div>
+          </li>
+          <li :class="{ active: activeTool === 'deploy-service' }" @click="setActiveTool('deploy-service')">
+            <i class="el-icon-s-operation"></i>
+            <div class="tool-info">
+              <span class="tool-name">模型部署服务</span>
+              <span class="tool-desc">流水线·进度·日志·重试</span>
             </div>
           </li>
           <li :class="{ active: activeTool === 'rollback' }" @click="setActiveTool('rollback')">
@@ -105,36 +105,179 @@ export default {
       this.activeTool = tool;
       const cur = String(this.$route?.query?.tool || "").trim();
       if (cur === tool) return;
-      this.$router.replace({ path: "/deployment", query: { ...this.$route.query, tool } }).catch(() => {});
+      this.$router.replace({ path: "/deployment", query: { ...this.$route.query, tool } }).catch(() => { });
     },
   },
 };
 </script>
 
 <style scoped>
-.deployment-page { height: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
-.deploy-hero { flex-shrink: 0; display: flex; justify-content: space-between; align-items: flex-end; gap: 2rem; padding: 2rem; border-radius: var(--radius-lg); background: #fff; border-bottom: 1px solid var(--line-200); color: var(--text-main); }
-.hero-left { display: flex; flex-direction: column; gap: 0.5rem; }
-.hero-eyebrow { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary); font-weight: 600; }
-.hero-title { font-size: 2rem; font-weight: 700; margin: 0; color: var(--text-main); }
-.hero-subtitle { font-size: 0.9rem; color: var(--text-secondary); margin: 0; }
-.stat-card { min-width: 90px; padding: 0.5rem 1rem; border-radius: var(--radius-md); background: #f3f4f6; border: 1px solid #e5e7eb; text-align: center; }
-.stat-label { font-size: 0.7rem; color: var(--text-secondary); }
-.stat-value { font-size: 1.125rem; font-weight: 700; color: var(--text-main); margin-top: 0.25rem; }
-.deploy-body { flex: 1; display: flex; gap: 1.5rem; min-height: 0; }
-.deploy-sidebar { flex: 0 0 300px; background: rgba(255, 255, 255, 0.6); display: flex; flex-direction: column; padding: 1rem; }
-.sidebar-header { padding: 0.5rem 1rem; font-size: 0.875rem; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
-.tool-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.5rem; }
-.tool-list li { display: flex; align-items: center; gap: 1rem; padding: 1rem; border-radius: var(--radius-md); cursor: pointer; transition: all 0.2s; border: 1px solid transparent; }
-.tool-list li:hover { background: rgba(255, 255, 255, 0.5); transform: translateX(4px); }
-.tool-list li.active { background: #fff; box-shadow: var(--shadow-md); border-color: rgba(0, 0, 0, 0.05); }
-.tool-list li.active i { color: var(--color-primary); }
-.tool-list li i { font-size: 1.5rem; color: var(--text-secondary); transition: color 0.2s; }
-.tool-info { display: flex; flex-direction: column; min-width: 0; }
-.tool-name { font-weight: 600; color: var(--text-main); font-size: 0.95rem; }
-.tool-desc { font-size: 0.75rem; color: var(--text-secondary); }
-.deploy-main { flex: 1; min-width: 0; overflow-y: auto; overflow-x: hidden; padding: 1rem; }
-.fade-enter-active, .fade-leave-active { transition: opacity 0.2s; }
-.fade-enter, .fade-leave-to { opacity: 0; }
-</style>
+.deployment-page {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
 
+.deploy-hero {
+  flex-shrink: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  gap: 2rem;
+  padding: 2rem;
+  border-radius: var(--radius-lg);
+  background: #fff;
+  border-bottom: 1px solid var(--line-200);
+  color: var(--text-main);
+}
+
+.hero-left {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.hero-eyebrow {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.hero-title {
+  font-size: 2rem;
+  font-weight: 700;
+  margin: 0;
+  color: var(--text-main);
+}
+
+.hero-subtitle {
+  font-size: 0.9rem;
+  color: var(--text-secondary);
+  margin: 0;
+}
+
+.stat-card {
+  min-width: 90px;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-md);
+  background: #f3f4f6;
+  border: 1px solid #e5e7eb;
+  text-align: center;
+}
+
+.stat-label {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+}
+
+.stat-value {
+  font-size: 1.125rem;
+  font-weight: 700;
+  color: var(--text-main);
+  margin-top: 0.25rem;
+}
+
+.deploy-body {
+  flex: 1;
+  display: flex;
+  gap: 1.5rem;
+  min-height: 0;
+}
+
+.deploy-sidebar {
+  flex: 0 0 300px;
+  background: rgba(255, 255, 255, 0.6);
+  display: flex;
+  flex-direction: column;
+  padding: 1rem;
+}
+
+.sidebar-header {
+  padding: 0.5rem 1rem;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.5rem;
+}
+
+.tool-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.tool-list li {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.tool-list li:hover {
+  background: rgba(255, 255, 255, 0.5);
+  transform: translateX(4px);
+}
+
+.tool-list li.active {
+  background: #fff;
+  box-shadow: var(--shadow-md);
+  border-color: rgba(0, 0, 0, 0.05);
+}
+
+.tool-list li.active i {
+  color: var(--color-primary);
+}
+
+.tool-list li i {
+  font-size: 1.5rem;
+  color: var(--text-secondary);
+  transition: color 0.2s;
+}
+
+.tool-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.tool-name {
+  font-weight: 600;
+  color: var(--text-main);
+  font-size: 0.95rem;
+}
+
+.tool-desc {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.deploy-main {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 1rem;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s;
+}
+
+.fade-enter,
+.fade-leave-to {
+  opacity: 0;
+}
+</style>
