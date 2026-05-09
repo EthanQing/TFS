@@ -716,6 +716,8 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 24px;
+  height: 100vh;
+  overflow: hidden;
 }
 
 .glass-panel,
@@ -833,6 +835,9 @@ export default {
 
 .detail-body {
   padding: 22px;
+  flex:1;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .loading-state {
@@ -891,10 +896,25 @@ export default {
   display: grid;
   grid-template-columns: 300px minmax(0, 1fr);
   gap: 20px;
+  height: 100%;
+  min-height: 0;
+}
+.sidebar-panel {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.sidebar-panel,
-.images-panel,
+.images-panel{
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
 .extra-section {
   padding: 18px;
 }
@@ -935,7 +955,8 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  height: 625px;
+  flex:1;
+  min-height: 0;
   overflow-y: auto;
 }
 
@@ -1081,7 +1102,8 @@ export default {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
-  height: 660px;
+  flex: 1;
+  min-height: 0;
   overflow: auto;
 }
 
