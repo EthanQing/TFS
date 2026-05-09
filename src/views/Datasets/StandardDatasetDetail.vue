@@ -716,7 +716,7 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  height: 100vh;
+  height: 100%;
   overflow: hidden;
 }
 
@@ -899,6 +899,7 @@ export default {
   height: 100%;
   min-height: 0;
 }
+
 .sidebar-panel {
   padding: 18px;
   display: flex;
