@@ -37,17 +37,24 @@
 
     <section class="pd-body glass-panel">
       <header class="pd-toolbar">
-        <div class="search-shell">
-          <i class="el-icon-search"></i>
-          <el-input v-model="searchQuery" placeholder="搜索训练任务" class="search-input" clearable></el-input>
+        <div class="toolbar-right">
+          <div class="search-shell">
+            <i class="el-icon-search"></i>
+            <el-input v-model="searchQuery" placeholder="搜索训练任务" class="search-input" clearable></el-input>
+          </div>
+          <div class="batch-tool">
+            <el-button type="danger" size="mini" :loading="batchDeleting" @click="batchDeleteConfirm">
+              批量删除
+            </el-button>
+            <el-button size="mini" @click="toggleSelectAll">
+              {{ isAllSelected ? '取消全选' : '全选' }}
+            </el-button>
+            <span> · 已选中 {{ selectedJobIds.length }} 个</span>
+          </div>
         </div>
         <div class="pd-summary">
           {{ filteredModels.length }} 个任务
         </div>
-        <!-- <template v-if="selectedJobIds.length > 0">
-          <span class="batch-info"> · 已选中 {{ selectedJobIds.length }} 个</span>
-          <el-button type="danger" size="mini" :loading="batchDeleting" @click="batchDeleteConfirm">批量删除</el-button>
-        </template> -->
       </header>
 
       <div class="pd-list">
@@ -88,9 +95,10 @@
               </div>
             </div>
             <div class="job-actions" @click.stop>
-              <!-- <div>
-                <el-checkbox @change="checkedChange"></el-checkbox>
-              </div> -->
+              <div>
+                <el-checkbox :value="selectedJobIds.includes(model.job_id)"
+                  @change="checkedChange($event, model.job_id)"></el-checkbox>
+              </div>
               <div>
                 <el-button v-if="model.status === 'pending'" type="success" size="mini"
                   :loading="startingJobs && startingJobs[model.job_id]" class="action-btn"
@@ -269,7 +277,11 @@ export default {
         const tB = new Date(b.created_at || 0).getTime();
         return tB - tA;
       });
-    }
+    },
+    isAllSelected() {
+      return this.filteredModels.length > 0 &&
+        this.selectedJobIds.length === this.filteredModels.length;
+    },
   },
   watch: {
     '$route.query.projectId': {
@@ -420,16 +432,14 @@ export default {
         this.$message.error('删除失败: ' + (e.message || e));
       }
     },
-    checkedChange(e) {
-      const jobId = e.target.value;
-      console.log('Checkbox changed for jobId:', jobId, 'Checked:', e.target.checked);
-      // if (e.target.checked) {
-      //   if (!this.selectedJobIds.includes(jobId)) {
-      //     this.selectedJobIds.push(jobId);
-      //   }
-      // } else {
-      //   this.selectedJobIds = this.selectedJobIds.filter(id => id !== jobId);
-      // }
+    checkedChange(checked, jobId) {
+      if (checked) {
+        if (!this.selectedJobIds.includes(jobId)) {
+          this.selectedJobIds.push(jobId);
+        }
+      } else {
+        this.selectedJobIds = this.selectedJobIds.filter(id => id !== jobId);
+      }
     },
     //批量删除
     async batchDeleteConfirm() {
@@ -474,6 +484,14 @@ export default {
         console.error(e);
       } finally {
         this.batchDeleting = false;
+      }
+    },
+    // 切换全选状态
+    toggleSelectAll() {
+      if (this.isAllSelected) {
+        this.selectedJobIds = [];
+      } else {
+        this.selectedJobIds = this.filteredModels.map(m => m.job_id);
       }
     },
     isDeleteConflict(error) {
@@ -748,6 +766,20 @@ export default {
   margin-bottom: 1rem;
 }
 
+.toolbar-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.batch-tool {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: var(--text-secondary);
+}
+
 .search-shell {
   display: flex;
   align-items: center;
@@ -903,7 +935,7 @@ export default {
 .job-actions {
   margin-top: auto;
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
   align-items: center;
   gap: 0.5rem;
   border-top: 1px solid rgba(0, 0, 0, 0.05);

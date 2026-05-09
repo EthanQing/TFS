@@ -714,6 +714,7 @@ export default {
         });
         
         this.continueing = true;
+        console.log("Sending resume request for jobId:", this.jobId);
         await ResumeTrainingJob(this.jobId);
         this.$message.success('已发送继续请求');
         await this.syncSnapshot({ withStatus: true, withMetrics: false });

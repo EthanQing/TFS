@@ -5,18 +5,15 @@
         <button class="back-link" type="button" @click="goBack">
           <i class="el-icon-arrow-left"></i> 返回数据集列表
         </button>
-          <div class="hero-content">
-            <div class="hero-kicker">数据集概览</div>
-            <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
-            <div class="hero-meta">
+        <div class="hero-content">
+          <div class="hero-kicker">数据集概览</div>
+          <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
+          <div class="hero-meta">
             <span class="meta-pill info">{{ datasetTypeLabel }}</span>
             <span class="meta-pill warning">非法数据集</span>
             <span v-if="activeVersion" class="meta-pill success">当前版本 v{{ activeVersion.version }}</span>
             <span class="meta-id">ID: {{ datasetId || '-' }}</span>
           </div>
-          <p class="hero-desc">
-            非法数据集会长期保留原始数据与标签映射；你可以在原有详情页体验基础上继续管理版本，并通过“保存并转换”反复生成新的标准数据集。
-          </p>
         </div>
       </div>
       <div class="hero-right">
@@ -47,37 +44,17 @@
 
       <template v-else>
         <div class="illegal-section">
-          <div class="illegal-banner glass-panel warning-theme">
-            <div class="illegal-icon">
-              <i class="el-icon-warning"></i>
-            </div>
-            <div class="illegal-content">
-              <div class="illegal-title">非法数据集</div>
-              <div class="illegal-desc">
-                请先按原来的方式配置标签映射与切片参数；当前非法数据集会被保留，可继续追加版本，并直接通过“保存并转换”生成新的 YOLO 标准数据集。
-              </div>
-              <div class="illegal-badge">
-                <span class="badge-dot"></span>
-                当前激活版本：{{ activeVersion ? `v${activeVersion.version}` : '未生成版本' }} · 转换输出固定为 YOLO
-              </div>
-            </div>
-            <div class="illegal-actions">
-              <el-button @click="refreshAll">刷新</el-button>
-              <el-button type="primary" plain @click="uploadDialogVisible = true">首次上传 ZIP</el-button>
-              <el-button type="primary" @click="appendDialogVisible = true">追加上传新版本</el-button>
-            </div>
+          <div class="illegal-actions">
+            <el-button @click="refreshAll">刷新</el-button>
+            <el-button type="primary" plain @click="uploadDialogVisible = true">首次上传 ZIP</el-button>
+            <el-button type="primary" @click="appendDialogVisible = true">追加上传新版本</el-button>
           </div>
 
           <template v-if="!isEmpty">
             <div class="preset-toolbar">
               <div class="preset-toolbar-left">
                 <el-select v-model="presetApplyMode" size="small" class="preset-mode-select">
-                  <el-option
-                    v-for="opt in presetApplyOptions"
-                    :key="opt.value"
-                    :label="opt.label"
-                    :value="opt.value"
-                  />
+                  <el-option v-for="opt in presetApplyOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
                 </el-select>
                 <el-button size="small" :loading="mappingPresetsLoading" @click="applyPresetToCurrentMapping">
                   应用预设到当前映射
@@ -94,15 +71,9 @@
             </div>
 
             <div v-if="mappingPanelLabels.length" class="mapping-panel-wrap legacy-mapping-wrap">
-              <LabelMappingPanel
-                ref="labelMappingPanel"
-                :labels="mappingPanelLabels"
-                :loading="loadingMappings"
-                :saving="savingMappings"
-                :converting="publishing"
-                @save="handlePanelSave"
-                @save-and-convert="handleSaveAndConvert"
-              />
+              <LabelMappingPanel ref="labelMappingPanel" :labels="mappingPanelLabels" :loading="loadingMappings"
+                :saving="savingMappings" :converting="publishing" @save="handlePanelSave"
+                @save-and-convert="handleSaveAndConvert" />
             </div>
             <div v-else class="panel-empty">
               <i class="el-icon-document-remove"></i>
@@ -112,28 +83,21 @@
         </div>
 
         <div v-if="isEmpty" class="empty-state">
-            <div class="empty-content">
-              <div class="empty-title">当前非法数据集还是空的</div>
-              <div class="empty-desc">
-                请先上传原始 ZIP 数据。上传后即可继续使用旧版标签映射界面配置映射，并转换为新的标准数据集。
-              </div>
-              <div class="empty-tips">
-                <span class="tip-item"><i class="el-icon-check"></i> 非法数据集会保留原始数据</span>
+          <div class="empty-content">
+            <div class="empty-title">当前非法数据集还是空的</div>
+            <div class="empty-desc">
+              请先上传原始 ZIP 数据。上传后即可继续使用旧版标签映射界面配置映射，并转换为新的标准数据集。
+            </div>
+            <div class="empty-tips">
+              <span class="tip-item"><i class="el-icon-check"></i> 非法数据集会保留原始数据</span>
               <span class="tip-item"><i class="el-icon-check"></i> 每次上传都会形成独立版本</span>
               <span class="tip-item"><i class="el-icon-check"></i> 可反复转换多个标准数据集</span>
             </div>
           </div>
           <div class="empty-action">
-            <UploadZip
-              :dataset-id="datasetId"
-              dataset-kind="illegal"
-              mode="upload"
-              :external-file.sync="uploadFile"
-              :external-uploading.sync="uploading"
-              :external-progress.sync="uploadProgress"
-              @upload-success="handleUploadSuccess"
-              @upload-fail="handleUploadFail"
-            />
+            <UploadZip :dataset-id="datasetId" dataset-kind="illegal" mode="upload" :external-file.sync="uploadFile"
+              :external-uploading.sync="uploading" :external-progress.sync="uploadProgress"
+              @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail" />
           </div>
         </div>
 
@@ -146,27 +110,19 @@
                   <div class="section-sub">保留当前非法数据集预览、文件与事件记录</div>
                 </div>
                 <el-select v-model="previewClassId" size="small" clearable placeholder="全部类别" @change="loadPreview">
-                  <el-option
-                    v-for="item in previewCategories"
-                    :key="item.class_id"
-                    :label="`${item.name} (${item.count})`"
-                    :value="item.class_id"
-                  />
+                  <el-option v-for="item in previewCategories" :key="item.class_id"
+                    :label="`${item.name} (${item.count})`" :value="item.class_id" />
                 </el-select>
               </div>
 
               <el-tabs v-model="activeTab">
                 <el-tab-pane label="样本预览" name="preview">
-                  <div v-loading="loadingPreview">
+                  <div v-loading="loadingPreview" style="max-height: 400px; overflow-y: auto;">
                     <div v-if="!previewItems.length" class="panel-empty">当前版本暂无可预览的图片。</div>
                     <div v-else class="image-grid">
                       <div v-for="item in previewItems" :key="item.id" class="image-card">
-                        <el-image
-                          :src="item.thumbnail_url || item.image_url"
-                          :preview-src-list="previewUrls"
-                          fit="cover"
-                          class="preview-image"
-                        />
+                        <el-image :src="item.thumbnail_url || item.image_url" :preview-src-list="previewUrls"
+                          fit="cover" class="preview-image" />
                         <div class="image-meta">
                           <div class="image-name">{{ item.image_name }}</div>
                           <div class="image-desc">{{ item.objects_count }} 个标注对象</div>
@@ -176,7 +132,7 @@
                   </div>
                 </el-tab-pane>
                 <el-tab-pane label="文件列表" name="files">
-                  <el-table :data="files" size="small" border empty-text="暂无文件">
+                  <el-table :data="files" size="small" border empty-text="暂无文件" style="max-height: 400px; overflow-y: auto;">
                     <el-table-column prop="path" label="路径" min-width="360" show-overflow-tooltip />
                     <el-table-column label="大小" width="140">
                       <template slot-scope="scope">{{ formatBytes(scope.row.size_bytes) }}</template>
@@ -193,7 +149,7 @@
                   </el-table>
                 </el-tab-pane>
                 <el-tab-pane label="事件记录" name="events">
-                  <el-table :data="events" size="small" border empty-text="暂无事件">
+                  <el-table :data="events" size="small" border empty-text="暂无事件" style="max-height: 400px; overflow-y: auto;">
                     <el-table-column prop="event_type" label="事件类型" width="180" />
                     <el-table-column prop="message" label="消息" min-width="280" show-overflow-tooltip />
                     <el-table-column label="时间" width="180">
@@ -210,27 +166,11 @@
               <div class="section-head">
                 <div class="section-title">版本列表</div>
               </div>
-              <el-table :data="versions" size="small" border empty-text="暂无版本">
-                <el-table-column label="版本" width="90">
-                  <template slot-scope="scope">v{{ scope.row.version }}</template>
-                </el-table-column>
-                <el-table-column label="状态" width="110">
-                  <template slot-scope="scope">
-                    <el-tag size="mini" :type="scope.row.version_id === activeVersionId ? 'success' : 'info'">
-                      {{ scope.row.version_id === activeVersionId ? '已激活' : versionStatusLabel(scope.row.status) }}
-                    </el-tag>
-                  </template>
-                </el-table-column>
-                <el-table-column label="说明" min-width="180" show-overflow-tooltip>
-                  <template slot-scope="scope">{{ scope.row.message || '-' }}</template>
-                </el-table-column>
-                <el-table-column label="操作" width="90" align="center">
-                  <template slot-scope="scope">
-                    <el-button v-if="scope.row.version_id !== activeVersionId" type="text" size="mini" @click="activateVersion(scope.row)">激活</el-button>
-                    <span v-else>-</span>
-                  </template>
-                </el-table-column>
-              </el-table>
+              <el-select class="version-select" v-model="selectedVersionId" size="small" placeholder="请选择要激活的版本"
+                @change="activateVersion">
+                <el-option v-for="item in versions" :key="item.version_id"
+                  :label="`v${item.version} (${item.message || '无说明'})`" :value="item.version_id" />
+              </el-select>
             </section>
 
             <section class="section-card">
@@ -239,9 +179,13 @@
               </div>
               <div class="info-list">
                 <div class="info-item"><span>ID</span><strong>{{ datasetId }}</strong></div>
-                <div class="info-item"><span>存储路径</span><strong>{{ dataset && dataset.storage_path ? dataset.storage_path : '-' }}</strong></div>
-                <div class="info-item"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong></div>
-                <div class="info-item"><span>更新时间</span><strong>{{ formatDate(dataset && dataset.updated_at) }}</strong></div>
+                <div class="info-item"><span>存储路径</span><strong>{{ dataset && dataset.storage_path ?
+                  dataset.storage_path : '-'
+                }}</strong></div>
+                <div class="info-item"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong>
+                </div>
+                <div class="info-item"><span>更新时间</span><strong>{{ formatDate(dataset && dataset.updated_at) }}</strong>
+                </div>
               </div>
             </section>
           </aside>
@@ -249,13 +193,8 @@
       </template>
     </section>
 
-    <el-dialog
-      title="非法标签映射预设管理"
-      :visible.sync="showPresetDialog"
-      width="980px"
-      :append-to-body="true"
-      class="preset-dialog"
-    >
+    <el-dialog title="非法标签映射预设管理" :visible.sync="showPresetDialog" width="980px" :append-to-body="true"
+      class="preset-dialog">
       <div class="preset-dialog-toolbar">
         <div class="preset-dialog-stats">
           <span>检测映射 {{ presetDetectionCount }} 条</span>
@@ -263,13 +202,8 @@
           <span>更新时间 {{ presetUpdatedAtText }}</span>
         </div>
         <div class="preset-dialog-actions">
-          <input
-            ref="presetFileInput"
-            type="file"
-            accept=".xlsx,.xls"
-            style="display: none;"
-            @change="handlePresetFileChange"
-          />
+          <input ref="presetFileInput" type="file" accept=".xlsx,.xls" style="display: none;"
+            @change="handlePresetFileChange" />
           <el-button size="small" @click="triggerPresetFileUpload">导入 XLSX</el-button>
           <el-button size="small" @click="addDetectionPresetRow">新增检测行</el-button>
           <el-button size="small" @click="addClassificationPresetRow">新增分类行</el-button>
@@ -329,29 +263,15 @@
     </el-dialog>
 
     <el-dialog title="首次上传 ZIP" :visible.sync="uploadDialogVisible" width="680px" append-to-body>
-      <UploadZip
-        :dataset-id="datasetId"
-        dataset-kind="illegal"
-        mode="upload"
-        :external-file.sync="uploadFile"
-        :external-uploading.sync="uploading"
-        :external-progress.sync="uploadProgress"
-        @upload-success="handleUploadSuccess"
-        @upload-fail="handleUploadFail"
-      />
+      <UploadZip :dataset-id="datasetId" dataset-kind="illegal" mode="upload" :external-file.sync="uploadFile"
+        :external-uploading.sync="uploading" :external-progress.sync="uploadProgress"
+        @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail" />
     </el-dialog>
 
     <el-dialog title="追加上传新版本" :visible.sync="appendDialogVisible" width="680px" append-to-body>
-      <UploadZip
-        :dataset-id="datasetId"
-        dataset-kind="illegal"
-        mode="append"
-        :external-file.sync="appendFile"
-        :external-uploading.sync="appending"
-        :external-progress.sync="appendProgress"
-        @upload-success="handleAppendSuccess"
-        @upload-fail="handleUploadFail"
-      />
+      <UploadZip :dataset-id="datasetId" dataset-kind="illegal" mode="append" :external-file.sync="appendFile"
+        :external-uploading.sync="appending" :external-progress.sync="appendProgress"
+        @upload-success="handleAppendSuccess" @upload-fail="handleUploadFail" />
     </el-dialog>
   </div>
 </template>
@@ -416,6 +336,7 @@ export default {
       appendFile: null,
       appending: false,
       appendProgress: 0,
+      selectedVersionId: null, // 用于版本选择器
     };
   },
   computed: {
@@ -430,6 +351,9 @@ export default {
     },
     versions() {
       return Array.isArray(this.detail && this.detail.versions) ? this.detail.versions : [];
+    },
+    versionMap() {
+      return Object.fromEntries(this.versions.map(item => [item.version_id, item]));
     },
     events() {
       return Array.isArray(this.detail && this.detail.events) ? this.detail.events : [];
@@ -518,6 +442,15 @@ export default {
       this.datasetId = nextId;
       this.previewClassId = null;
       this.loadAll();
+    },
+    // 监听 activeVersionId 变化，同步到 selectedVersionId
+    activeVersionId: {
+      handler(newVal) {
+        if (this.selectedVersionId !== newVal) {
+          this.selectedVersionId = newVal;
+        }
+      },
+      immediate: true,
     },
   },
   mounted() {
@@ -1014,7 +947,11 @@ export default {
       this.applySliceParamsToPublishForm(sliceParams);
       await this.publishToStandard({ mappingOverride: mapping, sliceParams, skipSaveMappings: false });
     },
-    async activateVersion(row) {
+    async activateVersion(versionId) {
+      if (!versionId || versionId === this.activeVersionId) {
+        return;
+      }
+      const row = this.versionMap[versionId];
       if (!row || !row.version_id) return;
       try {
         await activateIllegalDatasetVersion(this.datasetId, row.version_id);
@@ -1055,7 +992,7 @@ export default {
             cancelButtonText: '留在当前页',
           }).then(() => {
             this.$router.push({ path: '/standard-dataset-detail', query: { id: standardDatasetId } });
-          }).catch(() => {});
+          }).catch(() => { });
         }
         await this.loadAll();
       } catch (error) {
@@ -1590,5 +1527,9 @@ export default {
   .split-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+}
+
+.version-select {
+  width: 100%;
 }
 </style>

@@ -5,14 +5,9 @@
         <div class="ds-eyebrow">数据中心</div>
         <h1 class="ds-title">数据集</h1>
         <p class="ds-subtitle">集中创建、上传、标注和管理您的训练数据。</p>
-        
+
         <div class="ds-actions">
-           <el-button
-            type="primary"
-            icon="el-icon-plus"
-            class="hero-action"
-            @click="openCreateDialog"
-          >新建数据集</el-button>
+          <el-button type="primary" icon="el-icon-plus" class="hero-action" @click="openCreateDialog">新建数据集</el-button>
         </div>
       </div>
     </header>
@@ -20,10 +15,10 @@
     <div class="ds-tabs-container">
       <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="ds-custom-tabs">
         <el-tab-pane label="非法数据集 (待处理)" name="illegal">
-            <span slot="label"><i class="el-icon-folder"></i> 非法数据集 (待处理)</span>
+          <span slot="label"><i class="el-icon-folder"></i> 非法数据集</span>
         </el-tab-pane>
         <el-tab-pane label="标准数据集 (正式/已发布)" name="standard">
-            <span slot="label"><i class="el-icon-document-checked"></i> 标准数据集 (已发布)</span>
+          <span slot="label"><i class="el-icon-document-checked"></i> 标准数据集</span>
         </el-tab-pane>
       </el-tabs>
     </div>
@@ -32,36 +27,23 @@
       <div class="toolbar-left">
         <div class="search-shell">
           <i class="el-icon-search"></i>
-          <el-input
-            v-model="searchQuery"
-            placeholder="搜索数据集..."
-            class="search-input"
-            clearable
-          ></el-input>
+          <el-input v-model="searchQuery" placeholder="搜索数据集..." class="search-input" clearable></el-input>
         </div>
-        
+
         <div class="filter-group">
           <el-select v-model="filterType" placeholder="全部类型" class="filter-select">
-            <el-option
-              v-for="item in typeOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            ></el-option>
+            <el-option v-for="item in typeOptions" :key="item.value" :label="item.label"
+              :value="item.value"></el-option>
           </el-select>
         </div>
 
       </div>
-      
+
       <div class="toolbar-right">
         <div class="filter-group">
           <el-select v-model="activeSort" placeholder="排序方式" class="filter-select" clearable>
-            <el-option
-              v-for="item in sortOptions"
-              :key="item.value"
-              :label="item.label"
-              :value="item.value"
-            ></el-option>
+            <el-option v-for="item in sortOptions" :key="item.value" :label="item.label"
+              :value="item.value"></el-option>
           </el-select>
         </div>
       </div>
@@ -69,23 +51,19 @@
 
     <section class="ds-content" v-loading="loading">
       <section v-if="filteredDatasets.length" class="dataset-grid">
-        <div
-          class="dataset-card"
-          v-for="d in filteredDatasets"
-          :key="d.dataset_id"
-          @click="goDetail(d)"
-        >
+        <div class="dataset-card" v-for="d in filteredDatasets" :key="d.dataset_id" @click="goDetail(d)">
           <div class="card-media" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
             <span class="card-type-badge">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
-            <span v-if="activeTab === 'standard' && d.format" class="card-format-badge">{{ d.format.toUpperCase() }}</span>
+            <span v-if="activeTab === 'standard' && d.format" class="card-format-badge">{{ d.format.toUpperCase()
+            }}</span>
             <div class="card-overlay"></div>
           </div>
           <div class="card-body">
             <div class="card-header">
-                <div class="card-title">{{ d.dataset_name }}</div>
-                <div class="card-id">ID: {{ d.dataset_id || '-' }}</div>
+              <div class="card-title">{{ d.dataset_name }}</div>
+              <div class="card-id">ID: {{ d.dataset_id || '-' }}</div>
             </div>
-            
+
             <div class="card-stats">
               <div class="stat-item">
                 <div class="stat-label">类别</div>
@@ -102,7 +80,7 @@
             </div>
           </div>
           <button class="card-more" type="button" @click.stop="handleShowDeletePopup(d.dataset_id)">
-            <i class="el-icon-more"></i>
+            <i class="el-icon-delete"></i>
           </button>
         </div>
       </section>
@@ -113,12 +91,12 @@
         </div>
         <div class="empty-title">暂无{{ activeTab === 'illegal' ? '非法' : '标准' }}数据集</div>
         <div class="empty-desc">
-            <template v-if="activeTab === 'illegal'">
-                非法数据集用于原始数据导入、标签映射、版本管理和发布标准数据集。
-            </template>
-            <template v-else>
-                标准数据集用于正式的模型训练，可通过非法数据集发布或直接导入。
-            </template>
+          <template v-if="activeTab === 'illegal'">
+            非法数据集用于原始数据导入、标签映射、版本管理和发布标准数据集。
+          </template>
+          <template v-else>
+            标准数据集用于正式的模型训练，可通过非法数据集发布或直接导入。
+          </template>
         </div>
         <el-button type="primary" @click="openCreateDialog">创建数据集</el-button>
       </div>
@@ -128,8 +106,8 @@
     <div v-if="showPopup" class="mask" @click="showPopup = false">
       <div class="popup" @click.stop>
         <div class="popup-header">
-           <i class="el-icon-warning text-warning"></i>
-           <span>确认删除</span>
+          <i class="el-icon-warning text-warning"></i>
+          <span>确认删除</span>
         </div>
         <p class="popup-body">确定要删除此数据集吗？此操作不可撤销。</p>
         <div class="popup-actions">
@@ -139,48 +117,36 @@
       </div>
     </div>
 
-    <el-dialog
-      :title="`创建新${activeTab === 'illegal' ? '非法' : '标准'}数据集`"
-      :visible.sync="dialogFormVisible"
-      width="600px"
-      custom-class="dataset-dialog"
-      append-to-body
-    >
+    <el-dialog :title="`创建新${activeTab === 'illegal' ? '非法' : '标准'}数据集`" :visible.sync="dialogFormVisible" width="600px"
+      custom-class="dataset-dialog" append-to-body>
       <div class="dialog-content">
         <el-form :model="form" :rules="rules" ref="formRef" label-position="top">
-            <el-form-item label="数据集名称" prop="name">
-              <el-input v-model="form.name" autocomplete="off" :disabled="!!createdDatasetId" placeholder="例如：交通标志"></el-input>
-            </el-form-item>
-            <el-form-item label="任务类型" prop="type">
-              <el-select v-model="form.type" placeholder="选择类型" :disabled="!!createdDatasetId" style="width: 100%">
-                  <el-option
-                  v-for="item in createTypeOptions"
-                  :key="item.value"
-                  :label="item.label"
-                  :value="item.value"
-                  ></el-option>
-              </el-select>
-            </el-form-item>
+          <el-form-item label="数据集名称" prop="name">
+            <el-input v-model="form.name" autocomplete="off" :disabled="!!createdDatasetId"
+              placeholder="例如：交通标志"></el-input>
+          </el-form-item>
+          <el-form-item label="任务类型" prop="type">
+            <el-select v-model="form.type" placeholder="选择类型" :disabled="!!createdDatasetId" style="width: 100%">
+              <el-option v-for="item in createTypeOptions" :key="item.value" :label="item.label"
+                :value="item.value"></el-option>
+            </el-select>
+          </el-form-item>
         </el-form>
 
         <div class="dialog-footer-actions">
-            <span v-if="createdDatasetId" class="created-tip success">
-               <i class="el-icon-success"></i> 已创建! ID: {{ createdDatasetId }}
-            </span>
-            <div class="actions-right">
-                <el-button @click="dialogFormVisible = false" v-if="!createdDatasetId">取消</el-button>
-                <el-button
-                v-if="!createdDatasetId"
-                type="primary"
-                :loading="creatingDataset"
-                @click="handleCreateDataset"
-                >创建</el-button>
-                
-                <template v-else>
-                    <el-button type="text" @click="resetCreatedDataset">继续创建</el-button>
-                    <el-button type="primary" @click="goToCreatedDetail">查看详情</el-button>
-                </template>
-            </div>
+          <span v-if="createdDatasetId" class="created-tip success">
+            <i class="el-icon-success"></i> 已创建! ID: {{ createdDatasetId }}
+          </span>
+          <div class="actions-right">
+            <el-button @click="dialogFormVisible = false" v-if="!createdDatasetId">取消</el-button>
+            <el-button v-if="!createdDatasetId" type="primary" :loading="creatingDataset"
+              @click="handleCreateDataset">创建</el-button>
+
+            <template v-else>
+              <el-button type="text" @click="resetCreatedDataset">继续创建</el-button>
+              <el-button type="primary" @click="goToCreatedDetail">查看详情</el-button>
+            </template>
+          </div>
         </div>
       </div>
     </el-dialog>
@@ -188,8 +154,8 @@
 </template>
 
 <script>
-import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset } from "@/api/illegalDatasets";
-import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset } from "@/api/standardDatasets";
+import { fetchIllegalDatasets, fetchIllegalDatasetDetail, createIllegalDataset, deleteIllegalDataset } from "@/api/illegalDatasets";
+import { fetchStandardDatasets, fetchStandardDatasetDetail, createStandardDataset, deleteStandardDataset } from "@/api/standardDatasets";
 import { buildIllegalThumbnailUrl } from "@/api/illegalDatasets";
 import { buildStandardThumbnailUrl } from "@/api/standardDatasets";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
@@ -203,7 +169,7 @@ export default {
       searchQuery: "",
       filterType: "all",
       activeSort: null,
-      
+
       typeOptions: [
         { value: "all", label: "全部类型" },
         { value: "detection", label: "目标检测" },
@@ -220,9 +186,9 @@ export default {
         { value: "image", label: "图片数" },
         { value: "size", label: "大小" },
       ],
-      
+
       datasets: [],
-      
+
       dialogFormVisible: false,
       form: { name: "", type: "" },
       rules: {
@@ -234,6 +200,8 @@ export default {
       createdDatasetId: null,
       creatingDataset: false,
       defaultPreview: defaultDatasetImg,
+      // illegalDetail: null,
+      // standardDetail: null,
     };
   },
   watch: {
@@ -261,7 +229,19 @@ export default {
         result.sort((a, b) => this.parseDatasetSize(b.dataset_size_mb) - this.parseDatasetSize(a.dataset_size_mb));
       }
       return result;
-    }
+    },
+    // illegalstatistics() {
+    //   return this.illegalDetail && this.illegalDetail.statistics ? this.illegalDetail.statistics : null;
+    // },
+    // standardstatistics() {
+    //   return this.standardDetail && this.standardDetail.statistics ? this.standardDetail.statistics : null;
+    // },
+    // illegaltotalImages() {
+    //   return Number(this.illegalstatistics && this.illegalstatistics.total_images) || 0;
+    // },
+    // standardtotalImages() {
+    //   return Number(this.standardstatistics && this.standardstatistics.total_images) || 0;
+    // },
   },
   methods: {
     handleTabClick() {
@@ -271,20 +251,21 @@ export default {
       this.fetchDatasetsList();
     },
     goDetail(dataset) {
+      console.log('Go to detail for dataset:', dataset);
       if (this.activeTab === 'illegal') {
-          this.$router.push({
-            path: "/illegal-dataset-detail",
-            query: {
-              id: dataset.dataset_id,
-            }
-          });
+        this.$router.push({
+          path: "/illegal-dataset-detail",
+          query: {
+            id: dataset.dataset_id,
+          }
+        });
       } else {
-          this.$router.push({
-            path: "/standard-dataset-detail",
-            query: {
-              id: dataset.dataset_id,
-            }
-          });
+        this.$router.push({
+          path: "/standard-dataset-detail",
+          query: {
+            id: dataset.dataset_id,
+          }
+        });
       }
     },
     openCreateDialog() {
@@ -302,9 +283,9 @@ export default {
       const id = this.createdDatasetId;
       this.dialogFormVisible = false;
       if (this.activeTab === 'illegal') {
-          this.$router.push({ path: "/illegal-dataset-detail", query: { id } });
+        this.$router.push({ path: "/illegal-dataset-detail", query: { id } });
       } else {
-          this.$router.push({ path: "/standard-dataset-detail", query: { id } });
+        this.$router.push({ path: "/standard-dataset-detail", query: { id } });
       }
     },
     async handleCreateDataset() {
@@ -312,16 +293,16 @@ export default {
       try {
         this.creatingDataset = true;
         await this.$refs.formRef.validate();
-        
+
         let ds;
         if (this.activeTab === 'illegal') {
-            const payload = { name: this.form.name, dataset_type: this.form.type };
-            ds = await createIllegalDataset(payload);
+          const payload = { name: this.form.name, dataset_type: this.form.type };
+          ds = await createIllegalDataset(payload);
         } else {
-            const payload = { name: this.form.name, dataset_type: this.form.type };
-            ds = await createStandardDataset(payload);
+          const payload = { name: this.form.name, dataset_type: this.form.type };
+          ds = await createStandardDataset(payload);
         }
-        
+
         this.createdDatasetId = ds && (ds.illegal_dataset_id || ds.standard_dataset_id || ds.id);
         this.$message.success(`Dataset Created: ${this.form.name}`);
         this.fetchDatasetsList();
@@ -335,12 +316,19 @@ export default {
       try {
         this.loading = true;
         let list;
+        let detail;
         if (this.activeTab === 'illegal') {
-            list = await fetchIllegalDatasets();
+          list = await fetchIllegalDatasets();
+          // detail = await fetchIllegalDatasetDetail(this.datasetId, { versionsLimit: 50, eventsLimit: 50 });
+          // this.illegalDetail = detail;
+          console.log('Fetched illegal datasets:', list);
         } else {
-            list = await fetchStandardDatasets();
+          list = await fetchStandardDatasets();
+          console.log('Fetched standard datasets:', list);
+          // detail = await fetchStandardDatasetDetail(this.datasetId, { versionsLimit: 50, eventsLimit: 50 });
+          // this.standardDetail = detail;
         }
-        
+
         this.datasets = Array.isArray(list) ? list : [];
         this.seedPreviewFromCache();
         this.loadPreviewsParallel(4);
@@ -372,9 +360,9 @@ export default {
     async handleDelete(id) {
       try {
         if (this.activeTab === 'illegal') {
-             await deleteIllegalDataset(id, { force: false, deleteFiles: true });
+          await deleteIllegalDataset(id, { force: false, deleteFiles: true });
         } else {
-             await deleteStandardDataset(id, { force: false, deleteFiles: true });
+          await deleteStandardDataset(id, { force: false, deleteFiles: true });
         }
         this.showPopup = false;
         this.fetchDatasetsList();
@@ -389,9 +377,9 @@ export default {
               { type: 'warning', confirmButtonText: '强制删除', cancelButtonText: '取消' }
             );
             if (this.activeTab === 'illegal') {
-                await deleteIllegalDataset(id, { force: true, deleteFiles: true });
+              await deleteIllegalDataset(id, { force: true, deleteFiles: true });
             } else {
-                await deleteStandardDataset(id, { force: true, deleteFiles: true });
+              await deleteStandardDataset(id, { force: true, deleteFiles: true });
             }
             this.fetchDatasetsList();
             this.$message.success('Dataset deleted');
@@ -426,8 +414,8 @@ export default {
       return sizeStr;
     },
     getDatasetTypeLabel(type) {
-        const map = { 'detection': '目标检测', 'segmentation': '图像分割', 'classification': '图像分类' };
-        return map[type] || type || '未知';
+      const map = { 'detection': '目标检测', 'segmentation': '图像分割', 'classification': '图像分类' };
+      return map[type] || type || '未知';
     },
     parseDatasetSize(sizeStr) {
       if (!sizeStr) return 0;
@@ -491,26 +479,26 @@ export default {
 }
 
 .ds-actions {
-    margin-top: 16px;
+  margin-top: 16px;
 }
 
 .ds-tabs-container {
-    background: var(--bg-card);
-    border-radius: var(--radius-lg);
-    padding: 0 24px;
-    box-shadow: var(--shadow-sm);
-    border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  border-radius: var(--radius-lg);
+  padding: 0 24px;
+  box-shadow: var(--shadow-sm);
+  border: 1px solid var(--border-color);
 }
 
 .ds-custom-tabs ::v-deep .el-tabs__nav-wrap::after {
-    height: 1px;
-    background-color: var(--border-color);
+  height: 1px;
+  background-color: var(--border-color);
 }
 
 .ds-custom-tabs ::v-deep .el-tabs__item {
-    font-size: 1rem;
-    height: 50px;
-    line-height: 50px;
+  font-size: 1rem;
+  height: 50px;
+  line-height: 50px;
 }
 
 /* Toolbar */
@@ -527,7 +515,8 @@ export default {
   box-shadow: var(--shadow-sm);
 }
 
-.toolbar-left, .toolbar-right {
+.toolbar-left,
+.toolbar-right {
   display: flex;
   align-items: center;
   gap: 16px;
@@ -564,12 +553,12 @@ export default {
 }
 
 .filter-group {
-    min-width: 160px;
+  min-width: 160px;
 }
 
 .sort-actions {
-    display: flex;
-    gap: 8px;
+  display: flex;
+  gap: 8px;
 }
 
 .chip {
@@ -597,7 +586,7 @@ export default {
 
 /* Grid */
 .ds-content {
-    flex: 1;
+  flex: 1;
 }
 
 .dataset-grid {
@@ -633,7 +622,7 @@ export default {
 .card-overlay {
   position: absolute;
   inset: 0;
-  background: linear-gradient(to top, rgba(0,0,0,0.4), transparent);
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.4), transparent);
 }
 
 .card-type-badge {
@@ -664,8 +653,8 @@ export default {
 }
 
 .card-format-badge {
-    background: #eff8ff;
-    color: #175cd3;
+  background: #eff8ff;
+  color: #175cd3;
 }
 
 .card-more {
@@ -684,6 +673,14 @@ export default {
   color: var(--text-secondary);
   z-index: 2;
   transition: all 0.2s;
+  /* 默认隐藏 */
+  opacity: 0;
+  visibility: hidden;
+}
+
+.dataset-card:hover .card-more {
+  opacity: 1;
+  visibility: visible;
 }
 
 .card-more:hover {
@@ -800,7 +797,7 @@ export default {
 }
 
 .text-warning {
-    color: var(--color-warning);
+  color: var(--color-warning);
 }
 
 .popup-body {
@@ -817,15 +814,15 @@ export default {
 
 /* Dialog Footer */
 .dialog-footer-actions {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-top: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 24px;
 }
 
 .created-tip.success {
-    color: var(--color-success);
-    font-weight: 500;
-    font-size: 0.9rem;
+  color: var(--color-success);
+  font-weight: 500;
+  font-size: 0.9rem;
 }
 </style>

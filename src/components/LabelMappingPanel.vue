@@ -6,13 +6,8 @@
         <div class="preset-group">
           <span class="preset-label">快捷预设：</span>
           <el-button-group>
-            <el-button
-              v-for="p in presets"
-              :key="p.mode"
-              size="mini"
-              :type="activePreset === p.mode ? 'primary' : ''"
-              @click="applyPreset(p.mode)"
-            >{{ p.label }}</el-button>
+            <el-button v-for="p in presets" :key="p.mode" size="mini" :type="activePreset === p.mode ? 'primary' : ''"
+              @click="applyPreset(p.mode)">{{ p.label }}</el-button>
           </el-button-group>
           <div v-show="activePreset === 'level'" class="level-picker">
             <span>取第</span>
@@ -24,14 +19,8 @@
       </div>
       <div class="panel-sub-row">
         <span class="label-count-hint">共 {{ rows.length }} 个原始标签，按层级树形展示</span>
-        <el-input
-          v-model="searchQuery"
-          placeholder="搜索源标签或目标标签..."
-          prefix-icon="el-icon-search"
-          size="mini"
-          clearable
-          class="search-input"
-        />
+        <el-input v-model="searchQuery" placeholder="搜索源标签或目标标签..." prefix-icon="el-icon-search" size="mini" clearable
+          class="search-input" />
       </div>
     </div>
 
@@ -47,23 +36,15 @@
             <th class="col-action">操作</th>
           </tr>
         </thead>
-        <tbody>
-          <tr
-            v-for="node in displayNodes"
-            :key="node.key"
-            class="mapping-row"
-            :class="{
-              'is-virtual': node.isVirtual,
-              'is-discarded': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded
-            }"
-          >
+        <tbody class="scrollable-tbody">
+          <tr v-for="node in displayNodes" :key="node.key" class="mapping-row" :class="{
+            'is-virtual': node.isVirtual,
+            'is-discarded': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded
+          }">
             <td class="col-expand">
-              <i
-                v-if="node.hasChildren"
-                :class="expandedGroups[node.key] ? 'el-icon-arrow-down' : 'el-icon-arrow-right'"
-                class="expand-icon"
-                @click="toggleGroup(node.key)"
-              />
+              <i v-if="node.hasChildren"
+                :class="expandedGroups[node.key] ? 'el-icon-arrow-down' : 'el-icon-arrow-right'" class="expand-icon"
+                @click="toggleGroup(node.key)" />
             </td>
             <td class="col-source" :style="{ paddingLeft: (node.depth * 24 + 12) + 'px' }">
               <span class="source-label" :class="{ 'line-through': !node.isVirtual && node.exactRow.discarded }">
@@ -72,7 +53,8 @@
               </span>
             </td>
             <td class="col-arrow">
-              <i class="el-icon-right arrow-icon" :class="{ 'text-muted': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded }" />
+              <i class="el-icon-right arrow-icon"
+                :class="{ 'text-muted': node.isVirtual ? node.allDescendantsDiscarded : node.exactRow.discarded }" />
             </td>
             <td class="col-target">
               <template v-if="node.isVirtual">
@@ -80,15 +62,9 @@
                   <span class="discard-badge">子项全丢弃</span>
                 </template>
                 <template v-else>
-                  <el-select
-                    :value="!node.mixedTargets ? node.commonTarget : ''"
-                    size="mini"
-                    class="target-input virtual-input"
-                    :placeholder="node.mixedTargets ? '多种映射 (选中以统一)' : '统一设置所有子项'"
-                    filterable
-                    allow-create
-                    @change="(val) => setCascadeTarget(node, val)"
-                  >
+                  <el-select :value="!node.mixedTargets ? node.commonTarget : ''" size="mini"
+                    class="target-input virtual-input" :placeholder="node.mixedTargets ? '多种映射 (选中以统一)' : '统一设置所有子项'"
+                    filterable allow-create @change="(val) => setCascadeTarget(node, val)">
                     <el-option v-for="opt in node.availableTargets" :key="opt" :label="opt" :value="opt" />
                   </el-select>
                 </template>
@@ -100,26 +76,13 @@
                 </template>
                 <template v-else>
                   <div class="target-input-group">
-                    <el-select
-                      v-model="node.exactRow.targetLabel"
-                      size="mini"
-                      class="target-input"
-                      placeholder="映射当前项"
-                      filterable
-                      allow-create
-                      @change="onTargetEdited(node.exactRow)"
-                    >
+                    <el-select v-model="node.exactRow.targetLabel" size="mini" class="target-input" placeholder="映射当前项"
+                      filterable allow-create @change="onTargetEdited(node.exactRow)">
                       <el-option v-for="opt in node.availableTargets" :key="opt" :label="opt" :value="opt" />
                     </el-select>
                     <el-tooltip v-if="node.hasChildren" content="将左侧设置的映射向下应用到所有子项" placement="top">
-                      <el-button
-                        class="cascade-btn"
-                        type="primary"
-                        plain
-                        icon="el-icon-download"
-                        size="mini"
-                        @click="setCascadeTarget(node, node.exactRow.targetLabel)"
-                      />
+                      <el-button class="cascade-btn" type="primary" plain icon="el-icon-download" size="mini"
+                        @click="setCascadeTarget(node, node.exactRow.targetLabel)" />
                     </el-tooltip>
                   </div>
                 </template>
@@ -132,12 +95,17 @@
             </td>
             <td class="col-action">
               <template v-if="node.isVirtual">
-                <el-button v-if="!node.allDescendantsDiscarded" type="text" size="mini" class="action-discard" @click="discardAll(node, true)" title="丢弃所有子项"><i class="el-icon-delete" /></el-button>
-                <el-button v-else type="text" size="mini" class="action-restore" @click="discardAll(node, false)" title="恢复所有子项"><i class="el-icon-refresh-left" /></el-button>
+                <el-button v-if="!node.allDescendantsDiscarded" type="text" size="mini" class="action-discard"
+                  @click="discardAll(node, true)" title="丢弃所有子项"><i class="el-icon-delete" /></el-button>
+                <el-button v-else type="text" size="mini" class="action-restore" @click="discardAll(node, false)"
+                  title="恢复所有子项"><i class="el-icon-refresh-left" /></el-button>
               </template>
               <template v-else>
-                <el-button v-if="!node.exactRow.discarded" type="text" size="mini" class="action-discard" @click="toggleDiscard(node.exactRow, true)" title="丢弃此标签"><i class="el-icon-delete" /></el-button>
-                <el-button v-else type="text" size="mini" class="action-restore" @click="toggleDiscard(node.exactRow, false)" title="恢复此标签"><i class="el-icon-refresh-left" /></el-button>
+                <el-button v-if="!node.exactRow.discarded" type="text" size="mini" class="action-discard"
+                  @click="toggleDiscard(node.exactRow, true)" title="丢弃此标签"><i class="el-icon-delete" /></el-button>
+                <el-button v-else type="text" size="mini" class="action-restore"
+                  @click="toggleDiscard(node.exactRow, false)" title="恢复此标签"><i
+                    class="el-icon-refresh-left" /></el-button>
               </template>
             </td>
           </tr>
@@ -158,49 +126,25 @@
         <span class="stat-sep">·</span>
         <span class="stat warn"><strong>{{ discardedCount }}</strong> 丢弃</span>
         <div class="categories-preview" v-if="uniqueTargets.length > 0 && uniqueTargets.length <= 20">
-          <el-tag
-            v-for="t in uniqueTargets"
-            :key="t"
-            size="mini"
-            type="info"
-            class="cat-tag"
-          >{{ t }}</el-tag>
+          <el-tag v-for="t in uniqueTargets" :key="t" size="mini" type="info" class="cat-tag">{{ t }}</el-tag>
         </div>
       </div>
       <div class="action-row">
-        <el-button
-          size="small"
-          :type="sliceParamsConfirmed ? 'success' : ''"
-          :icon="sliceParamsConfirmed ? 'el-icon-check' : 'el-icon-setting'"
-          @click="showSliceDialog = true"
-        >{{ sliceParamsConfirmed ? '裁剪参数已设置' : '裁剪参数设置' }}</el-button>
-        <el-button
-          size="small"
-          :loading="saving"
-          @click="handleSave"
-          :disabled="!hasValidMapping"
-        >
+        <el-button size="small" :type="sliceParamsConfirmed ? 'success' : ''"
+          :icon="sliceParamsConfirmed ? 'el-icon-check' : 'el-icon-setting'" @click="showSliceDialog = true">{{
+            sliceParamsConfirmed ? '裁剪参数已设置' : '裁剪参数设置' }}</el-button>
+        <el-button size="small" :loading="saving" @click="handleSave" :disabled="!hasValidMapping">
           保存映射
         </el-button>
-        <el-button
-          type="primary"
-          size="small"
-          :loading="converting"
-          @click="handleSaveAndConvert"
-          :disabled="!hasValidMapping"
-        >
+        <el-button type="primary" size="small" :loading="converting" @click="handleSaveAndConvert"
+          :disabled="!hasValidMapping">
           保存并转换
         </el-button>
       </div>
     </div>
 
-    <el-dialog
-      title="裁剪参数设置"
-      :visible.sync="showSliceDialog"
-      width="560px"
-      :close-on-click-modal="false"
-      append-to-body
-    >
+    <el-dialog title="裁剪参数设置" :visible.sync="showSliceDialog" width="560px" :close-on-click-modal="false"
+      append-to-body>
       <div class="slice-dialog-hint">
         调整大图切片、标注过滤等参数，这些参数会影响最终训练数据的质量。
       </div>
@@ -216,7 +160,8 @@
         <div class="param-item">
           <label class="param-label">重叠比例 <span class="param-key">overlap</span></label>
           <div class="param-control">
-            <el-input-number v-model="sliceParams.overlap" :min="0" :max="0.9" :step="0.05" :precision="2" size="mini" />
+            <el-input-number v-model="sliceParams.overlap" :min="0" :max="0.9" :step="0.05" :precision="2"
+              size="mini" />
           </div>
           <span class="param-desc">相邻切片间的重叠率</span>
         </div>
@@ -231,14 +176,16 @@
         <div class="param-item">
           <label class="param-label">最小面积比 <span class="param-key">min_area_ratio</span></label>
           <div class="param-control">
-            <el-input-number v-model="sliceParams.minAreaRatio" :min="0" :max="1" :step="0.05" :precision="2" size="mini" />
+            <el-input-number v-model="sliceParams.minAreaRatio" :min="0" :max="1" :step="0.05" :precision="2"
+              size="mini" />
           </div>
           <span class="param-desc">标注框须落入切片的最小面积占比</span>
         </div>
         <div class="param-item">
           <label class="param-label">最小可见度 <span class="param-key">min_visibility</span></label>
           <div class="param-control">
-            <el-input-number v-model="sliceParams.minVisibility" :min="0" :max="1" :step="0.05" :precision="2" size="mini" />
+            <el-input-number v-model="sliceParams.minVisibility" :min="0" :max="1" :step="0.05" :precision="2"
+              size="mini" />
           </div>
           <span class="param-desc">标注框宽/高在切片中的最小可见比例</span>
         </div>
@@ -253,7 +200,8 @@
         <div class="param-item">
           <label class="param-label">负样本比例 <span class="param-key">negative_ratio</span></label>
           <div class="param-control">
-            <el-input-number v-model="sliceParams.negativeRatio" :min="0" :max="1" :step="0.05" :precision="2" size="mini" />
+            <el-input-number v-model="sliceParams.negativeRatio" :min="0" :max="1" :step="0.05" :precision="2"
+              size="mini" />
           </div>
           <span class="param-desc">无标注切片与有标注切片的比例 (0=不保留)</span>
         </div>
@@ -358,7 +306,7 @@ export default {
           var key = parts.join(sep);
           var allRows = getAllRows(child);
           var directRows = child.directRows;
-          var descendantRows = allRows.filter(function(r) { return directRows.indexOf(r) === -1; });
+          var descendantRows = allRows.filter(function (r) { return directRows.indexOf(r) === -1; });
           var hasChildren = descendantRows.length > 0;
           var isVirtual = directRows.length === 0;
 
@@ -366,13 +314,13 @@ export default {
             var match = false;
             var fullLabel = key.toLowerCase();
             if (fullLabel.includes(q)) match = true;
-            else if (allRows.some(function(r) { return r.sourceLabel.toLowerCase().includes(q) || r.targetLabel.toLowerCase().includes(q); })) match = true;
+            else if (allRows.some(function (r) { return r.sourceLabel.toLowerCase().includes(q) || r.targetLabel.toLowerCase().includes(q); })) match = true;
             if (!match) continue;
           }
 
-          var activeDescendants = descendantRows.filter(function(r) { return !r.discarded; });
+          var activeDescendants = descendantRows.filter(function (r) { return !r.discarded; });
           var tSet = {};
-          activeDescendants.forEach(function(r) { if (r.targetLabel) tSet[r.targetLabel] = true; });
+          activeDescendants.forEach(function (r) { if (r.targetLabel) tSet[r.targetLabel] = true; });
           var tKeys = Object.keys(tSet);
 
           result.push({
@@ -388,13 +336,13 @@ export default {
             allDescendantsDiscarded: descendantRows.length > 0 && activeDescendants.length === 0,
             commonTarget: tKeys.length === 1 ? tKeys[0] : '',
             mixedTargets: tKeys.length > 1,
-            availableTargets: (function() {
+            availableTargets: (function () {
               var s = {};
-              descendantRows.forEach(function(r) {
-                self.splitLabel(r.sourceLabel).forEach(function(p) { s[p] = true; });
+              descendantRows.forEach(function (r) {
+                self.splitLabel(r.sourceLabel).forEach(function (p) { s[p] = true; });
               });
               if (!isVirtual && directRows.length > 0) {
-                self.splitLabel(directRows[0].sourceLabel).forEach(function(p) { s[p] = true; });
+                self.splitLabel(directRows[0].sourceLabel).forEach(function (p) { s[p] = true; });
               }
               return Object.keys(s).sort();
             })(),
@@ -430,14 +378,14 @@ export default {
       return result;
     },
     discardedCount() {
-      return this.rows.filter(function(r) { return r.discarded; }).length;
+      return this.rows.filter(function (r) { return r.discarded; }).length;
     },
     activeRows() {
-      return this.rows.filter(function(r) { return !r.discarded; });
+      return this.rows.filter(function (r) { return !r.discarded; });
     },
     uniqueTargets() {
       var set = {};
-      this.activeRows.forEach(function(r) {
+      this.activeRows.forEach(function (r) {
         var t = r.targetLabel.trim();
         if (t) set[t] = true;
       });
@@ -455,7 +403,7 @@ export default {
       return max;
     },
     hasValidMapping() {
-      return this.rows.length > 0 && this.activeRows.every(function(r) { return r.targetLabel.trim() !== ''; });
+      return this.rows.length > 0 && this.activeRows.every(function (r) { return r.targetLabel.trim() !== ''; });
     },
   },
   watch: {
@@ -473,8 +421,8 @@ export default {
         return;
       }
       var sep = this.separator;
-      this.rows = labels.map(function(label) {
-        var parts = label.split(sep).filter(function(p) { return p.trim(); });
+      this.rows = labels.map(function (label) {
+        var parts = label.split(sep).filter(function (p) { return p.trim(); });
         return {
           sourceLabel: label,
           targetLabel: '',
@@ -484,12 +432,12 @@ export default {
       });
       this.activePreset = '';
       this.expandedGroups = {};
-      this.$nextTick(function() {
+      this.$nextTick(function () {
         if (this.rows.length > 0) this.applyPreset('root');
       }.bind(this));
     },
     splitLabel(label) {
-      return label.split(this.separator).filter(function(p) { return p.trim(); });
+      return label.split(this.separator).filter(function (p) { return p.trim(); });
     },
     computeTarget(label, mode, level) {
       var parts = this.splitLabel(label);
@@ -509,7 +457,7 @@ export default {
         return;
       }
       this.activePreset = mode;
-      this.rows.forEach(function(row) {
+      this.rows.forEach(function (row) {
         if (!row.discarded) {
           row.targetLabel = this.computeTarget(row.sourceLabel, mode, this.levelValue);
           row.manuallyEdited = false;
@@ -518,7 +466,7 @@ export default {
     },
     confirmLevel() {
       this.showLevelPicker = false;
-      this.rows.forEach(function(row) {
+      this.rows.forEach(function (row) {
         if (!row.discarded) {
           row.targetLabel = this.computeTarget(row.sourceLabel, 'level', this.levelValue);
           row.manuallyEdited = false;
@@ -527,7 +475,7 @@ export default {
     },
     setCascadeTarget(node, val) {
       if (!val) return;
-      node.descendantRows.forEach(function(row) {
+      node.descendantRows.forEach(function (row) {
         row.discarded = false;
         row.targetLabel = val;
         row.manuallyEdited = true;
@@ -535,7 +483,7 @@ export default {
     },
     discardAll(node, discard) {
       var self = this;
-      node.descendantRows.forEach(function(row) {
+      node.descendantRows.forEach(function (row) {
         row.discarded = discard;
         if (discard) row.targetLabel = '';
         else if (self.activePreset) row.targetLabel = self.computeTarget(row.sourceLabel, self.activePreset, self.levelValue);
@@ -554,7 +502,7 @@ export default {
     },
     buildMapping() {
       var mapping = {};
-      this.rows.forEach(function(row) {
+      this.rows.forEach(function (row) {
         mapping[row.sourceLabel] = row.discarded ? '__DISCARD__' : row.targetLabel.trim();
       });
       return mapping;
@@ -599,7 +547,7 @@ export default {
       if (value === null || value === undefined) return '';
       var s = String(value);
       s = s.replace(/\uFF05/g, '%').replace(/\u3000/g, ' ');
-      ['\u200b', '\u200c', '\u200d', '\ufeff'].forEach(function(ch) {
+      ['\u200b', '\u200c', '\u200d', '\ufeff'].forEach(function (ch) {
         s = s.split(ch).join('');
       });
       return s.trim();
@@ -610,7 +558,7 @@ export default {
       }
       var direct = {};
       var normalized = {};
-      Object.keys(mapping).forEach(function(key) {
+      Object.keys(mapping).forEach(function (key) {
         var k = String(key || '').trim();
         if (!k) return;
         direct[k] = mapping[key];
@@ -619,7 +567,7 @@ export default {
       }.bind(this));
 
       var matched = 0;
-      this.rows.forEach(function(row) {
+      this.rows.forEach(function (row) {
         var src = String(row.sourceLabel || '').trim();
         var hit = Object.prototype.hasOwnProperty.call(direct, src)
           ? direct[src]
@@ -664,6 +612,7 @@ export default {
   border-bottom: 1px solid #f1f5f9;
   flex-shrink: 0;
 }
+
 .panel-title-row {
   display: flex;
   align-items: center;
@@ -671,6 +620,7 @@ export default {
   flex-wrap: wrap;
   gap: 10px;
 }
+
 .panel-title {
   font-size: 1rem;
   font-weight: 600;
@@ -680,25 +630,30 @@ export default {
   align-items: center;
   gap: 6px;
 }
+
 .panel-title i {
   color: #6366f1;
 }
+
 .preset-group {
   display: flex;
   align-items: center;
   gap: 6px;
 }
+
 .preset-label {
   font-size: 0.78rem;
   color: #94a3b8;
   white-space: nowrap;
 }
+
 .level-picker {
   display: flex;
   align-items: center;
   gap: 6px;
   font-size: 0.85rem;
 }
+
 .panel-sub-row {
   display: flex;
   align-items: center;
@@ -706,10 +661,12 @@ export default {
   margin-top: 8px;
   gap: 12px;
 }
+
 .label-count-hint {
   font-size: 0.78rem;
   color: #94a3b8;
 }
+
 .search-input {
   width: 220px;
 }
@@ -719,16 +676,26 @@ export default {
   overflow-y: auto;
   min-height: 0;
 }
+
 .mapping-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
+
 .mapping-table thead {
   position: sticky;
   top: 0;
   z-index: 2;
 }
+
+.mapping-table thead,
+.mapping-table tbody tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
 .mapping-table th {
   background: #f8fafc;
   color: #64748b;
@@ -740,29 +707,54 @@ export default {
   text-align: left;
   border-bottom: 1px solid #e5e7eb;
 }
+
 .mapping-table td {
   padding: 6px 12px;
   border-bottom: 1px solid #f1f5f9;
   vertical-align: middle;
 }
 
-.col-expand { width: 32px; text-align: center; }
-.col-source { min-width: 200px; }
-.col-arrow { width: 32px; text-align: center; }
-.col-target { min-width: 200px; }
-.col-count { width: 90px; text-align: left; }
-.col-action { width: 60px; text-align: center; }
+.col-expand {
+  width: 32px;
+  text-align: center;
+}
+
+.col-source {
+  min-width: 200px;
+}
+
+.col-arrow {
+  width: 32px;
+  text-align: center;
+}
+
+.col-target {
+  min-width: 200px;
+}
+
+.col-count {
+  width: 90px;
+  text-align: left;
+}
+
+.col-action {
+  width: 60px;
+  text-align: center;
+}
 
 .mapping-row {
   background: #fff;
   transition: background 0.15s;
 }
+
 .mapping-row:hover {
   background: #fafbfd;
 }
+
 .mapping-row.is-virtual {
   background: #f9fafb;
 }
+
 .mapping-row.is-discarded {
   background: #fef2f2;
   opacity: 0.65;
@@ -774,6 +766,7 @@ export default {
   font-size: 0.85rem;
   transition: color 0.15s;
 }
+
 .expand-icon:hover {
   color: #6366f1;
 }
@@ -784,10 +777,12 @@ export default {
   flex-wrap: wrap;
   gap: 6px;
 }
+
 .source-label.line-through {
   text-decoration: line-through;
   opacity: 0.6;
 }
+
 .label-part {
   display: inline-block;
   padding: 2px 6px;
@@ -795,11 +790,31 @@ export default {
   font-size: 0.78rem;
   font-weight: 500;
 }
-.depth-0 { background: #dbeafe; color: #1e40af; }
-.depth-1 { background: #e0e7ff; color: #3730a3; }
-.depth-2 { background: #ede9fe; color: #5b21b6; }
-.depth-3 { background: #fae8ff; color: #86198f; }
-.depth-4 { background: #fce7f3; color: #9d174d; }
+
+.depth-0 {
+  background: #dbeafe;
+  color: #1e40af;
+}
+
+.depth-1 {
+  background: #e0e7ff;
+  color: #3730a3;
+}
+
+.depth-2 {
+  background: #ede9fe;
+  color: #5b21b6;
+}
+
+.depth-3 {
+  background: #fae8ff;
+  color: #86198f;
+}
+
+.depth-4 {
+  background: #fce7f3;
+  color: #9d174d;
+}
 
 .virtual-tag {
   font-size: 0.68rem;
@@ -814,6 +829,7 @@ export default {
   color: #6366f1;
   font-size: 0.9rem;
 }
+
 .arrow-icon.text-muted {
   color: #cbd5e1;
 }
@@ -821,19 +837,23 @@ export default {
 .target-input {
   width: 100%;
 }
+
 .target-input-group {
   display: flex;
   align-items: center;
   gap: 4px;
   width: 100%;
 }
+
 .virtual-input :deep(.el-input__inner) {
   background-color: transparent;
   border-style: dashed;
 }
+
 .virtual-input:hover :deep(.el-input__inner) {
   border-style: solid;
 }
+
 .cascade-btn {
   padding: 6px 8px;
 }
@@ -846,11 +866,13 @@ export default {
   border-radius: 8px;
   white-space: nowrap;
 }
+
 .count-num {
   font-size: 0.78rem;
   color: #64748b;
   padding-left: 6px;
 }
+
 .discard-badge {
   display: inline-block;
   padding: 1px 8px;
@@ -861,9 +883,17 @@ export default {
   font-weight: 500;
 }
 
-.action-discard { color: #94a3b8 !important; }
-.action-discard:hover { color: #ef4444 !important; }
-.action-restore { color: #6366f1 !important; }
+.action-discard {
+  color: #94a3b8 !important;
+}
+
+.action-discard:hover {
+  color: #ef4444 !important;
+}
+
+.action-restore {
+  color: #6366f1 !important;
+}
 
 .no-data {
   display: flex;
@@ -874,7 +904,10 @@ export default {
   color: #94a3b8;
   font-size: 0.85rem;
 }
-.no-data i { font-size: 1.25rem; }
+
+.no-data i {
+  font-size: 1.25rem;
+}
 
 .panel-footer {
   padding: 12px 20px;
@@ -886,33 +919,48 @@ export default {
   gap: 10px;
   flex-shrink: 0;
 }
+
 .stats-row {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
 }
+
 .stat {
   font-size: 0.8rem;
   color: #64748b;
 }
+
 .stat strong {
   font-weight: 700;
   color: #334155;
 }
-.stat.highlight strong { color: #2563eb; }
-.stat.warn strong { color: #dc2626; }
+
+.stat.highlight strong {
+  color: #2563eb;
+}
+
+.stat.warn strong {
+  color: #dc2626;
+}
+
 .stat-sep {
   color: #cbd5e1;
   font-size: 0.75rem;
 }
+
 .categories-preview {
   display: inline-flex;
   gap: 3px;
   flex-wrap: wrap;
   margin-left: 4px;
 }
-.cat-tag { font-size: 0.68rem; }
+
+.cat-tag {
+  font-size: 0.68rem;
+}
+
 .action-row {
   display: flex;
   gap: 8px;
@@ -924,39 +972,52 @@ export default {
   margin-bottom: 16px;
   line-height: 1.5;
 }
+
 .params-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px 20px;
 }
+
 .param-item {
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
+
 .param-label {
   font-size: 0.78rem;
   font-weight: 500;
   color: #334155;
 }
+
 .param-key {
   font-size: 0.68rem;
   color: #94a3b8;
   font-weight: 400;
   font-family: monospace;
 }
+
 .param-control {
   display: flex;
   align-items: center;
   gap: 4px;
 }
+
 .param-unit {
   font-size: 0.72rem;
   color: #94a3b8;
 }
+
 .param-desc {
   font-size: 0.68rem;
   color: #94a3b8;
   line-height: 1.3;
+}
+
+.scrollable-tbody {
+  display: block;
+  height: 400px;
+  overflow-y: auto;
 }
 </style>

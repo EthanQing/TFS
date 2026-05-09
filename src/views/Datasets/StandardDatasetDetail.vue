@@ -13,9 +13,6 @@
             <span class="meta-pill info">{{ datasetFormat }}</span>
             <span class="meta-id">ID: {{ datasetId || '-' }}</span>
           </div>
-          <p class="hero-desc">
-            标准数据集是训练链路唯一可直接使用的数据输入，输出格式固定为 YOLO。
-          </p>
         </div>
       </div>
       <div class="hero-right">
@@ -53,16 +50,9 @@
             </div>
           </div>
           <div class="empty-action">
-            <UploadZip
-              :dataset-id="datasetId"
-              dataset-kind="standard"
-              mode="upload"
-              :external-file.sync="uploadFile"
-              :external-uploading.sync="uploading"
-              :external-progress.sync="uploadProgress"
-              @upload-success="handleUploadSuccess"
-              @upload-fail="handleUploadFail"
-            />
+            <UploadZip :dataset-id="datasetId" dataset-kind="standard" mode="upload" :external-file.sync="uploadFile"
+              :external-uploading.sync="uploading" :external-progress.sync="uploadProgress"
+              @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail" />
           </div>
         </div>
 
@@ -73,34 +63,26 @@
               <div class="panel-sub">按类别筛选图片</div>
             </div>
 
+            <!-- <div class="dataset-info-card">
+              <div class="info-line"><span>来源</span><strong>{{ sourceText }}</strong></div>
+              <div class="info-line"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong>
+              </div>
+            </div> -->
             <div class="search-box">
-              <el-input
-                v-model="input"
-                placeholder="搜索类别..."
-                prefix-icon="el-icon-search"
-                class="glass-input"
-                clearable
-              />
+              <el-input v-model="input" placeholder="搜索类别..." prefix-icon="el-icon-search" class="glass-input"
+                clearable />
             </div>
 
             <ul class="class-list" v-if="filteredClassList.length || !input.trim()">
-              <li
-                class="all-option"
-                :class="{ selected: selectedClassId === null }"
-                @click="selectClass(null)"
-              >
+              <li class="all-option" :class="{ selected: selectedClassId === null }" @click="selectClass(null)">
                 <div class="class-info">
                   <span class="dot all"></span>
                   <span class="class-name">全部类别</span>
                 </div>
                 <span class="class-count">{{ formatNumber(totalImages) }}</span>
               </li>
-              <li
-                v-for="(classInfo, idx) in filteredClassList"
-                :key="getClassId(classInfo, idx)"
-                :class="{ selected: isSelectedClass(classInfo) }"
-                @click="selectClass(classInfo.class_id)"
-              >
+              <li v-for="(classInfo, idx) in filteredClassList" :key="getClassId(classInfo, idx)"
+                :class="{ selected: isSelectedClass(classInfo) }" @click="selectClass(classInfo.class_id)">
                 <div class="class-info">
                   <span class="dot"></span>
                   <span class="class-name">{{ getClassName(classInfo) }}</span>
@@ -111,11 +93,6 @@
             <div v-else class="no-results">
               <div class="no-desc">未找到类别 "{{ input }}"</div>
               <el-button type="text" @click="clearSearch">清除搜索</el-button>
-            </div>
-
-            <div class="dataset-info-card">
-              <div class="info-line"><span>来源</span><strong>{{ sourceText }}</strong></div>
-              <div class="info-line"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong></div>
             </div>
           </aside>
 
@@ -130,14 +107,8 @@
               </div>
               <div class="panel-actions">
                 <el-button size="small" @click="refreshAll">刷新</el-button>
-                <el-button
-                  v-if="canSplitDataset"
-                  size="small"
-                  type="primary"
-                  plain
-                  :loading="splitSubmitting || splitLoading"
-                  @click="openSplitDialog"
-                >
+                <el-button v-if="canSplitDataset" size="small" type="primary" plain
+                  :loading="splitSubmitting || splitLoading" @click="openSplitDialog">
                   数据集划分
                 </el-button>
                 <el-button size="small" type="success" plain @click="openAugmentationDialog">
@@ -151,19 +122,11 @@
               <span>暂无图片显示</span>
             </div>
             <div v-else class="image-grid">
-              <div
-                v-for="(image, index) in selectedImages"
-                :key="`${image.image_name}-${index}`"
-                class="image-card"
-                @click="openImagePreview(image)"
-              >
+              <div v-for="(image, index) in selectedImages" :key="`${image.image_name}-${index}`" class="image-card"
+                @click="openImagePreview(image)">
                 <div class="image-wrapper">
-                  <img
-                    :src="image.thumbnail_url || image.image_url"
-                    :alt="image.image_name"
-                    loading="lazy"
-                    @error="handleImageError($event, image)"
-                  />
+                  <img :src="image.thumbnail_url || image.image_url" :alt="image.image_name" loading="lazy"
+                    @error="handleImageError($event, image)" />
                 </div>
                 <div class="image-overlay">
                   <div class="image-name">{{ image.image_name }}</div>
@@ -181,14 +144,8 @@
         <button class="close-btn" @click="closeImagePreview"><i class="el-icon-close"></i></button>
         <div class="modal-image-wrapper">
           <div ref="previewCanvasWrap" class="modal-canvas-wrap">
-            <img
-              ref="previewModalImage"
-              :src="previewImage.image_url"
-              :alt="previewImage.image_name"
-              class="modal-image"
-              @load="handlePreviewImageLoad"
-              @error="handleModalImageError"
-            />
+            <img ref="previewModalImage" :src="previewImage.image_url" :alt="previewImage.image_name"
+              class="modal-image" @load="handlePreviewImageLoad" @error="handleModalImageError" />
             <canvas ref="previewCanvas" class="modal-overlay-canvas"></canvas>
           </div>
         </div>
@@ -213,15 +170,8 @@
       </div>
     </div>
 
-    <el-dialog
-      title="数据集划分"
-      :visible.sync="showSplitDialog"
-      width="420px"
-      :close-on-click-modal="!splitSubmitting"
-      :close-on-press-escape="!splitSubmitting"
-      append-to-body
-      class="split-dialog"
-    >
+    <el-dialog title="数据集划分" :visible.sync="showSplitDialog" width="420px" :close-on-click-modal="!splitSubmitting"
+      :close-on-press-escape="!splitSubmitting" append-to-body class="split-dialog">
       <div class="split-body">
         <div class="split-row">
           <label class="split-label">训练</label>
@@ -250,12 +200,9 @@
       </div>
     </el-dialog>
 
-    <el-dialog title="样本扩增" :visible.sync="showAugmentationDialog" width="1000px" append-to-body class="augmentation-dialog preview-enabled">
-      <ManualAugmentationPanel
-        v-if="showAugmentationDialog"
-        :dataset-id="datasetId"
-        @published="handlePublished"
-      />
+    <el-dialog title="样本扩增" :visible.sync="showAugmentationDialog" width="1000px" append-to-body
+      class="augmentation-dialog preview-enabled">
+      <ManualAugmentationPanel v-if="showAugmentationDialog" :dataset-id="datasetId" @published="handlePublished" />
     </el-dialog>
   </div>
 </template>
@@ -981,6 +928,8 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  height: 625px;
+  overflow-y: auto;
 }
 
 .class-list li {
@@ -1033,18 +982,20 @@ export default {
 }
 
 .dataset-info-card {
-  margin-top: 18px;
-  border-top: 1px dashed #dbe4ee;
-  padding-top: 16px;
+  /* margin-top: 18px; */
+  /* border-top: 1px dashed #dbe4ee; */
+  /* padding-top: 16px; */
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 8px;
+  margin-bottom: 10px;
 }
 
 .info-line {
   display: flex;
-  flex-direction: column;
+  /* flex-direction: column; */
   gap: 4px;
+  align-items: center;
 }
 
 .info-line span {
@@ -1123,6 +1074,8 @@ export default {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 16px;
+  height: 660px;
+  overflow: auto;
 }
 
 .image-card {
@@ -1270,6 +1223,7 @@ export default {
 }
 
 @media (max-width: 1200px) {
+
   .detail-hero,
   .gallery-layout {
     grid-template-columns: 1fr;
