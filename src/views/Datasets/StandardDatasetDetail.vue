@@ -25,6 +25,10 @@
           <div class="stat-value">{{ formatNumber(classCount) }}</div>
         </div>
         <div class="stat-card">
+          <div class="stat-label">目标数</div>
+          <div class="stat-value">{{ formatNumber(totalTargets) }}</div>
+        </div>
+        <div class="stat-card">
           <div class="stat-label">大小</div>
           <div class="stat-value">{{ datasetSizeText }}</div>
         </div>
@@ -270,6 +274,9 @@ export default {
     },
     totalImages() {
       return Number(this.statistics && this.statistics.total_images) || 0;
+    },
+    totalTargets() {
+      return Number(this.statistics && this.statistics.total_objects) || 0;
     },
     classCount() {
       return Array.isArray(this.categories) ? this.categories.length : 0;
@@ -800,9 +807,9 @@ export default {
 
 .hero-right {
   display: grid;
-  grid-template-columns: repeat(3, minmax(120px, 1fr));
+  grid-template-columns: repeat(4, minmax(120px, 1fr));
   gap: 14px;
-  min-width: 360px;
+  min-width: 480px;
 }
 
 .stat-card {

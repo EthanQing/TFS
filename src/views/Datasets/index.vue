@@ -64,14 +64,18 @@
               <div class="card-id">ID: {{ d.dataset_id || '-' }}</div>
             </div>
 
-            <div class="card-stats">
+            <div class="card-stats" :class="activeTab === 'illegal' ? 'stats-3col' : 'stats-4col'">
+              <div class="stat-item">
+                <div class="stat-label">图片</div>
+                <div class="stat-value">{{ formatImageCount(d.num_images) }}</div>
+              </div>
               <div class="stat-item">
                 <div class="stat-label">类别</div>
                 <div class="stat-value">{{ d.num_classes || 0 }}</div>
               </div>
-              <div class="stat-item">
-                <div class="stat-label">图片</div>
-                <div class="stat-value">{{ formatImageCount(d.num_images) }}</div>
+              <div class="stat-item" v-if="activeTab === 'standard'">
+                <div class="stat-label">目标数</div>
+                <div class="stat-value">{{ d.statistics?.total_objects }}</div>
               </div>
               <div class="stat-item">
                 <div class="stat-label">大小</div>
@@ -200,8 +204,7 @@ export default {
       createdDatasetId: null,
       creatingDataset: false,
       defaultPreview: defaultDatasetImg,
-      // illegalDetail: null,
-      // standardDetail: null,
+      activeTab: localStorage.getItem('datasets_active_tab') || 'illegal',
     };
   },
   watch: {
@@ -209,7 +212,11 @@ export default {
       if (!val) {
         this.resetCreatedDataset();
       }
-    }
+    },
+    activeTab(newTab) {
+      // 监听 tab 变化，保存到 localStorage
+      localStorage.setItem('datasets_active_tab', newTab);
+    },
   },
   computed: {
     filteredDatasets() {
@@ -230,18 +237,6 @@ export default {
       }
       return result;
     },
-    // illegalstatistics() {
-    //   return this.illegalDetail && this.illegalDetail.statistics ? this.illegalDetail.statistics : null;
-    // },
-    // standardstatistics() {
-    //   return this.standardDetail && this.standardDetail.statistics ? this.standardDetail.statistics : null;
-    // },
-    // illegaltotalImages() {
-    //   return Number(this.illegalstatistics && this.illegalstatistics.total_images) || 0;
-    // },
-    // standardtotalImages() {
-    //   return Number(this.standardstatistics && this.standardstatistics.total_images) || 0;
-    // },
   },
   methods: {
     handleTabClick() {
@@ -319,14 +314,10 @@ export default {
         let detail;
         if (this.activeTab === 'illegal') {
           list = await fetchIllegalDatasets();
-          // detail = await fetchIllegalDatasetDetail(this.datasetId, { versionsLimit: 50, eventsLimit: 50 });
-          // this.illegalDetail = detail;
           console.log('Fetched illegal datasets:', list);
         } else {
           list = await fetchStandardDatasets();
           console.log('Fetched standard datasets:', list);
-          // detail = await fetchStandardDatasetDetail(this.datasetId, { versionsLimit: 50, eventsLimit: 50 });
-          // this.standardDetail = detail;
         }
 
         this.datasets = Array.isArray(list) ? list : [];
@@ -716,10 +707,18 @@ export default {
 .card-stats {
   margin-top: auto;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  /* grid-template-columns: repeat(3, 1fr); */
   gap: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--border-light);
+}
+
+.stats-3col {
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.stats-4col {
+  grid-template-columns: repeat(4, 1fr);
 }
 
 .stat-item {
