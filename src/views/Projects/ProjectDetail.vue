@@ -42,14 +42,46 @@
             <i class="el-icon-search"></i>
             <el-input v-model="searchQuery" placeholder="搜索训练任务" class="search-input" clearable></el-input>
           </div>
-          <div class="batch-tool">
-            <el-button type="danger" size="mini" :loading="batchDeleting" @click="batchDeleteConfirm">
-              批量删除
-            </el-button>
-            <el-button size="mini" @click="toggleSelectAll">
-              {{ isAllSelected ? '取消全选' : '全选' }}
-            </el-button>
-            <span> · 已选中 {{ selectedJobIds.length }} 个</span>
+          <el-button
+            v-if="!isBatchMode"
+            size="mini"
+            class="batch-entry-btn"
+            :disabled="filteredModels.length === 0"
+            @click="enterBatchMode"
+          >
+            <i class="el-icon-finished"></i>
+            批量操作
+          </el-button>
+          <div v-else class="batch-tool">
+            <div class="batch-tool__info">
+              <span class="batch-tool__badge">
+                <i class="el-icon-finished"></i>
+                批量操作中
+              </span>
+              <span class="batch-tool__count">
+                已选 {{ selectedJobIds.length }} 个
+              </span>
+              <span class="batch-tool__hint">
+                点击卡片或勾选框可快速选择任务
+              </span>
+            </div>
+            <div class="batch-tool__actions">
+              <el-button size="mini" @click="toggleSelectAll">
+                {{ isAllSelected ? '取消全选' : '全选当前列表' }}
+              </el-button>
+              <el-button
+                type="danger"
+                size="mini"
+                :disabled="selectedJobIds.length === 0"
+                :loading="batchDeleting"
+                @click="batchDeleteConfirm"
+              >
+                删除所选
+              </el-button>
+              <el-button size="mini" @click="exitBatchMode">
+                退出批量操作
+              </el-button>
+            </div>
           </div>
         </div>
         <div class="pd-summary">
@@ -67,7 +99,12 @@
           <span>暂无训练任务</span>
         </div>
         <div v-else class="job-grid">
-          <div v-for="model in filteredModels" :key="model.job_id" class="job-card" @click="goProjectsCharts(model)">
+          <div
+            v-for="model in filteredModels"
+            :key="model.job_id"
+            :class="['job-card', { 'batch-mode': isBatchMode, selected: isJobSelected(model.job_id) }]"
+            @click="handleJobCardClick(model)"
+          >
             <div class="job-status-indicator" :class="statusClass(model.status)"></div>
             <div class="job-main">
               <div class="job-header">
@@ -94,12 +131,17 @@
                 </div>
               </div>
             </div>
-            <div class="job-actions" @click.stop>
-              <div>
-                <el-checkbox :value="selectedJobIds.includes(model.job_id)"
-                  @change="checkedChange($event, model.job_id)"></el-checkbox>
+            <div class="job-actions" :class="{ 'batch-mode': isBatchMode }" @click.stop>
+              <div v-if="isBatchMode" class="job-batch-check">
+                <el-checkbox
+                  :value="isJobSelected(model.job_id)"
+                  @change="updateJobSelection(model.job_id, $event)"
+                ></el-checkbox>
+                <span class="job-batch-check__text">
+                  {{ isJobSelected(model.job_id) ? '已选中' : '选择' }}
+                </span>
               </div>
-              <div>
+              <div class="job-action-group">
                 <el-button v-if="model.status === 'pending'" type="success" size="mini"
                   :loading="startingJobs && startingJobs[model.job_id]" class="action-btn"
                   @click.stop="startJob(model.job_id)">开始</el-button>
@@ -185,7 +227,6 @@ import {
   DeleteTrainingJob,
   FetchTrainingJobsStatus,
   ExportModel,
-  FetchTrainingJobModelSize,
   CancelTrainingJob,
   ResumeTrainingJob
 } from '@/api/training';
@@ -219,7 +260,7 @@ export default {
         dynamic: true,
         imgsz: 640,
       },
-      selected: false,
+      isBatchMode: false,
       selectedJobIds: [],          // 存放被勾选的 job_id 数组
       batchDeleting: false,        // 批量删除时的 loading 状态
     };
@@ -278,9 +319,16 @@ export default {
         return tB - tA;
       });
     },
+    filteredJobIds() {
+      return this.filteredModels.map(model => model.job_id);
+    },
+    selectedVisibleCount() {
+      const visible = new Set(this.filteredJobIds);
+      return this.selectedJobIds.filter(id => visible.has(id)).length;
+    },
     isAllSelected() {
       return this.filteredModels.length > 0 &&
-        this.selectedJobIds.length === this.filteredModels.length;
+        this.selectedVisibleCount === this.filteredModels.length;
     },
   },
   watch: {
@@ -318,6 +366,20 @@ export default {
     openCreateJob() {
       if (this._resizeHandler) this._resizeHandler();
       this.dialogVisible = true;
+    },
+    enterBatchMode() {
+      this.isBatchMode = true;
+    },
+    exitBatchMode() {
+      this.isBatchMode = false;
+      this.selectedJobIds = [];
+    },
+    handleJobCardClick(model) {
+      if (this.isBatchMode) {
+        this.toggleJobSelection(model.job_id);
+        return;
+      }
+      this.goProjectsCharts(model);
     },
     onTaskAdded() {
       const pid = this.projectInfo?.project_id || this.$route.query.projectId;
@@ -432,14 +494,20 @@ export default {
         this.$message.error('删除失败: ' + (e.message || e));
       }
     },
-    checkedChange(checked, jobId) {
+    isJobSelected(jobId) {
+      return this.selectedJobIds.includes(jobId);
+    },
+    updateJobSelection(jobId, checked) {
       if (checked) {
-        if (!this.selectedJobIds.includes(jobId)) {
-          this.selectedJobIds.push(jobId);
+        if (!this.isJobSelected(jobId)) {
+          this.selectedJobIds = [...this.selectedJobIds, jobId];
         }
-      } else {
-        this.selectedJobIds = this.selectedJobIds.filter(id => id !== jobId);
+        return;
       }
+      this.selectedJobIds = this.selectedJobIds.filter(id => id !== jobId);
+    },
+    toggleJobSelection(jobId) {
+      this.updateJobSelection(jobId, !this.isJobSelected(jobId));
     },
     //批量删除
     async batchDeleteConfirm() {
@@ -474,8 +542,8 @@ export default {
 
         this.$message.success(`已完成批量删除操作`);
 
-        // 清空选中 & 刷新列表
-        this.selectedJobIds = [];
+        // 退出批量模式并刷新列表
+        this.exitBatchMode();
         const pid = this.projectInfo?.project_id || this.$route.query.projectId;
         if (pid) await this.loadProjectDetails(pid);
 
@@ -488,10 +556,11 @@ export default {
     },
     // 切换全选状态
     toggleSelectAll() {
+      const visible = new Set(this.filteredJobIds);
       if (this.isAllSelected) {
-        this.selectedJobIds = [];
+        this.selectedJobIds = this.selectedJobIds.filter(id => !visible.has(id));
       } else {
-        this.selectedJobIds = this.filteredModels.map(m => m.job_id);
+        this.selectedJobIds = Array.from(new Set([...this.selectedJobIds, ...this.filteredJobIds]));
       }
     },
     isDeleteConflict(error) {
@@ -512,7 +581,9 @@ export default {
             if (s.current_epoch !== undefined) this.$set(job, 'current_epoch', s.current_epoch);
             if (s.status) this.$set(job, 'status', s.status);
           }
-        } catch (_) { }
+        } catch (_) {
+          return null;
+        }
       }));
     },
     initProjectInfo() {
@@ -525,7 +596,9 @@ export default {
           try {
             this.projectInfo = JSON.parse(stored);
             this.loadProjectDetails(this.projectInfo.project_id);
-          } catch (e) { }
+          } catch (e) {
+            console.warn('Failed to parse currentProject from localStorage:', e);
+          }
         }
       }
     },
@@ -571,6 +644,8 @@ export default {
           const all = await fetchTrainingJobs();
           this.projectModels = all.filter(j => j.project_id == projectId);
         }
+        const visibleJobIds = new Set(this.projectModels.map((job) => job.job_id));
+        this.selectedJobIds = this.selectedJobIds.filter((id) => visibleJobIds.has(id));
         await this.fetchCompletedModelSizes();
         localStorage.setItem('currentProject', JSON.stringify(this.projectInfo));
       } catch (error) {
@@ -770,14 +845,73 @@ export default {
   display: flex;
   align-items: center;
   gap: 20px;
+  flex-wrap: wrap;
+}
+
+.batch-entry-btn {
+  flex-shrink: 0;
+  border-radius: var(--radius-full) !important;
+  padding: 8px 16px;
+  font-weight: 600;
+  color: #2b3a67;
+  border-color: rgba(79, 99, 199, 0.24);
+  background: linear-gradient(135deg, rgba(79, 99, 199, 0.08), rgba(79, 99, 199, 0.03));
+}
+
+.batch-entry-btn:hover,
+.batch-entry-btn:focus {
+  color: #1f2d5c;
+  border-color: rgba(79, 99, 199, 0.4);
+  background: linear-gradient(135deg, rgba(79, 99, 199, 0.14), rgba(79, 99, 199, 0.06));
 }
 
 .batch-tool {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  justify-content: space-between;
+  gap: 1rem;
   font-size: 0.875rem;
   color: var(--text-secondary);
+  padding: 0.65rem 0.9rem;
+  border-radius: 18px;
+  border: 1px solid rgba(79, 99, 199, 0.16);
+  background: linear-gradient(135deg, rgba(79, 99, 199, 0.08), rgba(79, 99, 199, 0.02));
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  flex-wrap: wrap;
+}
+
+.batch-tool__info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.batch-tool__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: var(--radius-full);
+  background: rgba(79, 99, 199, 0.12);
+  color: #2b3a67;
+  font-weight: 700;
+}
+
+.batch-tool__count {
+  color: var(--text-main);
+  font-weight: 700;
+}
+
+.batch-tool__hint {
+  color: var(--text-secondary);
+}
+
+.batch-tool__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .search-shell {
@@ -844,11 +978,47 @@ export default {
   overflow: hidden;
 }
 
+.job-card.batch-mode {
+  cursor: pointer;
+}
+
+.job-card.selected {
+  background: linear-gradient(135deg, rgba(79, 99, 199, 0.12), rgba(79, 99, 199, 0.04));
+  border-color: rgba(79, 99, 199, 0.35);
+  box-shadow: 0 14px 28px rgba(79, 99, 199, 0.14);
+}
+
 .job-card:hover {
   transform: translateY(-4px);
   background: #fff;
   box-shadow: var(--shadow-md);
   border-color: var(--color-primary-light);
+}
+
+.job-card.selected:hover {
+  background: linear-gradient(135deg, rgba(79, 99, 199, 0.16), rgba(79, 99, 199, 0.07));
+}
+
+.job-batch-check {
+  position: absolute;
+  left: 1rem;
+  bottom: 1rem;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.7rem;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.94);
+  border: 1px solid rgba(79, 99, 199, 0.18);
+  color: #2b3a67;
+  font-size: 0.75rem;
+  font-weight: 600;
+  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
+}
+
+.job-batch-check__text {
+  white-space: nowrap;
 }
 
 .job-status-indicator {
@@ -942,6 +1112,19 @@ export default {
   padding-top: 0.75rem;
 }
 
+.job-actions.batch-mode {
+  justify-content: flex-end;
+}
+
+.job-action-group {
+  width: 100%;
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0.35rem;
+  flex-wrap: wrap;
+}
+
 .more-btn {
   padding: 0.25rem 0.5rem;
   cursor: pointer;
@@ -958,5 +1141,30 @@ export default {
 
 .action-btn {
   font-weight: 600;
+}
+
+@media (max-width: 768px) {
+  .pd-toolbar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.75rem;
+  }
+
+  .toolbar-right {
+    gap: 0.75rem;
+  }
+
+  .batch-tool {
+    width: 100%;
+  }
+
+  .batch-tool__info,
+  .batch-tool__actions {
+    width: 100%;
+  }
+
+  .job-grid {
+    grid-template-columns: 1fr;
+  }
 }
 </style>
