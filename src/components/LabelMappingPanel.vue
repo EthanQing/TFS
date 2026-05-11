@@ -77,7 +77,7 @@
                 <template v-else>
                   <div class="target-input-group">
                     <el-select v-model="node.exactRow.targetLabel" size="mini" class="target-input" placeholder="映射当前项"
-                      filterable allow-create @change="onTargetEdited(node.exactRow)">
+                      filterable allow-create default-first-option @change="onTargetEdited(node.exactRow)" >
                       <el-option v-for="opt in node.availableTargets" :key="opt" :label="opt" :value="opt" />
                     </el-select>
                     <el-tooltip v-if="node.hasChildren" content="将左侧设置的映射向下应用到所有子项" placement="top">
