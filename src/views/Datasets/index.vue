@@ -246,7 +246,6 @@ export default {
       this.fetchDatasetsList();
     },
     goDetail(dataset) {
-      console.log('Go to detail for dataset:', dataset);
       if (this.activeTab === 'illegal') {
         this.$router.push({
           path: "/illegal-dataset-detail",
@@ -314,10 +313,8 @@ export default {
         let detail;
         if (this.activeTab === 'illegal') {
           list = await fetchIllegalDatasets();
-          console.log('Fetched illegal datasets:', list);
         } else {
           list = await fetchStandardDatasets();
-          console.log('Fetched standard datasets:', list);
         }
 
         this.datasets = Array.isArray(list) ? list : [];

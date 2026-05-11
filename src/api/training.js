@@ -45,6 +45,11 @@ function mapRunStatus(status) {
   return s;
 }
 
+function normalizeLooseValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : value;
+}
+
 function mapParametersOut(p) {
   const obj = p && typeof p === "object" ? p : {};
   const imageSize =
@@ -214,6 +219,50 @@ async function mapTrainingRunToJob(run) {
   };
 }
 
+export async function fetchTrainingAugmentationOptions({
+  architecture_id,
+  engine,
+  task_type,
+} = {}) {
+  const params = new URLSearchParams();
+
+  if (architecture_id != null && normStr(architecture_id)) {
+    params.set("architecture_id", architecture_id);
+  }
+  if (engine) params.set("engine", engine);
+  if (task_type) params.set("task_type", task_type);
+
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v3/training-runs/augmentation-options${qs ? `?${qs}` : ""}`;
+
+  const res = await fetch(url);
+  const data = await safeJson(res);
+  if (!res.ok) throw new Error(toErrorMessage(data, res));
+  return data;
+}
+
+export async function fetchTrainingLossWeightOptions({
+  architecture_id,
+  engine,
+  task_type,
+} = {}) {
+  const params = new URLSearchParams();
+
+  if (architecture_id != null && normStr(architecture_id)) {
+    params.set("architecture_id", architecture_id);
+  }
+  if (engine) params.set("engine", engine);
+  if (task_type) params.set("task_type", task_type);
+
+  const qs = params.toString();
+  const url = `${API_BASE}/api/v3/training-runs/loss-weight-options${qs ? `?${qs}` : ""}`;
+
+  const res = await fetch(url);
+  const data = await safeJson(res);
+  if (!res.ok) throw new Error(toErrorMessage(data, res));
+  return data;
+}
+
 // createTrainingJob 创建训练任务接口
 export async function createTrainingJob(trainParameters) {
   try {
@@ -244,6 +293,28 @@ export async function createTrainingJob(trainParameters) {
       optimizer: normStr(tp.optimizer || "AdamW") || "AdamW",
     };
 
+    if (tp.augmentation && typeof tp.augmentation === "object") {
+      const augmentation = {};
+      Object.entries(tp.augmentation).forEach(([key, value]) => {
+        if (value === "" || value === null || value === undefined) return;
+        augmentation[key] = normalizeLooseValue(value);
+      });
+      if (Object.keys(augmentation).length) {
+        params.augmentation = augmentation;
+      }
+    }
+
+    if (tp.loss_weights && typeof tp.loss_weights === "object") {
+      const lossWeights = {};
+      Object.entries(tp.loss_weights).forEach(([key, value]) => {
+        if (value === "" || value === null || value === undefined) return;
+        lossWeights[key] = normalizeLooseValue(value);
+      });
+      if (Object.keys(lossWeights).length) {
+        params.loss_weights = lossWeights;
+      }
+    }
+
     // Put remaining "advanced" options into additional_params to keep extensibility.
     const known = new Set([
       "project_id",
@@ -266,6 +337,8 @@ export async function createTrainingJob(trainParameters) {
       "workers",
       "use_pretrained",
       "optimizer",
+      "augmentation",
+      "loss_weights",
     ]);
     const additional = {};
     Object.keys(tp).forEach((k) => {

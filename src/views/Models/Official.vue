@@ -158,6 +158,197 @@
             <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
           </el-select>
         </div>
+        <div class="field-row wide augmentation-field-row">
+          <div class="augmentation-panel">
+            <div class="augmentation-panel__header">
+              <div>
+                <div class="field-label">数据增强设置</div>
+                <div class="augmentation-panel__subtitle">
+                  仅提交您显式修改过的增强参数；未修改项继续使用 Ultralytics 默认值。
+                </div>
+              </div>
+              <div v-if="groupedAugmentationOptions.length > 0" class="augmentation-toggle">
+                <span>启用自定义数据增强</span>
+                <el-switch v-model="augmentationEnabled"></el-switch>
+              </div>
+            </div>
+
+            <div v-if="archLoading || augmentationLoading" class="augmentation-state">
+              <i class="el-icon-loading"></i>
+              <span>正在加载数据增强配置...</span>
+            </div>
+            <div v-else-if="augmentationError" class="augmentation-state error">
+              <i class="el-icon-warning"></i>
+              <span>{{ augmentationError }}，可继续创建任务但不会提交增强参数。</span>
+            </div>
+            <div v-else-if="!selectedArchitectureId" class="augmentation-state">
+              <i class="el-icon-info"></i>
+              <span>请先选择模型架构后查看数据增强设置</span>
+            </div>
+            <div v-else-if="!groupedAugmentationOptions.length" class="augmentation-state">
+              <i class="el-icon-info"></i>
+              <span>当前训练框架暂不支持训练时数据增强配置</span>
+            </div>
+            <div v-else class="augmentation-groups">
+              <section
+                v-for="group in groupedAugmentationOptions"
+                :key="group.key"
+                class="augmentation-group"
+              >
+                <div class="augmentation-group__title">{{ group.label }}</div>
+                <div class="augmentation-group__grid">
+                  <article
+                    v-for="field in group.items"
+                    :key="field.key"
+                    class="augmentation-item"
+                  >
+                    <div class="augmentation-item__top">
+                      <div>
+                        <div class="augmentation-item__label">{{ field.label || field.key }}</div>
+                        <div class="augmentation-item__meta">
+                          <span>参数名：{{ field.key }}</span>
+                          <span>默认值：{{ formatFieldValue(field.default) }}</span>
+                          <span v-if="field.value_type === 'enum'">
+                            {{ formatAugmentationOptionsText(field) }}
+                          </span>
+                          <span v-else>
+                            {{ formatFieldRange(field) }}
+                          </span>
+                        </div>
+                      </div>
+                      <el-button
+                        type="text"
+                        size="mini"
+                        :disabled="!isAugmentationFieldTouched(field.key)"
+                        @click="resetAugmentationField(field)"
+                      >
+                        恢复默认
+                      </el-button>
+                    </div>
+                    <div v-if="field.description" class="augmentation-item__desc">
+                      {{ field.description }}
+                    </div>
+                    <div class="augmentation-item__control">
+                      <el-select
+                        v-if="field.value_type === 'enum'"
+                        :value="getAugmentationFieldValue(field)"
+                        :disabled="!augmentationEnabled || augmentationLoading"
+                        :clearable="!!field.nullable"
+                        size="small"
+                        class="augmentation-select"
+                        placeholder="请选择"
+                        @input="onAugmentationChanged(field, $event)"
+                      >
+                        <el-option
+                          v-for="option in normalizeAugmentationOptions(field.options)"
+                          :key="option.value"
+                          :label="option.label"
+                          :value="option.value"
+                        ></el-option>
+                      </el-select>
+                      <div v-else class="augmentation-number-control">
+                        <el-slider
+                          :value="getAugmentationNumericValue(field)"
+                          :min="getAugmentationFieldMin(field)"
+                          :max="getAugmentationFieldMax(field)"
+                          :step="getAugmentationFieldStep(field)"
+                          :disabled="!augmentationEnabled || augmentationLoading"
+                          @input="onAugmentationChanged(field, $event)"
+                        ></el-slider>
+                        <el-input-number
+                          :value="getAugmentationNumericValue(field)"
+                          :min="getAugmentationFieldMin(field)"
+                          :max="getAugmentationFieldMax(field)"
+                          :step="getAugmentationFieldStep(field)"
+                          :precision="getAugmentationFieldPrecision(field)"
+                          :step-strictly="field.value_type === 'integer'"
+                          :disabled="!augmentationEnabled || augmentationLoading"
+                          size="small"
+                          class="augmentation-input"
+                          @change="onAugmentationChanged(field, $event)"
+                        ></el-input-number>
+                      </div>
+                    </div>
+                  </article>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+        <div class="field-row wide loss-weight-field-row">
+          <div class="loss-weight-panel">
+            <div class="loss-weight-panel__header">
+              <div>
+                <div class="field-label">YOLO Loss 权重设置</div>
+                <div class="loss-weight-panel__subtitle">
+                  仅提交您显式修改过的 Loss 权重；未修改项继续使用 Ultralytics 默认值。
+                </div>
+              </div>
+              <div v-if="visibleLossWeightOptions.length > 0" class="loss-weight-toggle">
+                <span>启用自定义 Loss 权重</span>
+                <el-switch v-model="lossWeightsEnabled"></el-switch>
+              </div>
+            </div>
+
+            <div v-if="archLoading || lossWeightLoading" class="loss-weight-state">
+              <i class="el-icon-loading"></i>
+              <span>正在加载 Loss 权重配置...</span>
+            </div>
+            <div v-else-if="lossWeightError" class="loss-weight-state error">
+              <i class="el-icon-warning"></i>
+              <span>{{ lossWeightError }}，可继续创建任务但不会提交 Loss 权重。</span>
+            </div>
+            <div v-else-if="!selectedArchitectureId" class="loss-weight-state">
+              <i class="el-icon-info"></i>
+              <span>请先选择模型架构后查看 YOLO Loss 权重设置</span>
+            </div>
+            <div v-else-if="!visibleLossWeightOptions.length" class="loss-weight-state">
+              <i class="el-icon-info"></i>
+              <span>当前训练框架暂不支持 YOLO Loss 权重配置</span>
+            </div>
+            <div v-else class="loss-weight-grid">
+              <article
+                v-for="field in visibleLossWeightOptions"
+                :key="field.key"
+                class="loss-weight-item"
+              >
+                <div class="loss-weight-item__top">
+                  <div>
+                    <div class="loss-weight-item__label">{{ getLossWeightLabel(field) }}</div>
+                    <div class="loss-weight-item__meta">
+                      <span>参数名：{{ field.key }}</span>
+                      <span>默认值：{{ formatFieldValue(field.default) }}</span>
+                      <span>{{ formatFieldRange(field) }}</span>
+                    </div>
+                  </div>
+                  <el-button
+                    type="text"
+                    size="mini"
+                    :disabled="!isLossWeightFieldTouched(field.key)"
+                    @click="resetLossWeightField(field)"
+                  >
+                    恢复默认
+                  </el-button>
+                </div>
+                <div class="loss-weight-item__desc">
+                  {{ getLossWeightDescription(field) }}
+                </div>
+                <div class="loss-weight-item__control">
+                  <el-input-number
+                    :value="getLossWeightFieldValue(field)"
+                    :min="getFieldMin(field)"
+                    :step="getFieldStep(field, 0.1)"
+                    :precision="getFieldPrecision(field, 0.1)"
+                    :disabled="!lossWeightsEnabled || lossWeightLoading"
+                    size="small"
+                    class="loss-weight-input"
+                    @change="onLossWeightChanged(field, $event)"
+                  ></el-input-number>
+                </div>
+              </article>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -165,10 +356,42 @@
 
 <script>
 import { referenceStore, loadArchitectures } from "@/store/referenceStore";
-import { uploadPretrainedWeights } from "@/api/training";
+import {
+  fetchTrainingAugmentationOptions,
+  fetchTrainingLossWeightOptions,
+  uploadPretrainedWeights,
+} from "@/api/training";
+
+const AUGMENTATION_GROUP_ORDER = [
+  "color",
+  "geometry",
+  "mix",
+  "segmentation",
+  "classification",
+];
+
+const AUGMENTATION_GROUP_LABELS = {
+  color: "色彩空间增强",
+  geometry: "几何变换增强",
+  mix: "组合增强",
+  segmentation: "分割增强",
+  classification: "分类增强",
+};
+
+const LOSS_WEIGHT_LABELS = {
+  box: "边界框损失权重",
+  cls: "分类损失权重",
+  dfl: "DFL 损失权重",
+};
+
+const LOSS_WEIGHT_HINTS = {
+  box: "控制框回归损失占比",
+  cls: "控制分类损失占比",
+  dfl: "控制分布焦点损失占比",
+};
 
 export default {
-  name: "Official",
+  name: "OfficialPanel",
   props: {
     selectedProject: {
       type: Object,
@@ -261,6 +484,18 @@ export default {
         "PicoDet_l": { accuracy: 36.6, speedMs: 6.8 },
       },
       savePeriod: "-1",
+      augmentationEnabled: false,
+      augmentationOptions: [],
+      augmentationValues: {},
+      augmentationTouched: {},
+      augmentationLoading: false,
+      augmentationError: "",
+      lossWeightsEnabled: false,
+      lossWeightOptions: [],
+      lossWeightValues: {},
+      lossWeightTouched: {},
+      lossWeightLoading: false,
+      lossWeightError: "",
     };
   },
   computed: {
@@ -286,32 +521,9 @@ export default {
         const target = this.taskType === 'segmentation' ? 'segmentation' : 'detection';
         return tt === target || (!tt && target === 'detection');
       });
-
-      const fallbackFamily = "YOLOv8";
-      // Different fallbacks based on taskType if list is empty
-      let fallbackItems = [];
-      if (this.taskType === 'segmentation') {
-         fallbackItems = [
-            { model_variant: "yolov8n-seg" },
-            { model_variant: "yolov8s-seg" },
-            { model_variant: "yolov8m-seg" },
-            { model_variant: "yolov8l-seg" },
-            { model_variant: "yolov8x-seg" }
-        ];
-      } else {
-        fallbackItems = [
-            { model_variant: "yolov8n" },
-            { model_variant: "yolov8s" },
-            { model_variant: "yolov8m" },
-            { model_variant: "yolov8l" },
-            { model_variant: "yolov8x" }
-        ];
-      }
-
-      const items = detected.length ? detected : fallbackItems;
       const map = {};
-      items.forEach((it) => {
-        const fam = it.model_family || it.family || fallbackFamily || "Uncategorized";
+      detected.forEach((it) => {
+        const fam = it.model_family || it.family || "Uncategorized";
         (map[fam] = map[fam] || []).push(it);
       });
 
@@ -354,6 +566,34 @@ export default {
       if (!this.selectedFamily) return [];
       const group = this.architectureGroups.find(g => g.family === this.selectedFamily);
       return group ? group.items : [];
+    },
+    groupedAugmentationOptions() {
+      const filtered = this.filterFieldsByTask(this.augmentationOptions);
+
+      const groupMap = new Map();
+      filtered.forEach((field) => {
+        const key = String(field?.group || "other").trim() || "other";
+        if (!groupMap.has(key)) groupMap.set(key, []);
+        groupMap.get(key).push(field);
+      });
+
+      return Array.from(groupMap.entries())
+        .sort((a, b) => {
+          const left = AUGMENTATION_GROUP_ORDER.indexOf(a[0]);
+          const right = AUGMENTATION_GROUP_ORDER.indexOf(b[0]);
+          const leftRank = left >= 0 ? left : Number.MAX_SAFE_INTEGER;
+          const rightRank = right >= 0 ? right : Number.MAX_SAFE_INTEGER;
+          if (leftRank !== rightRank) return leftRank - rightRank;
+          return String(a[0]).localeCompare(String(b[0]), "zh-Hans-CN");
+        })
+        .map(([key, items]) => ({
+          key,
+          label: AUGMENTATION_GROUP_LABELS[key] || key,
+          items,
+        }));
+    },
+    visibleLossWeightOptions() {
+      return this.filterFieldsByTask(this.lossWeightOptions);
     },
     metrics() {
       const def = { accuracy: 37.3, speedMs: 80.4 };
@@ -452,11 +692,15 @@ export default {
     },
     selectedModel(newModel) {
       if (newModel) {
-        this.$emit("model-selected", {
-          model: newModel,
-          architecture_id: this.selectedArchitectureId || null
-        });
+        this.emitModelSelected();
       }
+    },
+    selectedArchitectureId() {
+      if (this.selectedModel) {
+        this.emitModelSelected();
+      }
+      this.loadAugmentationOptions();
+      this.loadLossWeightOptions();
     },
     epochs() {
       this.emitConfigChange();
@@ -489,6 +733,12 @@ export default {
     },
     savePeriod() {
         this.emitConfigChange();
+    },
+    augmentationEnabled() {
+      this.emitConfigChange();
+    },
+    lossWeightsEnabled() {
+      this.emitConfigChange();
     }
   },
   methods: {
@@ -521,12 +771,48 @@ export default {
       this.pretrainUploadError = "";
       this.emitConfigChange();
     },
+    emitModelSelected() {
+      if (!this.selectedModel) return;
+      this.$emit("model-selected", {
+        model: this.selectedModel,
+        architecture_id: this.selectedArchitectureId || null
+      });
+    },
+    findArchitectureByVariant(variant) {
+      const target = String(variant || "").trim().toLowerCase();
+      if (!target) return null;
+      for (const group of this.architectureGroups) {
+        const found = (group.items || []).find(
+          (item) => String(item?.model_variant || "").trim().toLowerCase() === target
+        );
+        if (found) return found;
+      }
+      return null;
+    },
     ensureDefaultModel() {
+      if (this.archLoading) return;
+      if (!this.architectureGroups.length) {
+        this.selectedFamily = null;
+        this.selectedModel = null;
+        this.selectedArchitectureId = null;
+        return;
+      }
       // Ensure selectedFamily is set
       if (!this.selectedFamily && this.architectureGroups.length) {
         this.selectedFamily = this.architectureGroups[0].family;
       }
-      if (this.selectedModel) return;
+      if (this.selectedModel) {
+        const matched = this.findArchitectureByVariant(this.selectedModel);
+        if (matched) {
+          const matchedId = matched?.arch_id || matched?.architecture_id || matched?.id || null;
+          const matchedFamily = matched?.model_family || matched?.family || this.selectedFamily;
+          if (matchedFamily) this.selectedFamily = matchedFamily;
+          if (matchedId !== this.selectedArchitectureId) {
+            this.selectedArchitectureId = matchedId;
+          }
+        }
+        return;
+      }
       const first = this.architectureGroups?.[0]?.items?.[0];
       if (first) this.onSelectArchitecture(first);
     },
@@ -534,6 +820,7 @@ export default {
       this.selectedFamily = family;
     },
     onSelectArchitecture(arch) {
+      this.selectedFamily = arch?.model_family || arch?.family || this.selectedFamily;
       this.selectedArchitectureId = arch?.arch_id || arch?.architecture_id || arch?.id || null;
       this.selectedModel = arch?.model_variant || null;
     },
@@ -578,12 +865,320 @@ export default {
       const k = this.formatVariantKey(v);
       return k;
     },
+    filterFieldsByTask(fields) {
+      const currentTask = String(this.taskType || "").toLowerCase();
+      const items = Array.isArray(fields) ? fields : [];
+      return items.filter((field) => {
+        if (!Array.isArray(field?.tasks) || !field.tasks.length) return true;
+        return field.tasks.map((it) => String(it || "").toLowerCase()).includes(currentTask);
+      });
+    },
     showAdvancedModelConfiguration() {
       this.isRotated = !this.isRotated;
+      if (!this.isRotated) return;
+      this.ensureDefaultModel();
+      if (
+        this.selectedArchitectureId &&
+        !this.augmentationLoading &&
+        !this.augmentationOptions.length &&
+        !this.augmentationError
+      ) {
+        this.loadAugmentationOptions();
+      }
+      if (
+        this.selectedArchitectureId &&
+        !this.lossWeightLoading &&
+        !this.lossWeightOptions.length &&
+        !this.lossWeightError
+      ) {
+        this.loadLossWeightOptions();
+      }
+    },
+    getNumericFieldDefaultValue(field, fallback = 0) {
+      if (!field || typeof field !== "object") return fallback;
+      const numericDefault = Number(field.default);
+      return Number.isFinite(numericDefault) ? numericDefault : fallback;
+    },
+    buildFieldInitialValues(fields, resolver) {
+      const getValue = typeof resolver === "function"
+        ? resolver
+        : (field) => this.getNumericFieldDefaultValue(field);
+      return (Array.isArray(fields) ? fields : []).reduce((acc, field) => {
+        acc[field.key] = getValue(field);
+        return acc;
+      }, {});
+    },
+    buildTouchedPayload(enabled, touched, values) {
+      if (!enabled) return null;
+
+      const out = {};
+      Object.keys(touched || {}).forEach((key) => {
+        const value = values?.[key];
+        if (value === "" || value === null || value === undefined) return;
+        out[key] = Number.isFinite(Number(value)) ? Number(value) : value;
+      });
+
+      return Object.keys(out).length ? out : null;
+    },
+    getNumericFieldValue(field, values, resolver) {
+      if (!field) return undefined;
+      if (Object.prototype.hasOwnProperty.call(values || {}, field.key)) {
+        return values[field.key];
+      }
+      const getValue = typeof resolver === "function"
+        ? resolver
+        : (it) => this.getNumericFieldDefaultValue(it);
+      return getValue(field);
+    },
+    getFieldMin(field, fallback = 0) {
+      const min = Number(field?.min);
+      return Number.isFinite(min) ? min : fallback;
+    },
+    getFieldStep(field, fallback = 0.01) {
+      const step = Number(field?.step);
+      if (Number.isFinite(step) && step > 0) return step;
+      return fallback;
+    },
+    getFieldPrecision(field, fallback = 0.01) {
+      const step = String(this.getFieldStep(field, fallback));
+      if (!step.includes(".")) return 0;
+      return step.split(".")[1].length;
+    },
+    formatFieldValue(value) {
+      if (value === null || value === undefined || value === "") return "未设置";
+      return String(value);
+    },
+    formatFieldRange(field) {
+      const min = field?.min;
+      const max = field?.max;
+      const step = field?.step;
+      const parts = [];
+      if (min !== undefined && max !== undefined) {
+        parts.push(`范围：${min ?? "-∞"} ~ ${max ?? "+∞"}`);
+      } else if (min !== undefined) {
+        parts.push(`最小值：${min}`);
+      } else if (max !== undefined) {
+        parts.push(`最大值：${max}`);
+      }
+      if (step !== undefined) {
+        parts.push(`步长：${step}`);
+      }
+      return parts.join(" · ");
+    },
+    getAugmentationDefaultValue(field) {
+      if (!field || typeof field !== "object") return 0;
+      if (field.default !== undefined) return field.default;
+      if (field.value_type === "enum") {
+        const options = this.normalizeAugmentationOptions(field.options);
+        return options.length ? options[0].value : "";
+      }
+      return this.getNumericFieldDefaultValue(field, 0);
+    },
+    buildAugmentationInitialValues(fields) {
+      return this.buildFieldInitialValues(fields, (field) => this.getAugmentationDefaultValue(field));
+    },
+    resetAugmentationState() {
+      this.augmentationEnabled = false;
+      this.augmentationOptions = [];
+      this.augmentationValues = {};
+      this.augmentationTouched = {};
+      this.augmentationLoading = false;
+      this.augmentationError = "";
+    },
+    async loadAugmentationOptions() {
+      const architectureId = this.selectedArchitectureId;
+
+      this.resetAugmentationState();
+      this.emitConfigChange();
+
+      if (!architectureId) return;
+
+      this.augmentationLoading = true;
+      try {
+        const data = await fetchTrainingAugmentationOptions({
+          architecture_id: architectureId
+        });
+        if (this.selectedArchitectureId !== architectureId) return;
+        const fields = Array.isArray(data?.fields) ? data.fields : [];
+        this.augmentationOptions = fields;
+        this.augmentationValues = this.buildAugmentationInitialValues(fields);
+        this.augmentationTouched = {};
+      } catch (error) {
+        if (this.selectedArchitectureId !== architectureId) return;
+        this.augmentationOptions = [];
+        this.augmentationValues = {};
+        this.augmentationTouched = {};
+        this.augmentationError = error?.message || "加载数据增强配置失败";
+      } finally {
+        if (this.selectedArchitectureId === architectureId) {
+          this.augmentationLoading = false;
+          this.emitConfigChange();
+        }
+      }
+    },
+    normalizeAugmentationOptions(options) {
+      return (Array.isArray(options) ? options : []).map((option) => {
+        if (option && typeof option === "object") {
+          const value = option.value ?? option.key ?? option.id ?? "";
+          return {
+            value,
+            label: option.label ?? option.name ?? String(value),
+          };
+        }
+        return {
+          value: option,
+          label: String(option),
+        };
+      });
+    },
+    getAugmentationFieldValue(field) {
+      if (!field) return undefined;
+      if (Object.prototype.hasOwnProperty.call(this.augmentationValues, field.key)) {
+        return this.augmentationValues[field.key];
+      }
+      return this.getAugmentationDefaultValue(field);
+    },
+    getAugmentationNumericValue(field) {
+      return this.getNumericFieldValue(
+        field,
+        this.augmentationValues,
+        (it) => this.getAugmentationDefaultValue(it)
+      );
+    },
+    getAugmentationFieldMin(field) {
+      return this.getFieldMin(field, 0);
+    },
+    getAugmentationFieldMax(field) {
+      const max = Number(field?.max);
+      if (Number.isFinite(max)) return max;
+      const current = this.getAugmentationNumericValue(field);
+      const min = this.getAugmentationFieldMin(field);
+      return Math.max(current, min + 1);
+    },
+    getAugmentationFieldStep(field) {
+      return this.getFieldStep(field, field?.value_type === "integer" ? 1 : 0.01);
+    },
+    getAugmentationFieldPrecision(field) {
+      if (field?.value_type === "integer") return 0;
+      return this.getFieldPrecision(field, 0.01);
+    },
+    formatAugmentationOptionsText(field) {
+      const labels = this.normalizeAugmentationOptions(field?.options).map((option) => option.label);
+      return labels.length ? `选项：${labels.join(" / ")}` : "选项：-";
+    },
+    isAugmentationFieldTouched(key) {
+      return !!this.augmentationTouched[key];
+    },
+    onAugmentationChanged(field, value) {
+      if (!field?.key) return;
+      let nextValue = value;
+      if (field.value_type === "integer" && value !== null && value !== undefined && value !== "") {
+        const n = Number(value);
+        nextValue = Number.isFinite(n) ? Math.round(n) : value;
+      }
+      this.$set(this.augmentationValues, field.key, nextValue);
+      this.$set(this.augmentationTouched, field.key, true);
+      this.emitConfigChange();
+    },
+    resetAugmentationField(field) {
+      if (!field?.key) return;
+      this.$set(this.augmentationValues, field.key, this.getAugmentationDefaultValue(field));
+      this.$delete(this.augmentationTouched, field.key);
+      this.emitConfigChange();
+    },
+    buildAugmentationPayload() {
+      return this.buildTouchedPayload(
+        this.augmentationEnabled,
+        this.augmentationTouched,
+        this.augmentationValues
+      );
+    },
+    getLossWeightDefaultValue(field) {
+      return this.getNumericFieldDefaultValue(field, 0);
+    },
+    buildLossWeightInitialValues(fields) {
+      return this.buildFieldInitialValues(fields, (field) => this.getLossWeightDefaultValue(field));
+    },
+    resetLossWeightState() {
+      this.lossWeightsEnabled = false;
+      this.lossWeightOptions = [];
+      this.lossWeightValues = {};
+      this.lossWeightTouched = {};
+      this.lossWeightLoading = false;
+      this.lossWeightError = "";
+    },
+    async loadLossWeightOptions() {
+      const architectureId = this.selectedArchitectureId;
+
+      this.resetLossWeightState();
+      this.emitConfigChange();
+
+      if (!architectureId) return;
+
+      this.lossWeightLoading = true;
+      try {
+        const data = await fetchTrainingLossWeightOptions({
+          architecture_id: architectureId
+        });
+        if (this.selectedArchitectureId !== architectureId) return;
+        const fields = Array.isArray(data?.fields) ? data.fields : [];
+        this.lossWeightOptions = fields;
+        this.lossWeightValues = this.buildLossWeightInitialValues(fields);
+        this.lossWeightTouched = {};
+      } catch (error) {
+        if (this.selectedArchitectureId !== architectureId) return;
+        this.lossWeightOptions = [];
+        this.lossWeightValues = {};
+        this.lossWeightTouched = {};
+        this.lossWeightError = error?.message || "加载 Loss 权重配置失败";
+      } finally {
+        if (this.selectedArchitectureId === architectureId) {
+          this.lossWeightLoading = false;
+          this.emitConfigChange();
+        }
+      }
+    },
+    getLossWeightLabel(field) {
+      const key = String(field?.key || "").trim();
+      return LOSS_WEIGHT_LABELS[key] || field?.label || key || "Loss Weight";
+    },
+    getLossWeightDescription(field) {
+      const key = String(field?.key || "").trim();
+      return LOSS_WEIGHT_HINTS[key] || field?.description || "";
+    },
+    getLossWeightFieldValue(field) {
+      return this.getNumericFieldValue(
+        field,
+        this.lossWeightValues,
+        (it) => this.getLossWeightDefaultValue(it)
+      );
+    },
+    isLossWeightFieldTouched(key) {
+      return !!this.lossWeightTouched[key];
+    },
+    onLossWeightChanged(field, value) {
+      if (!field?.key) return;
+      this.$set(this.lossWeightValues, field.key, value);
+      this.$set(this.lossWeightTouched, field.key, true);
+      this.emitConfigChange();
+    },
+    resetLossWeightField(field) {
+      if (!field?.key) return;
+      this.$set(this.lossWeightValues, field.key, this.getLossWeightDefaultValue(field));
+      this.$delete(this.lossWeightTouched, field.key);
+      this.emitConfigChange();
+    },
+    buildLossWeightsPayload() {
+      return this.buildTouchedPayload(
+        this.lossWeightsEnabled,
+        this.lossWeightTouched,
+        this.lossWeightValues
+      );
     },
     emitConfigChange() {
-      const variant = String(this.selectedModel || "").toLowerCase();
       let configPath = "";
+      const augmentation = this.buildAugmentationPayload();
+      const lossWeights = this.buildLossWeightsPayload();
 
       const configData = {
         epochs: parseInt(this.epochs, 10) || 100,
@@ -597,7 +1192,9 @@ export default {
         pretrained_model_path: this.pretrainedEnabled ? this.pretrainedPath : "",
         dataset_name: this.selectedProject?.dataset?.dataset_name || "",
         save_period: parseInt(this.savePeriod, 10),
-        config_path: configPath 
+        config_path: configPath,
+        augmentation,
+        loss_weights: lossWeights,
       };
 
       this.$emit("config-changed", configData);
@@ -613,10 +1210,7 @@ export default {
       this.ensureDefaultModel();
       // Ensure model-selected is emitted after initial selection
       if (this.selectedModel) {
-        this.$emit("model-selected", {
-          model: this.selectedModel,
-          architecture_id: this.selectedArchitectureId || null
-        });
+        this.emitModelSelected();
       }
       this.emitConfigChange();
     });
@@ -896,6 +1490,240 @@ export default {
   border-radius: 10px;
 }
 
+.augmentation-field-row {
+  padding: 14px;
+}
+
+.augmentation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.augmentation-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.augmentation-panel__subtitle {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6a7482;
+  line-height: 1.5;
+}
+
+.augmentation-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2b3a67;
+}
+
+.augmentation-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px dashed #cfd6e6;
+  border-radius: 12px;
+  background: #fff;
+  color: #6a7482;
+  font-size: 12px;
+}
+
+.augmentation-state.error {
+  border-color: rgba(214, 69, 69, 0.35);
+  color: #d64545;
+}
+
+.augmentation-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.augmentation-group {
+  padding: 14px;
+  border: 1px solid #e4e7ee;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.augmentation-group__title {
+  font-size: 13px;
+  font-weight: 700;
+  color: #2b3a67;
+  margin-bottom: 12px;
+}
+
+.augmentation-group__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.augmentation-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e4e7ee;
+  border-radius: 12px;
+  background: #f9fafc;
+}
+
+.augmentation-item__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.augmentation-item__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111315;
+}
+
+.augmentation-item__meta {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 11px;
+  color: #6a7482;
+}
+
+.augmentation-item__desc {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.augmentation-number-control {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 12px;
+}
+
+.augmentation-select {
+  width: 100%;
+}
+
+.augmentation-input {
+  width: 128px;
+}
+
+.loss-weight-field-row {
+  padding: 14px;
+}
+
+.loss-weight-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.loss-weight-panel__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.loss-weight-panel__subtitle {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #6a7482;
+  line-height: 1.5;
+}
+
+.loss-weight-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2b3a67;
+}
+
+.loss-weight-state {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px;
+  border: 1px dashed #cfd6e6;
+  border-radius: 12px;
+  background: #fff;
+  color: #6a7482;
+  font-size: 12px;
+}
+
+.loss-weight-state.error {
+  border-color: rgba(214, 69, 69, 0.35);
+  color: #d64545;
+}
+
+.loss-weight-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 12px;
+}
+
+.loss-weight-item {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #e4e7ee;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.loss-weight-item__top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.loss-weight-item__label {
+  font-size: 14px;
+  font-weight: 600;
+  color: #111315;
+}
+
+.loss-weight-item__meta {
+  margin-top: 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 11px;
+  color: #6a7482;
+}
+
+.loss-weight-item__desc {
+  font-size: 12px;
+  color: #4b5563;
+  line-height: 1.5;
+}
+
+.loss-weight-item__control {
+  display: flex;
+  justify-content: flex-start;
+}
+
+.loss-weight-input {
+  width: 180px;
+}
+
 /* Compact upload row */
 .upload-compact {
   display: flex;
@@ -992,6 +1820,19 @@ export default {
   }
   .advanced-grid {
     grid-template-columns: 1fr;
+  }
+  .augmentation-panel__header,
+  .augmentation-item__top,
+  .loss-weight-panel__header,
+  .loss-weight-item__top,
+  .augmentation-number-control {
+    grid-template-columns: 1fr;
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .augmentation-input,
+  .loss-weight-input {
+    width: 100%;
   }
 }
 

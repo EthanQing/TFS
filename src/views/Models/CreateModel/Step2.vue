@@ -118,7 +118,9 @@ export default {
         weight_decay: 0.0005,
         warmup_epochs: 3,
         warmup_momentum: 0.8,
-        warmup_bias_lr: 0.1
+        warmup_bias_lr: 0.1,
+        augmentation: null,
+        loss_weights: null,
       }
     };
   },
@@ -225,7 +227,9 @@ export default {
               this.updateProjectInfo(p);
             }
           }
-        } catch (e) {}
+        } catch (e) {
+          console.warn("Failed to restore currentProject from localStorage:", e);
+        }
       }
     }
   },
