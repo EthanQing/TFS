@@ -233,6 +233,7 @@ export default {
     loading: { type: Boolean, default: false },
     saving: { type: Boolean, default: false },
     converting: { type: Boolean, default: false },
+    savedMapping: { type: Object, default: () => ({}) },
   },
   data() {
     return {
@@ -375,7 +376,6 @@ export default {
       }
 
       walk(this.trie, 0, []);
-      console.log('Computed display nodes:', result);
       return result;
     },
     discardedCount() {
@@ -414,6 +414,14 @@ export default {
       },
       immediate: true,
     },
+    savedMapping: {
+      handler(newMapping) {
+        this.$nextTick(function () {
+          this.applyExternalMapping(newMapping || {});
+        }.bind(this));
+      },
+      deep: true,
+    },
   },
   methods: {
     initRows(labels) {
@@ -435,6 +443,7 @@ export default {
       this.expandedGroups = {};
       this.$nextTick(function () {
         if (this.rows.length > 0) this.applyPreset('root');
+        this.applyExternalMapping(this.savedMapping);
       }.bind(this));
     },
     splitLabel(label) {
@@ -504,7 +513,10 @@ export default {
     buildMapping() {
       var mapping = {};
       this.rows.forEach(function (row) {
-        mapping[row.sourceLabel] = row.discarded ? '__DISCARD__' : row.targetLabel.trim();
+        mapping[row.sourceLabel] = {
+          mapped_label: row.discarded ? '' : row.targetLabel.trim(),
+          status: row.discarded ? 'delete' : 'keep'
+        };
       });
       return mapping;
     },
@@ -544,6 +556,12 @@ export default {
     doSaveAndConvert() {
       this.$emit('save-and-convert', this.buildMapping(), this.buildSliceParams());
     },
+    normalizeMappingStatus(status, mappedLabel) {
+      var val = String(status || '').trim().toLowerCase();
+      if (['delete', 'discard', 'drop', 'remove', '删除', '丢弃', '忽略'].indexOf(val) >= 0) return 'delete';
+      if (String(mappedLabel || '').trim() === '__DISCARD__') return 'delete';
+      return 'keep';
+    },
     normalizeMappingKey(value) {
       if (value === null || value === undefined) return '';
       var s = String(value);
@@ -575,14 +593,33 @@ export default {
           : normalized[this.normalizeMappingKey(src)];
         if (hit === undefined) return;
         matched += 1;
-        if (hit === '__DISCARD__' || String(hit).trim() === '') {
+
+        // New protocol: { mapped_label, status }
+        if (hit && typeof hit === 'object' && !Array.isArray(hit)) {
+          var mapped = hit.mapped_label != null ? hit.mapped_label : (hit.target_label != null ? hit.target_label : (hit.target != null ? hit.target : ''));
+          var hitStatus = this.normalizeMappingStatus(hit.status, mapped);
+
+          if (hitStatus === 'delete') {
+            row.discarded = true;
+            row.targetLabel = '';
+          } else {
+            row.discarded = false;
+            row.targetLabel = String(mapped || '').trim();
+          }
+          row.manuallyEdited = true;
+          return;
+        }
+
+        // Legacy protocol: plain string
+        var strVal = String(hit).trim();
+        if (strVal === '__DISCARD__' || strVal === '') {
           row.discarded = true;
           row.targetLabel = '';
           row.manuallyEdited = true;
           return;
         }
         row.discarded = false;
-        row.targetLabel = String(hit).trim();
+        row.targetLabel = strVal;
         row.manuallyEdited = true;
       }.bind(this));
 

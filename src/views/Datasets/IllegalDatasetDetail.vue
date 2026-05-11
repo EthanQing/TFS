@@ -71,7 +71,8 @@
             </div>
 
             <div v-if="mappingPanelLabels.length" class="mapping-panel-wrap legacy-mapping-wrap">
-              <LabelMappingPanel ref="labelMappingPanel" :labels="mappingPanelLabels" :loading="loadingMappings"
+              <LabelMappingPanel ref="labelMappingPanel" :labels="mappingPanelLabels"
+                :saved-mapping="savedLabelMappingObject" :loading="loadingMappings"
                 :saving="savingMappings" :converting="publishing" @save="handlePanelSave"
                 @save-and-convert="handleSaveAndConvert" />
             </div>
@@ -181,7 +182,7 @@
               </div>
               <div class="info-list">
                 <div class="info-item"><span>ID</span><strong>{{ datasetId }}</strong></div>
-                <div class="info-item"><span>存储路径</span><strong>{{ dataset && dataset.storage_path ?
+                <div class="info-item"><span>当前工作目录</span><strong>{{ dataset && dataset.storage_path ?
                   dataset.storage_path : '-'
                     }}</strong></div>
                 <div class="info-item"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong>
@@ -215,17 +216,26 @@
       <el-tabs>
         <el-tab-pane :label="`检测映射 (${presetDetectionCount})`">
           <el-table :data="presetData.detection" border height="280" size="mini">
-            <el-table-column label="原始标签路径" min-width="340">
+            <el-table-column label="原始标签路径" min-width="280">
               <template slot-scope="scope">
                 <el-input v-model="scope.row.source_label" size="mini" placeholder="例如：A%B%C" />
               </template>
             </el-table-column>
-            <el-table-column label="映射标签" min-width="200">
+            <el-table-column label="映射标签" min-width="160">
               <template slot-scope="scope">
-                <el-input v-model="scope.row.target_label" size="mini" placeholder="例如：轿车" />
+                <el-input v-model="scope.row.target_label" size="mini" placeholder="例如：轿车"
+                  :disabled="scope.row.status === 'delete'" />
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="90">
+            <el-table-column label="状态" width="100">
+              <template slot-scope="scope">
+                <el-select v-model="scope.row.status" size="mini">
+                  <el-option label="保留" value="keep" />
+                  <el-option label="删除" value="delete" />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="70">
               <template slot-scope="scope">
                 <el-button type="text" size="mini" @click="removeDetectionPresetRow(scope.$index)">删除</el-button>
               </template>
@@ -234,22 +244,31 @@
         </el-tab-pane>
         <el-tab-pane :label="`分类映射 (${presetClassificationCount})`">
           <el-table :data="presetData.classification" border height="280" size="mini">
-            <el-table-column label="分类组" min-width="160">
+            <el-table-column label="分类组" min-width="140">
               <template slot-scope="scope">
                 <el-input v-model="scope.row.category" size="mini" placeholder="例如：小型车辆" />
               </template>
             </el-table-column>
-            <el-table-column label="原始标签路径" min-width="280">
+            <el-table-column label="原始标签路径" min-width="240">
               <template slot-scope="scope">
                 <el-input v-model="scope.row.source_label" size="mini" placeholder="例如：A%B%C" />
               </template>
             </el-table-column>
-            <el-table-column label="映射标签(可选)" min-width="180">
+            <el-table-column label="映射标签(可选)" min-width="140">
               <template slot-scope="scope">
-                <el-input v-model="scope.row.target_label" size="mini" placeholder="默认同分类组" />
+                <el-input v-model="scope.row.target_label" size="mini" placeholder="默认同分类组"
+                  :disabled="scope.row.status === 'delete'" />
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="90">
+            <el-table-column label="状态" width="100">
+              <template slot-scope="scope">
+                <el-select v-model="scope.row.status" size="mini">
+                  <el-option label="保留" value="keep" />
+                  <el-option label="删除" value="delete" />
+                </el-select>
+              </template>
+            </el-table-column>
+            <el-table-column label="操作" width="70">
               <template slot-scope="scope">
                 <el-button type="text" size="mini" @click="removeClassificationPresetRow(scope.$index)">删除</el-button>
               </template>
@@ -414,9 +433,16 @@ export default {
     },
     publishTargetLabels() {
       const values = (Array.isArray(this.mappingRows) ? this.mappingRows : [])
+        .filter((row) => {
+          const status = this.normalizeMappingStatus(row && row.status, row && row.mapped_label);
+          return status !== 'delete';
+        })
         .map((row) => String(row && row.mapped_label || '').trim())
         .filter((value) => value && value !== '__DISCARD__');
       return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+    },
+    savedLabelMappingObject() {
+      return this.buildMappingObjectFromRows(this.mappingRows);
     },
     presetApplyOptions() {
       return [
@@ -505,6 +531,39 @@ export default {
       const parts = String(label || '').split('%').map((item) => item.trim()).filter(Boolean);
       return parts.length ? parts[parts.length - 1] : String(label || '').trim();
     },
+    // ── Status-aware mapping helpers ──────────────────────────────────────
+    normalizeMappingStatus(status, mappedLabel) {
+      const val = String(status || '').trim().toLowerCase();
+      if (val === 'keep') return 'keep';
+      if (val === 'delete') return 'delete';
+      // Legacy compatibility
+      if (['discard', 'drop', 'remove', '删除', '丢弃', '忽略'].includes(val)) return 'delete';
+      // Legacy __DISCARD__ in mapped_label
+      if (String(mappedLabel || '').trim() === '__DISCARD__') return 'delete';
+      return 'keep';
+    },
+    normalizeMappingValue(value) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        const status = this.normalizeMappingStatus(value.status, value.mapped_label);
+        return {
+          mapped_label: status === 'delete' ? '' : String(value.mapped_label || '').trim(),
+          status: status,
+        };
+      }
+      const str = String(value || '').trim();
+      if (str === '__DISCARD__' || str === '') {
+        return { mapped_label: '', status: 'delete' };
+      }
+      return { mapped_label: str, status: 'keep' };
+    },
+    mappingEntryToPayload(rawLabel, value) {
+      const normalized = this.normalizeMappingValue(value);
+      return {
+        raw_label: String(rawLabel || '').trim(),
+        mapped_label: normalized.mapped_label,
+        status: normalized.status,
+      };
+    },
     normalizePresetDetectionRows(rows) {
       const list = Array.isArray(rows) ? rows : [];
       const out = [];
@@ -514,10 +573,11 @@ export default {
         const source = String(item.source_label || item.source || '').trim();
         if (!source) return;
         const target = String(item.target_label || item.target || '').trim() || this.getLeafLabel(source);
-        dedup.set(source, target);
+        const status = this.normalizeMappingStatus(item.status, target);
+        dedup.set(source, { target_label: target, status: status });
       });
-      dedup.forEach((target, source) => {
-        out.push({ source_label: source, target_label: target });
+      dedup.forEach((val, source) => {
+        out.push({ source_label: source, target_label: val.target_label, status: val.status });
       });
       return out;
     },
@@ -531,7 +591,8 @@ export default {
         const source = String(item.source_label || item.source || '').trim();
         if (!category || !source) return;
         const target = String(item.target_label || item.target || '').trim() || category;
-        dedup.set(`${category}::${source}`, { category, source_label: source, target_label: target });
+        const status = this.normalizeMappingStatus(item.status, target);
+        dedup.set(`${category}::${source}`, { category, source_label: source, target_label: target, status: status });
       });
       dedup.forEach((row) => out.push(row));
       return out;
@@ -568,13 +629,13 @@ export default {
       }
     },
     addDetectionPresetRow() {
-      this.presetData.detection.push({ source_label: '', target_label: '' });
+      this.presetData.detection.push({ source_label: '', target_label: '', status: 'keep' });
     },
     removeDetectionPresetRow(index) {
       this.presetData.detection.splice(index, 1);
     },
     addClassificationPresetRow() {
-      this.presetData.classification.push({ category: '', source_label: '', target_label: '' });
+      this.presetData.classification.push({ category: '', source_label: '', target_label: '', status: 'keep' });
     },
     removeClassificationPresetRow(index) {
       this.presetData.classification.splice(index, 1);
@@ -640,9 +701,11 @@ export default {
       const normalizedHeader = (rows[0] || []).map((item) => String(item || '').trim().toLowerCase());
       const sourceHeaderTokens = ['source', 'source_label', '原始标签', '源标签', '标签路径'];
       const targetHeaderTokens = ['target', 'target_label', '映射标签', '目标标签', '分类'];
+      const statusHeaderTokens = ['status', '状态', '操作'];
       const findHeaderIndex = (tokens) => normalizedHeader.findIndex((header) => tokens.some((token) => header.includes(token)));
       const sourceIdx = findHeaderIndex(sourceHeaderTokens);
       const targetIdx = findHeaderIndex(targetHeaderTokens);
+      const statusIdx = findHeaderIndex(statusHeaderTokens);
       const hasHeader = sourceIdx >= 0 || targetIdx >= 0;
       const srcCol = sourceIdx >= 0 ? sourceIdx : 0;
       const tgtCol = targetIdx >= 0 ? targetIdx : (rows[0].length > 1 ? 1 : -1);
@@ -654,7 +717,8 @@ export default {
         if (!source) continue;
         const targetRaw = tgtCol >= 0 ? row[tgtCol] : '';
         const target = String(targetRaw || '').trim() || this.getLeafLabel(source);
-        out.push({ source_label: source, target_label: target });
+        const status = statusIdx >= 0 ? String(row[statusIdx] || '').trim() : '';
+        out.push({ source_label: source, target_label: target, status: status });
       }
       return out;
     },
@@ -666,11 +730,13 @@ export default {
       const categoryHeaderTokens = ['category', 'group', '分类', '类别'];
       const sourceHeaderTokens = ['source', 'source_label', '原始标签', '源标签', '标签路径'];
       const targetHeaderTokens = ['target', 'target_label', '映射标签', '目标标签'];
+      const statusHeaderTokens = ['status', '状态', '操作'];
       const findHeaderIndex = (tokens) => normalizedHeader.findIndex((header) => tokens.some((token) => header.includes(token)));
 
       const categoryIdx = findHeaderIndex(categoryHeaderTokens);
       const sourceIdx = findHeaderIndex(sourceHeaderTokens);
       const targetIdx = findHeaderIndex(targetHeaderTokens);
+      const statusIdx = findHeaderIndex(statusHeaderTokens);
 
       const out = [];
       if (sourceIdx >= 0 && categoryIdx >= 0) {
@@ -680,7 +746,8 @@ export default {
           const source = String(row[sourceIdx] || '').trim();
           if (!category || !source) continue;
           const target = targetIdx >= 0 ? String(row[targetIdx] || '').trim() : '';
-          out.push({ category, source_label: source, target_label: target || category });
+          const status = statusIdx >= 0 ? String(row[statusIdx] || '').trim() : '';
+          out.push({ category, source_label: source, target_label: target || category, status: status });
         }
         return out;
       }
@@ -696,7 +763,7 @@ export default {
         validColumns.forEach((column) => {
           const source = String(row[column.idx] || '').trim();
           if (!source) return;
-          out.push({ category: column.name, source_label: source, target_label: column.name });
+          out.push({ category: column.name, source_label: source, target_label: column.name, status: '' });
         });
       }
       return out;
@@ -706,15 +773,21 @@ export default {
       if (key === 'detection') {
         const rows = this.normalizePresetDetectionRows(this.presetData.detection);
         return rows.reduce((acc, row) => {
-          acc[row.source_label] = row.target_label || this.getLeafLabel(row.source_label);
+          acc[row.source_label] = {
+            mapped_label: row.status === 'delete' ? '' : (row.target_label || this.getLeafLabel(row.source_label)),
+            status: row.status || 'keep',
+          };
           return acc;
         }, {});
       }
       const rows = this.normalizePresetClassificationRows(this.presetData.classification);
       return rows.reduce((acc, row) => {
+        if (!row.source_label) return acc;
         const target = String(row.target_label || '').trim() || String(row.category || '').trim();
-        if (!row.source_label || !target) return acc;
-        acc[row.source_label] = target;
+        acc[row.source_label] = {
+          mapped_label: row.status === 'delete' ? '' : target,
+          status: row.status || 'keep',
+        };
         return acc;
       }, {});
     },
@@ -758,18 +831,16 @@ export default {
       }
     },
     normalizeMappings(rawLabels, savedItems) {
-      console.log('Normalizing mappings with rawLabels:', rawLabels, 'and savedItems:', savedItems);
       const savedMap = new Map();
       (Array.isArray(savedItems) ? savedItems : []).forEach((item) => {
         const raw = String(item && item.raw_label || '').trim();
-        const mapped = String(item && item.mapped_label || '').trim();
-        const status = item && item.status || 'keep';
         if (!raw) return;
+        const mapped = String(item && item.mapped_label || '').trim();
+        const status = this.normalizeMappingStatus(item && item.status, mapped);
         savedMap.set(raw, {
-          mapped_label: mapped || raw,
-          status: status
+          mapped_label: status === 'delete' ? '' : mapped,
+          status: status,
         });
-
       });
       const keys = new Set();
       (Array.isArray(rawLabels) ? rawLabels : []).forEach((label) => {
@@ -779,18 +850,32 @@ export default {
       savedMap.forEach((_value, key) => keys.add(key));
       return Array.from(keys)
         .sort((a, b) => a.localeCompare(b, 'zh-CN'))
-        .map((raw) => ({
-          raw_label: raw,
-          mapped_label: savedMap.get(raw) || raw,
-          status: savedMap.get(raw) ? savedMap.get(raw).status : 'keep'
-        }));
+        .map((raw) => {
+          const saved = savedMap.get(raw);
+          if (saved) {
+            return {
+              raw_label: raw,
+              mapped_label: saved.mapped_label,
+              status: saved.status,
+            };
+          }
+          return {
+            raw_label: raw,
+            mapped_label: raw,
+            status: 'keep',
+          };
+        });
     },
     buildMappingObjectFromRows(rows) {
       return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
         const raw = String(row && row.raw_label || '').trim();
+        if (!raw) return acc;
         const mapped = String(row && row.mapped_label || '').trim();
-        if (!raw || !mapped) return acc;
-        acc[raw] = mapped;
+        const status = this.normalizeMappingStatus(row && row.status, mapped);
+        acc[raw] = {
+          mapped_label: status === 'delete' ? '' : mapped,
+          status: status,
+        };
         return acc;
       }, {});
     },
@@ -894,11 +979,9 @@ export default {
           fetchIllegalDatasetFiles(this.datasetId, { page: 1, pageSize: 100, versionId: this.activeVersionId }).catch(() => ({ items: [] })),
         ]);
 
-        console.log('Loaded mapping items:', mappingPayload);
         this.rawLabels = Array.isArray(rawPayload && rawPayload.labels) ? rawPayload.labels : [];
         const mappingItems = Array.isArray(mappingPayload && mappingPayload.items) ? mappingPayload.items : [];
         this.mappingRows = this.normalizeMappings(this.rawLabels, mappingItems);
-        console.log('Normalized mapping rows:', this.mappingRows);
         this.files = Array.isArray(filePage && filePage.items) ? filePage.items : [];
 
         this.publishForm.version_id = this.activeVersionId || null;
@@ -933,15 +1016,15 @@ export default {
       }
     },
     async handleLabelMappingSave(mapping, { silent = false } = {}) {
-      console.log('Saving label mapping with data:', mapping);
       this.savingMappings = true;
       try {
-        const items = Object.keys(mapping || {})
-          .map((rawLabel) => ({
-            raw_label: String(rawLabel || '').trim(),
-            mapped_label: String(mapping[rawLabel] || '').trim(),
-          }))
-          .filter((row) => row.raw_label && row.mapped_label);
+        const items = Object.keys(mapping || {}).map((rawLabel) => {
+          return this.mappingEntryToPayload(rawLabel, mapping[rawLabel]);
+        }).filter((row) => {
+          if (!row.raw_label) return false;
+          if (row.status === 'delete') return true;
+          return row.mapped_label !== '';
+        });
         await updateIllegalDatasetLabelMappings(this.datasetId, items);
         this.mappingRows = this.normalizeMappings(this.rawLabels, items);
         if (!silent) this.$message.success('映射保存成功');

@@ -26,6 +26,17 @@ export function buildIllegalThumbnailUrl(datasetId, relPath, { versionId = null,
     return toAbsUrl(qs ? `${base}?${qs}` : base);
 }
 
+export function buildIllegalVersionFileUrl(datasetId, versionId, relPath) {
+    if (!datasetId || !versionId || !relPath) return '';
+    const cleanRelPath = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
+    if (!cleanRelPath) return '';
+    return toAbsUrl(
+        `/api/v3/illegal-datasets/${encodeURIComponent(datasetId)}` +
+        `/versions/${encodeURIComponent(versionId)}` +
+        `/files/${encodePathSegments(cleanRelPath)}`
+    );
+}
+
 // ── CRUD ──────────────────────────────────────────────────────────────────
 
 export async function fetchIllegalDatasets(page = 1, pageSize = 50) {
@@ -227,14 +238,17 @@ export async function fetchIllegalDatasetView(datasetId, { versionId = null, cla
         categories: data.categories || [],
         items: (data.items || []).map(item => {
             const relPath = String(item.path || item.name || '').trim();
+            const backendImageUrl = item.image_url || item.url || '';
+            const backendThumbnailUrl = item.thumbnail_url || '';
             return {
                 ...item,
                 image_name: item.name,
                 image_path: relPath || item.name,
-                image_url: toAbsUrl(item.url),
-                thumbnail_url: relPath
-                    ? buildIllegalThumbnailUrl(datasetId, relPath, { versionId, size: 320 })
-                    : toAbsUrl(item.thumbnail_url),
+                image_url: toAbsUrl(backendImageUrl),
+                thumbnail_url: toAbsUrl(
+                    backendThumbnailUrl ||
+                    (relPath ? buildIllegalThumbnailUrl(datasetId, relPath, { versionId, size: 320 }) : backendImageUrl)
+                ),
                 objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
                 classes_in_image: item.classes || [],
             };
@@ -293,5 +307,12 @@ export async function fetchIllegalDatasetFiles(datasetId, { page = 1, pageSize =
     if (versionId != null && versionId !== '') params.set('version_id', String(versionId));
 
     const url = `${PREFIX}/${encodeURIComponent(datasetId)}/files?${params.toString()}`;
-    return getJson(url);
+    const data = await getJson(url);
+    return {
+        ...data,
+        items: (data.items || []).map(file => ({
+            ...file,
+            url: file.url ? toAbsUrl(file.url) : '',
+        })),
+    };
 }
