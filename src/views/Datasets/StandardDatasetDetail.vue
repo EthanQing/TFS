@@ -331,9 +331,9 @@ export default {
         const sourceVersion = publishConfig.source_version;
         if (sourceName && sourceVersion) return `${sourceName} · v${sourceVersion}`;
         if (sourceName) return sourceName;
-        if (sourceId && sourceVersion) return `非法数据集 #${sourceId} · v${sourceVersion}`;
-        if (sourceId) return `非法数据集 #${sourceId}`;
-        return '非法数据集发布';
+        if (sourceId && sourceVersion) return `原始数据集 #${sourceId} · v${sourceVersion}`;
+        if (sourceId) return `原始数据集 #${sourceId}`;
+        return '原始数据集发布';
       }
       if (sourceType === 'augmentation_publish') return '数据增强发布';
       if (sourceType) return sourceType;

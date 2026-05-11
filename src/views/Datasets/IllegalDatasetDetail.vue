@@ -10,7 +10,7 @@
           <h1 class="hero-title">{{ datasetName || '未命名数据集' }}</h1>
           <div class="hero-meta">
             <span class="meta-pill info">{{ datasetTypeLabel }}</span>
-            <span class="meta-pill warning">非法数据集</span>
+            <span class="meta-pill warning">原始数据集</span>
             <span v-if="activeVersion" class="meta-pill success">当前版本 v{{ activeVersion.version }}</span>
             <span class="meta-id">ID: {{ datasetId || '-' }}</span>
           </div>
@@ -39,7 +39,7 @@
     <section class="detail-body glass-panel">
       <div v-if="loading" class="loading-state">
         <i class="el-icon-loading"></i>
-        <span>正在加载非法数据集详情...</span>
+        <span>正在加载原始数据集详情...</span>
       </div>
 
       <template v-else>
@@ -84,12 +84,12 @@
 
         <div v-if="isEmpty" class="empty-state">
           <div class="empty-content">
-            <div class="empty-title">当前非法数据集还是空的</div>
+            <div class="empty-title">当前原始数据集还是空的</div>
             <div class="empty-desc">
               请先上传原始 ZIP 数据。上传后即可继续使用旧版标签映射界面配置映射，并转换为新的标准数据集。
             </div>
             <div class="empty-tips">
-              <span class="tip-item"><i class="el-icon-check"></i> 非法数据集会保留原始数据</span>
+              <span class="tip-item"><i class="el-icon-check"></i> 原始数据集会保留原始数据</span>
               <span class="tip-item"><i class="el-icon-check"></i> 每次上传都会形成独立版本</span>
               <span class="tip-item"><i class="el-icon-check"></i> 可反复转换多个标准数据集</span>
             </div>
@@ -107,7 +107,7 @@
               <div class="section-head">
                 <div>
                   <div class="section-title">数据内容</div>
-                  <div class="section-sub">保留当前非法数据集预览、文件与事件记录</div>
+                  <div class="section-sub">保留当前原始数据集预览、文件与事件记录</div>
                 </div>
                 <el-select v-model="previewClassId" size="small" clearable placeholder="全部类别" @change="loadPreview">
                   <el-option v-for="item in previewCategories" :key="item.class_id"
@@ -132,7 +132,8 @@
                   </div>
                 </el-tab-pane>
                 <el-tab-pane label="文件列表" name="files">
-                  <el-table :data="files" size="small" border empty-text="暂无文件" style="max-height: 400px; overflow-y: auto;">
+                  <el-table :data="files" size="small" border empty-text="暂无文件"
+                    style="max-height: 400px; overflow-y: auto;">
                     <el-table-column prop="path" label="路径" min-width="360" show-overflow-tooltip />
                     <el-table-column label="大小" width="140">
                       <template slot-scope="scope">{{ formatBytes(scope.row.size_bytes) }}</template>
@@ -149,7 +150,8 @@
                   </el-table>
                 </el-tab-pane>
                 <el-tab-pane label="事件记录" name="events">
-                  <el-table :data="events" size="small" border empty-text="暂无事件" style="max-height: 400px; overflow-y: auto;">
+                  <el-table :data="events" size="small" border empty-text="暂无事件"
+                    style="max-height: 400px; overflow-y: auto;">
                     <el-table-column prop="event_type" label="事件类型" width="180" />
                     <el-table-column prop="message" label="消息" min-width="280" show-overflow-tooltip />
                     <el-table-column label="时间" width="180">
@@ -181,7 +183,7 @@
                 <div class="info-item"><span>ID</span><strong>{{ datasetId }}</strong></div>
                 <div class="info-item"><span>存储路径</span><strong>{{ dataset && dataset.storage_path ?
                   dataset.storage_path : '-'
-                }}</strong></div>
+                    }}</strong></div>
                 <div class="info-item"><span>创建时间</span><strong>{{ formatDate(dataset && dataset.created_at) }}</strong>
                 </div>
                 <div class="info-item"><span>更新时间</span><strong>{{ formatDate(dataset && dataset.updated_at) }}</strong>
@@ -362,7 +364,7 @@ export default {
       return this.activeVersion && this.activeVersion.version_id ? Number(this.activeVersion.version_id) : null;
     },
     datasetName() {
-      return (this.dataset && (this.dataset.name || this.dataset.dataset_name)) || '非法数据集';
+      return (this.dataset && (this.dataset.name || this.dataset.dataset_name)) || '原始数据集';
     },
     datasetTypeLabel() {
       return this.typeLabel(this.dataset && this.dataset.dataset_type);
@@ -756,12 +758,18 @@ export default {
       }
     },
     normalizeMappings(rawLabels, savedItems) {
+      console.log('Normalizing mappings with rawLabels:', rawLabels, 'and savedItems:', savedItems);
       const savedMap = new Map();
       (Array.isArray(savedItems) ? savedItems : []).forEach((item) => {
         const raw = String(item && item.raw_label || '').trim();
         const mapped = String(item && item.mapped_label || '').trim();
+        const status = item && item.status || 'keep';
         if (!raw) return;
-        savedMap.set(raw, mapped || raw);
+        savedMap.set(raw, {
+          mapped_label: mapped || raw,
+          status: status
+        });
+
       });
       const keys = new Set();
       (Array.isArray(rawLabels) ? rawLabels : []).forEach((label) => {
@@ -771,7 +779,11 @@ export default {
       savedMap.forEach((_value, key) => keys.add(key));
       return Array.from(keys)
         .sort((a, b) => a.localeCompare(b, 'zh-CN'))
-        .map((raw) => ({ raw_label: raw, mapped_label: savedMap.get(raw) || raw }));
+        .map((raw) => ({
+          raw_label: raw,
+          mapped_label: savedMap.get(raw) || raw,
+          status: savedMap.get(raw) ? savedMap.get(raw).status : 'keep'
+        }));
     },
     buildMappingObjectFromRows(rows) {
       return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
@@ -867,7 +879,7 @@ export default {
     },
     async loadAll() {
       if (!this.datasetId) {
-        this.$message.error('未找到非法数据集 ID');
+        this.$message.error('未找到原始数据集 ID');
         return;
       }
       this.loading = true;
@@ -882,9 +894,11 @@ export default {
           fetchIllegalDatasetFiles(this.datasetId, { page: 1, pageSize: 100, versionId: this.activeVersionId }).catch(() => ({ items: [] })),
         ]);
 
+        console.log('Loaded mapping items:', mappingPayload);
         this.rawLabels = Array.isArray(rawPayload && rawPayload.labels) ? rawPayload.labels : [];
         const mappingItems = Array.isArray(mappingPayload && mappingPayload.items) ? mappingPayload.items : [];
         this.mappingRows = this.normalizeMappings(this.rawLabels, mappingItems);
+        console.log('Normalized mapping rows:', this.mappingRows);
         this.files = Array.isArray(filePage && filePage.items) ? filePage.items : [];
 
         this.publishForm.version_id = this.activeVersionId || null;
@@ -893,7 +907,7 @@ export default {
         this.syncPanelFromSavedMappings();
       } catch (error) {
         console.error(error);
-        this.$message.error(`加载非法数据集失败：${error.message || error}`);
+        this.$message.error(`加载原始数据集失败：${error.message || error}`);
       } finally {
         this.loading = false;
       }
@@ -919,6 +933,7 @@ export default {
       }
     },
     async handleLabelMappingSave(mapping, { silent = false } = {}) {
+      console.log('Saving label mapping with data:', mapping);
       this.savingMappings = true;
       try {
         const items = Object.keys(mapping || {})
@@ -1007,7 +1022,7 @@ export default {
       this.uploadFile = null;
       this.uploading = false;
       this.uploadProgress = 0;
-      this.$message.success('ZIP 上传完成，已生成新的非法数据集内容');
+      this.$message.success('ZIP 上传完成，已生成新的原始数据集内容');
       this.loadAll();
     },
     handleAppendSuccess() {

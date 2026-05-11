@@ -375,6 +375,7 @@ export default {
       }
 
       walk(this.trie, 0, []);
+      console.log('Computed display nodes:', result);
       return result;
     },
     discardedCount() {

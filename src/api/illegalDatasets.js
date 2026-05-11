@@ -43,7 +43,7 @@ export async function fetchIllegalDatasets(page = 1, pageSize = 50) {
             dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
         }));
     } catch (error) {
-        console.error('获取非法数据集失败:', error);
+        console.error('获取原始数据集失败:', error);
         return [];
     }
 }

@@ -14,8 +14,8 @@
 
     <div class="ds-tabs-container">
       <el-tabs v-model="activeTab" @tab-click="handleTabClick" class="ds-custom-tabs">
-        <el-tab-pane label="非法数据集 (待处理)" name="illegal">
-          <span slot="label"><i class="el-icon-folder"></i> 非法数据集</span>
+        <el-tab-pane label="原始数据集 (待处理)" name="illegal">
+          <span slot="label"><i class="el-icon-folder"></i> 原始数据集</span>
         </el-tab-pane>
         <el-tab-pane label="标准数据集 (正式/已发布)" name="standard">
           <span slot="label"><i class="el-icon-document-checked"></i> 标准数据集</span>
@@ -96,10 +96,10 @@
         <div class="empty-title">暂无{{ activeTab === 'illegal' ? '非法' : '标准' }}数据集</div>
         <div class="empty-desc">
           <template v-if="activeTab === 'illegal'">
-            非法数据集用于原始数据导入、标签映射、版本管理和发布标准数据集。
+            原始数据集用于原始数据导入、标签映射、版本管理和发布标准数据集。
           </template>
           <template v-else>
-            标准数据集用于正式的模型训练，可通过非法数据集发布或直接导入。
+            标准数据集用于正式的模型训练，可通过原始数据集发布或直接导入。
           </template>
         </div>
         <el-button type="primary" @click="openCreateDialog">创建数据集</el-button>
