@@ -161,7 +161,9 @@
                   <el-dropdown-menu slot="dropdown">
                     <!-- <el-dropdown-item v-if="model.status === 'completed'" command="setbaseline">设为基准</el-dropdown-item> -->
                     <el-dropdown-item command="delete" icon="el-icon-delete" class="danger-text">删除</el-dropdown-item>
-                    <el-dropdown-item command="export" icon="el-icon-download">导出</el-dropdown-item>
+                    <el-dropdown-item command="export" icon="el-icon-download" :disabled="isPaddleModel(model)">
+                      导出<span v-if="isPaddleModel(model)">（Paddle 暂不支持）</span>
+                    </el-dropdown-item>
                   </el-dropdown-menu>
                 </el-dropdown>
               </div>
@@ -233,6 +235,7 @@ import {
 import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
 import { referenceStore, loadDatasets } from '@/store/referenceStore';
+import { resolveFramework } from '@/utils/trainingFramework';
 
 export default {
   name: 'ProjectsDetail',
@@ -437,7 +440,22 @@ export default {
       if (command === 'export') this.openExportDialog(jobId);
       if (command === 'setbaseline') this.$message.info('设为基准功能待实现');
     },
+    findProjectModel(jobId) {
+      return (this.projectModels || []).find(model => String(model.job_id) === String(jobId)) || null;
+    },
+    modelFrameworkKey(model) {
+      if (model?.framework_key) return model.framework_key;
+      return resolveFramework(model?.engine || model?.architecture?.engine || '').frameworkKey;
+    },
+    isPaddleModel(model) {
+      return this.modelFrameworkKey(model) === 'paddle';
+    },
     openExportDialog(jobId) {
+      const model = this.findProjectModel(jobId);
+      if (this.isPaddleModel(model)) {
+        this.$message.warning('Paddle 模型导出暂不支持。');
+        return;
+      }
       this.exportTargetJobId = jobId;
       this.exportForm = { ...this.exportForm, format: 'pt', weights: 'best' };
       this.exportDialogVisible = true;
@@ -445,6 +463,10 @@ export default {
     async confirmExport() {
       const jobId = this.exportTargetJobId;
       if (!jobId) return;
+      if (this.isPaddleModel(this.findProjectModel(jobId))) {
+        this.$message.warning('Paddle 模型导出暂不支持。');
+        return;
+      }
       this.exporting = true;
       try {
         this.$message({ type: 'info', message: '开始导出...' });

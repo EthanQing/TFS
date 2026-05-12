@@ -20,6 +20,19 @@
       </div>
     </header>
 
+    <section class="arch-filter-bar">
+      <div class="filter-label">框架筛选</div>
+      <el-radio-group v-model="activeFramework" size="small">
+        <el-radio-button
+          v-for="item in frameworkFilters"
+          :key="item.key"
+          :label="item.key"
+        >
+          {{ item.label }} ({{ frameworkCounts[item.key] || 0 }})
+        </el-radio-button>
+      </el-radio-group>
+    </section>
+
     <section class="arch-body">
       <div v-if="loading" class="state loading">
         <i class="el-icon-loading"></i>
@@ -49,7 +62,10 @@
                 <div class="arch-name" :title="formatVariant(item.model_variant)">
                   {{ formatVariant(item.model_variant) || 'Unnamed' }}
                 </div>
-                <span v-if="item.task_type" class="arch-tag">{{ displayTaskType(item.task_type) }}</span>
+                <div class="arch-tags">
+                  <span class="arch-tag framework">{{ displayFrameworkLabel(item) }}</span>
+                  <span v-if="item.task_type" class="arch-tag">{{ displayTaskType(item.task_type) }}</span>
+                </div>
               </div>
               <div class="arch-meta">
                 <div class="meta-row" v-if="item.arch_id">
@@ -73,6 +89,13 @@
 
 <script>
 import { FetchArchitectureDetail } from "@/api/models";
+import { resolveFramework } from "@/utils/trainingFramework";
+
+const FRAMEWORK_FILTERS = [
+  { key: "all", label: "全部", engine: "" },
+  { key: "pytorch", label: "PyTorch (YOLO)", engine: "ultralytics-yolo" },
+  { key: "paddle", label: "Paddle", engine: "paddle-det" },
+];
 
 export default {
   name: "Architecture",
@@ -81,12 +104,25 @@ export default {
       architectures: null,
       loading: false,
       error: null,
+      activeFramework: "all",
+      frameworkFilters: FRAMEWORK_FILTERS,
     };
   },
   computed: {
+    frameworkCounts() {
+      const counts = { all: 0 };
+      const source = Array.isArray(this.architectures) ? this.architectures : [];
+      source.forEach((item) => {
+        counts.all += 1;
+        const key = this.frameworkKey(item);
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return counts;
+    },
     filteredArchitectures() {
       if (!Array.isArray(this.architectures)) return [];
-      return this.architectures;
+      if (this.activeFramework === "all") return this.architectures;
+      return this.architectures.filter((item) => this.frameworkKey(item) === this.activeFramework);
     },
     groupedList() {
       if (!this.filteredArchitectures.length) return [];
@@ -109,7 +145,7 @@ export default {
         return letter in sizeOrder ? sizeOrder[letter] : 999;
       };
       // Version-based family order
-      const familyOrder = ['YOLOv8', 'YOLOv9', 'YOLOv10', 'YOLO11', 'YOLO12', 'YOLO26', 'RT-DETR'];
+      const familyOrder = ['YOLOv8', 'YOLOv9', 'YOLOv10', 'YOLO11', 'YOLO12', 'YOLO26', 'RT-DETR', 'PP-YOLOE', 'PicoDet'];
       const familyRank = (name) => {
         const idx = familyOrder.indexOf(name);
         return idx >= 0 ? idx : 999;
@@ -141,6 +177,14 @@ export default {
     },
   },
   methods: {
+    frameworkKey(item) {
+      const engine = item?.engine || "ultralytics-yolo";
+      return resolveFramework(engine).frameworkKey;
+    },
+    displayFrameworkLabel(item) {
+      const engine = item?.engine || "ultralytics-yolo";
+      return resolveFramework(engine).frameworkLabel;
+    },
     async fetchArchitectures() {
       this.loading = true;
       this.error = null;
@@ -159,7 +203,11 @@ export default {
     },
     formatVariant(v){
       if(!v) return '';
-      return v.replace(/^yolo/i,'YOLO');
+      return v
+        .replace(/^rtdetr-/i, 'RT-DETR-')
+        .replace(/^ppyoloe/i, 'PP-YOLOE')
+        .replace(/^picodet/i, 'PicoDet')
+        .replace(/^yolo/i,'YOLO');
     },
     displayTaskType(t){
       if(!t) return '-';
@@ -230,6 +278,24 @@ export default {
     display: flex;
     align-items: center;
     gap: 16px;
+}
+
+.arch-filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-size: 0.85rem;
+  color: var(--text-secondary);
+  font-weight: 700;
 }
 
 .hero-stat {
@@ -326,6 +392,14 @@ export default {
   gap: 8px;
 }
 
+.arch-tags {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
 .arch-name {
   font-size: 0.95rem;
   font-weight: 700;
@@ -344,6 +418,12 @@ export default {
   font-weight: 600;
   flex-shrink: 0;
   height: fit-content;
+}
+
+.arch-tag.framework {
+  background: var(--bg-panel);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-color);
 }
 
 .arch-meta {

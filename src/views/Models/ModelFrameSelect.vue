@@ -350,7 +350,7 @@ export default {
     },
     computed: {
         visibleFrameworks() {
-            return this.frameworks.filter((frame) => frame.id !== 'paddlepaddle');
+            return this.frameworks;
         },
         selectedFrame() {
             return this.visibleFrameworks.find(f => f.id === this.selectedFrameworkId) || null;

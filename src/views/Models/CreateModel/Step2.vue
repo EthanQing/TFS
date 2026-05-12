@@ -5,10 +5,14 @@
         <div class="hero-eyebrow">训练参数配置</div>
         <h2 class="hero-title">配置您的运行环境</h2>
         <p class="hero-sub">
-          选择模型架构并调整此项目的训练参数。
+          当前框架：{{ engineDisplayName }}。请选择该框架下的模型架构并调整训练参数。
         </p>
       </div>
       <div class="hero-cards">
+        <div class="hero-card">
+          <div class="hero-label">框架</div>
+          <div class="hero-value">{{ engineDisplayName }}</div>
+        </div>
         <div class="hero-card">
           <div class="hero-label">项目</div>
           <div class="hero-value">{{ projectName }}</div>
@@ -51,6 +55,7 @@
       <div class="step-panel">
         <Official
           :task-type="currentTab"
+          :engine="engine"
           @model-selected="handleModelSelected"
           @config-changed="handleConfigChanged"
           :selected-project="selectedProject"
@@ -87,6 +92,14 @@ export default {
     project: {
       type: Object,
       default: null
+    },
+    engine: {
+      type: String,
+      default: "ultralytics-yolo"
+    },
+    frameworkLabel: {
+      type: String,
+      default: ""
     }
   },
   data() {
@@ -101,6 +114,7 @@ export default {
         dataset_name: "",
         model_architecture: "",
         architecture_id: null,
+        engine: String(this.engine || "ultralytics-yolo").trim().toLowerCase(),
         epochs: 100,
         batch_size: 16,
         learning_rate: 0.01,
@@ -121,10 +135,21 @@ export default {
         warmup_bias_lr: 0.1,
         augmentation: null,
         loss_weights: null,
+        config_path: "",
+        eval_during_train: true,
+        eval_interval: 1,
       }
     };
   },
   computed: {
+    normalizedEngine() {
+      return String(this.engine || "ultralytics-yolo").trim().toLowerCase();
+    },
+    engineDisplayName() {
+      if (this.frameworkLabel) return this.frameworkLabel;
+      if (this.normalizedEngine === "paddle-det") return "Paddle";
+      return "PyTorch (YOLO)";
+    },
     projectName() {
       return this.selectedProject?.project_name || "No project selected";
     },
@@ -150,12 +175,23 @@ export default {
     formatModelLabel(value) {
       const v = String(value || "").trim();
       if (!v) return "";
-      return v.replace(/^yolo/i, "YOLO");
+      return v
+        .replace(/^ppyoloe/i, "PP-YOLOE")
+        .replace(/^picodet/i, "PicoDet")
+        .replace(/^yolo/i, "YOLO");
     },
     handleModelSelected(modelData) {
+      const modelEngine = String(modelData?.engine || this.engine || "").trim().toLowerCase();
+      if (modelEngine && modelEngine !== this.normalizedEngine) {
+        this.$message.error("所选架构与当前框架不一致，请重新选择。");
+        this.selectedModel = null;
+        this.trainParams.architecture_id = null;
+        return;
+      }
       this.selectedModel = modelData.model;
       this.trainParams.model_architecture = modelData.model;
       this.trainParams.architecture_id = modelData.architecture_id || null;
+      this.trainParams.engine = modelEngine || this.normalizedEngine;
       console.log("Training modal - selected model:", modelData);
     },
     handleConfigChanged(configData) {
@@ -176,6 +212,10 @@ export default {
       }
       if (!this.trainParams.dataset_name) {
         this.$message.error("This project has no standard dataset linked. Please attach one first.");
+        return;
+      }
+      if (this.trainParams.engine && String(this.trainParams.engine).trim().toLowerCase() !== this.normalizedEngine) {
+        this.$message.error("训练配置与当前框架不一致，请重新选择模型架构。");
         return;
       }
       this.isAdding = true;
@@ -234,6 +274,12 @@ export default {
     }
   },
   watch: {
+    engine() {
+      this.selectedModel = null;
+      this.trainParams.model_architecture = "";
+      this.trainParams.architecture_id = null;
+      this.trainParams.engine = this.normalizedEngine;
+    },
     project: {
       handler(p) {
         if (p) this.updateProjectInfo(p);

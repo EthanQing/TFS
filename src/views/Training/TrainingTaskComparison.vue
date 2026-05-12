@@ -107,7 +107,7 @@
                                     <span v-if="metric.importance === 'high'" class="importance-badge">重要</span>
                                 </td>
                                 <td v-for="task in comparingTasks" :key="task.id" class="metric-value">
-                                    <span :class="{ 'best-metric': isBestMetric(metric.values, task.id) }">
+                                    <span :class="{ 'best-metric': isBestMetric(metric, task.id) }">
                                         {{ metric.values[task.id] }}
                                     </span>
                                 </td>
@@ -231,49 +231,16 @@ export default {
         },
         currentChartSeries() {
             if (!this.comparingTasks.length) return [];
-            
-            // Map activeChart to keys
-            // For 'loss', we might want to compare 'train/box_loss' or 'val/box_loss'.
-            // For simplicty, let's aggregate multiple lines per task?
-            // Or better, distinct charts for each type. 
-            // The UI has tabs: Loss, Accuracy, mAP.
-            
             const series = [];
             
             this.comparingTasks.forEach(task => {
                 const dataObj = this.curveDataMap[task.id] || {};
-                
-                if (this.activeChart === 'loss') {
-                     // Add Train Box Loss
-                     if (dataObj['train/box_loss']) {
-                         series.push({
-                             name: `${task.name} (Box Loss)`,
-                             data: dataObj['train/box_loss'],
-                             color: task.color // Use dashed/solid differentiation?
-                             // For now just same color, hard to distinguish.
-                         });
-                     }
-                     // Or just pick one relevant metric for clarity?
-                     // Let's pick 'val/box_loss' as the representative for now to keep it simple,
-                     // or allow sub-tabs.
-                     // Let's just create one line per task for the primary metric of the category.
-                     // Loss -> val/box_loss
-                     // mAP -> metrics/mAP50-95(B)
-                     // Accuracy -> metrics/mAP50(B) (Since detection doesn't always have simple 'accuracy')
-                     
-                     // RE-DECISION: Let's follow standard YOLO metrics.
-                }
-                
-                // Better approach:
-                let key = '';
-                if (this.activeChart === 'loss') key = 'val/box_loss'; 
-                else if (this.activeChart === 'accuracy') key = 'metrics/precision(B)'; // Proxy
-                else if (this.activeChart === 'mAP') key = 'metrics/mAP50-95(B)';
-                
-                if (key && dataObj[key]) {
+                const candidates = this.chartCandidates(task.frameworkKey, this.activeChart);
+                const picked = this.pickFirstSeries(dataObj, candidates);
+                if (picked) {
                     series.push({
                         name: task.name,
-                        data: dataObj[key],
+                        data: picked.data,
                         color: task.color
                     });
                 }
@@ -314,7 +281,7 @@ export default {
                 .join(' / ');
             return {
                 ok: false,
-                message: `仅支持同框架任务对比，当前选择包含：${labels}`,
+                message: `Paddle 与 PyTorch 模型的指标不同，无法进行对比。当前选择包含：${labels}`,
                 groups,
             };
         },
@@ -365,10 +332,11 @@ export default {
             return [];
         },
         buildCurveSheetsForExport(runs) {
+            const frameworkKey = runs[0]?.frameworkKey || 'pytorch';
             const defs = [
-                { name: 'Loss', key: 'val/box_loss', fallback: ['train/box_loss', 'box_loss'] },
-                { name: 'Accuracy-Metrics', key: 'metrics/precision(B)', fallback: ['metrics/recall(B)', 'metrics/mAP50(B)'] },
-                { name: 'mAP', key: 'metrics/mAP50-95(B)', fallback: ['metrics/mAP50(B)'] },
+                { name: 'Loss', keys: this.chartCandidates(frameworkKey, 'loss') },
+                { name: 'Accuracy-Metrics', keys: this.chartCandidates(frameworkKey, 'accuracy') },
+                { name: 'mAP', keys: this.chartCandidates(frameworkKey, 'mAP') },
             ];
             return defs.map((def) => ({
                 name: def.name,
@@ -377,7 +345,7 @@ export default {
                     return {
                         runId: run.runId,
                         runName: run.name,
-                        values: this.pickCurveValues(dataObj, def.key, def.fallback).slice(),
+                        values: this.pickFirstSeries(dataObj, def.keys)?.data?.slice() || [],
                     };
                 }),
             }));
@@ -425,7 +393,7 @@ export default {
             try {
                 const tasks = await fetchTrainingJobs(1, 100); // Fetch top 100 recent
                 this.availableTasks = tasks.map(t => ({
-                    id: t.job_id,
+                    id: String(t.job_id),
                     name: t.job_name || t.name,
                     status: t.status,
                     created_at: t.created_at,
@@ -436,7 +404,7 @@ export default {
                 }));
 
                 // Handle pre-selection from route query
-                const preSelect = this.$route.query.compareIds;
+                const preSelect = this.$route.query.compareIds || this.$route.query.run_ids;
                 if (preSelect) {
                     const ids = preSelect
                         .split(',')
@@ -499,7 +467,9 @@ export default {
                     return {
                         id: id,
                         name: t ? t.name : id,
-                        color: palette[idx % palette.length]
+                        color: palette[idx % palette.length],
+                        frameworkKey: t?.frameworkKey || 'engine:unknown',
+                        frameworkLabel: t?.frameworkLabel || 'Unknown',
                     };
                 });
 
@@ -525,8 +495,7 @@ export default {
                 this.$message.success(`已加载对比数据`);
             } catch (error) {
                 if (Number(error?.status) === 409) {
-                    const detail = error?.data?.detail || error?.data || {};
-                    this.$message.error(detail?.message || '仅支持同框架任务对比');
+                    this.$message.error('Paddle 与 PyTorch 模型的指标不同，无法进行对比。');
                 } else {
                     this.$message.error('对比失败: ' + error.message);
                 }
@@ -576,20 +545,11 @@ export default {
         processMetricsData(data) {
             const runs = this.extractCompareRuns(data);
             // Define metrics of interest
-            const metricsOfInterest = [
-                { key: 'metrics/mAP50-95(B)', label: 'mAP50-95', importance: 'high' },
-                { key: 'metrics/mAP50(B)', label: 'mAP50', importance: 'high' },
-                { key: 'metrics/precision(B)', label: 'Precision', importance: 'normal' },
-                { key: 'metrics/recall(B)', label: 'Recall', importance: 'normal' },
-                { key: 'train/box_loss', label: 'Train Box Loss', importance: 'normal' },
-                { key: 'val/box_loss', label: 'Val Box Loss', importance: 'normal' }
-            ];
+            const metricsOfInterest = this.metricDefsForFramework(this.comparingTasks[0]?.frameworkKey);
 
             this.metricsData = metricsOfInterest.map(m => {
                 const values = {};
-                let maxVal = -Infinity;
-                // For simplicty, let's treat "Best" as Max for metrics and Min for loss? 
-                // Or just show Max for now.
+                let bestVal = m.lowerIsBetter ? Infinity : -Infinity;
                 
                 runs.forEach(r => {
                     const rid = r.job_id || r.run_id || r.id;
@@ -598,16 +558,24 @@ export default {
                     // Usually `result` holds final metrics.
                     const sources = [r.result, r.metrics, r];
                     let val = '-';
-                    for (const s of sources) { // Try to find the key
-                        if (s && s[m.key] !== undefined) {
-                            val = s[m.key];
+                    const keys = [m.key, ...(m.fallback || [])];
+                    for (const s of sources) {
+                        if (!s) continue;
+                        const matchedKey = keys.find(key => s[key] !== undefined);
+                        if (matchedKey) {
+                            val = s[matchedKey];
                             break;
                         }
                     }
                     
-                    if (val !== '-') {
-                        val = parseFloat(val).toFixed(4);
-                        maxVal = Math.max(maxVal, parseFloat(val));
+                    const numericVal = parseFloat(val);
+                    if (Number.isFinite(numericVal)) {
+                        val = numericVal.toFixed(4);
+                        bestVal = m.lowerIsBetter
+                            ? Math.min(bestVal, numericVal)
+                            : Math.max(bestVal, numericVal);
+                    } else {
+                        val = '-';
                     }
                     values[rid] = val;
                 });
@@ -616,9 +584,52 @@ export default {
                     name: m.label,
                     importance: m.importance,
                     values,
-                    best: maxVal !== -Infinity ? maxVal.toFixed(4) : '-'
+                    lowerIsBetter: !!m.lowerIsBetter,
+                    best: (m.lowerIsBetter ? bestVal !== Infinity : bestVal !== -Infinity) ? bestVal.toFixed(4) : '-'
                 };
             });
+        },
+        chartCandidates(frameworkKey, chartId) {
+            const isPaddle = frameworkKey === 'paddle';
+            const defs = isPaddle
+                ? {
+                    loss: ['loss', 'train/loss', 'loss_cls', 'train/loss_cls', 'loss_iou', 'train/loss_iou'],
+                    accuracy: ['metrics/precision(B)', 'precision', 'eval/bbox_precision', 'metrics/recall(B)', 'recall', 'eval/bbox_recall'],
+                    mAP: ['metrics/mAP50-95(B)', 'mAP', 'eval/bbox_mAP', 'eval/bbox_map', 'metrics/mAP50(B)', 'AP50', 'mAP50'],
+                }
+                : {
+                    loss: ['val/box_loss', 'train/box_loss', 'box_loss', 'val/cls_loss', 'train/cls_loss'],
+                    accuracy: ['metrics/precision(B)', 'metrics/recall(B)', 'metrics/mAP50(B)'],
+                    mAP: ['metrics/mAP50-95(B)', 'metrics/mAP50(B)'],
+                };
+            return defs[chartId] || [];
+        },
+        pickFirstSeries(dataObj, keys = []) {
+            if (!dataObj || typeof dataObj !== 'object') return null;
+            for (const key of keys) {
+                if (Array.isArray(dataObj[key])) return { key, data: dataObj[key] };
+            }
+            return null;
+        },
+        metricDefsForFramework(frameworkKey) {
+            if (frameworkKey === 'paddle') {
+                return [
+                    { key: 'mAP', fallback: ['metrics/mAP50-95(B)', 'eval/bbox_mAP', 'eval/bbox_map'], label: 'mAP', importance: 'high' },
+                    { key: 'AP50', fallback: ['metrics/mAP50(B)', 'mAP50', 'eval/bbox_AP50', 'eval/bbox_ap50'], label: 'mAP50', importance: 'high' },
+                    { key: 'precision', fallback: ['metrics/precision(B)', 'eval/bbox_precision'], label: 'Precision', importance: 'normal' },
+                    { key: 'recall', fallback: ['metrics/recall(B)', 'eval/bbox_recall'], label: 'Recall', importance: 'normal' },
+                    { key: 'loss', fallback: ['train/loss'], label: 'Loss', importance: 'normal', lowerIsBetter: true },
+                    { key: 'loss_cls', fallback: ['train/loss_cls'], label: 'Loss Cls', importance: 'normal', lowerIsBetter: true },
+                ];
+            }
+            return [
+                { key: 'metrics/mAP50-95(B)', label: 'mAP50-95', importance: 'high' },
+                { key: 'metrics/mAP50(B)', label: 'mAP50', importance: 'high' },
+                { key: 'metrics/precision(B)', label: 'Precision', importance: 'normal' },
+                { key: 'metrics/recall(B)', label: 'Recall', importance: 'normal' },
+                { key: 'train/box_loss', label: 'Train Box Loss', importance: 'normal', lowerIsBetter: true },
+                { key: 'val/box_loss', label: 'Val Box Loss', importance: 'normal', lowerIsBetter: true }
+            ];
         },
         async fetchCurveData() {
             // Fetch curves for each selected task
@@ -649,11 +660,13 @@ export default {
             void taskId;
             return false; 
         },
-        isBestMetric(values, taskId) {
+        isBestMetric(metric, taskId) {
+            const values = metric?.values || {};
             const v = parseFloat(values[taskId]);
             const arr = Object.values(values).map(x => parseFloat(x)).filter(x => !isNaN(x));
-            const max = Math.max(...arr);
-            return !isNaN(v) && v === max;
+            if (!arr.length || isNaN(v)) return false;
+            const target = metric?.lowerIsBetter ? Math.min(...arr) : Math.max(...arr);
+            return v === target;
         }
     }
 };

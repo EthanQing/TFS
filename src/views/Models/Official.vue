@@ -3,6 +3,7 @@
     <div class="panel-top">
       <div>
         <div class="panel-title">官方模型目录</div>
+        <div class="panel-subtitle">{{ frameworkDisplayName }} · {{ normalizedEngine }}</div>
       </div>
       <div class="dataset-chip" v-if="selectedProject">
         <span class="label">数据集</span>
@@ -126,7 +127,7 @@
           <div class="field-label">图像尺寸</div>
           <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
         </div>
-        <div class="field-row">
+        <div class="field-row" v-if="isUltralyticsEngine">
           <div class="field-label">耐心值</div>
           <el-input v-model="patience" size="small" placeholder="100" class="field-input"></el-input>
         </div>
@@ -146,7 +147,7 @@
         <div class="field-row">
           <div class="field-label-row">
             <span class="field-label">批次大小</span>
-            <el-tooltip effect="dark" placement="top" content="设置为 -1 可开启批次大小自适应（仅单卡 Ultralytics 训练支持）">
+            <el-tooltip effect="dark" placement="top" :content="batchSizeHint">
               <i class="el-icon-question hint-icon"></i>
             </el-tooltip>
           </div>
@@ -158,7 +159,34 @@
             <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
           </el-select>
         </div>
-        <div class="field-row wide augmentation-field-row">
+        <template v-if="isPaddleEngine">
+          <div class="field-row wide">
+            <div class="field-label-row">
+              <span class="field-label">配置文件路径</span>
+              <el-tooltip effect="dark" placement="top" content="PaddleDetection YAML 配置路径，默认来自所选架构。">
+                <i class="el-icon-question hint-icon"></i>
+              </el-tooltip>
+            </div>
+            <el-input v-model="configPath" size="small" placeholder="configs/ppyoloe/..." class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">训练中评估</div>
+            <el-switch v-model="evalDuringTrain"></el-switch>
+          </div>
+          <div class="field-row">
+            <div class="field-label">评估间隔(轮)</div>
+            <el-input-number
+              v-model="evalInterval"
+              :min="1"
+              :step="1"
+              :disabled="!evalDuringTrain"
+              size="small"
+              controls-position="right"
+              class="field-input-number"
+            ></el-input-number>
+          </div>
+        </template>
+        <div v-if="isUltralyticsEngine" class="field-row wide augmentation-field-row">
           <div class="augmentation-panel">
             <div class="augmentation-panel__header">
               <div>
@@ -275,7 +303,7 @@
             </div>
           </div>
         </div>
-        <div class="field-row wide loss-weight-field-row">
+        <div v-if="isUltralyticsEngine" class="field-row wide loss-weight-field-row">
           <div class="loss-weight-panel">
             <div class="loss-weight-panel__header">
               <div>
@@ -400,6 +428,10 @@ export default {
     taskType: {
       type: String,
       default: 'detection'
+    },
+    engine: {
+      type: String,
+      default: "ultralytics-yolo"
     }
   },
   data() {
@@ -496,9 +528,32 @@ export default {
       lossWeightTouched: {},
       lossWeightLoading: false,
       lossWeightError: "",
+      configPath: "",
+      evalDuringTrain: true,
+      evalInterval: 1,
     };
   },
   computed: {
+    normalizedEngine() {
+      return String(this.engine || "ultralytics-yolo").trim().toLowerCase();
+    },
+    isUltralyticsEngine() {
+      return this.normalizedEngine === "ultralytics-yolo";
+    },
+    isPaddleEngine() {
+      return this.normalizedEngine === "paddle-det";
+    },
+    frameworkDisplayName() {
+      if (this.isPaddleEngine) return "PaddleDetection";
+      if (this.isUltralyticsEngine) return "Ultralytics YOLO";
+      return this.normalizedEngine || "Unknown Engine";
+    },
+    batchSizeHint() {
+      if (this.isUltralyticsEngine) {
+        return "设置为 -1 可开启批次大小自适应（仅单卡 Ultralytics 训练支持）";
+      }
+      return "PaddleDetection 需要固定正整数 batch size。";
+    },
     datasetLabel() {
       return this.selectedProject?.dataset?.dataset_name || "No standard dataset linked";
     },
@@ -514,7 +569,12 @@ export default {
     architectureGroups() {
       const list = Array.isArray(this.ref?.architectures) ? this.ref.architectures : [];
 
-      const detected = list.filter((it) => {
+      const currentEngineArchitectures = list.filter((it) => {
+        const engine = String(it?.engine || "ultralytics-yolo").trim().toLowerCase();
+        return engine === this.normalizedEngine;
+      });
+
+      const detected = currentEngineArchitectures.filter((it) => {
         const tt = String(it?.task_type || "").toLowerCase();
         // Backend usually returns 'detection' or 'segmentation'
         // If empty, assume detection for BC
@@ -537,7 +597,9 @@ export default {
       };
 
       // Version-based family order
-      const familyOrder = ['YOLOv8', 'YOLOv9', 'YOLOv10', 'YOLO11', 'YOLO12', 'YOLO26', 'RT-DETR'];
+      const yoloFamilyOrder = ['YOLOv8', 'YOLOv9', 'YOLOv10', 'YOLO11', 'YOLO12', 'YOLO26', 'RT-DETR'];
+      const paddleFamilyOrder = ['PP-YOLOE', 'PicoDet'];
+      const familyOrder = this.isPaddleEngine ? paddleFamilyOrder : yoloFamilyOrder;
       const familyRank = (name) => {
         const idx = familyOrder.indexOf(name);
         return idx >= 0 ? idx : 999;
@@ -603,7 +665,7 @@ export default {
     },
     currentSeriesKey() {
       const m = this.formatVariantKey(this.selectedModel);
-      const prefixes = ["YOLO26", "YOLO12", "YOLO11", "YOLOv10", "YOLOv9", "YOLOv8", "RT-DETR"];
+      const prefixes = ["PP-YOLOE", "PicoDet", "YOLO26", "YOLO12", "YOLO11", "YOLOv10", "YOLOv9", "YOLOv8", "RT-DETR"];
       for (const prefix of prefixes) {
         if (m.startsWith(prefix)) return prefix;
       }
@@ -690,6 +752,18 @@ export default {
           this.ensureDefaultModel();
       }
     },
+    engine() {
+      this.selectedModel = null;
+      this.selectedArchitectureId = null;
+      this.selectedFamily = null;
+      this.resetAugmentationState();
+      this.resetLossWeightState();
+      this.configPath = "";
+      this.evalDuringTrain = true;
+      this.evalInterval = 1;
+      this.ensureDefaultModel();
+      this.emitConfigChange();
+    },
     selectedModel(newModel) {
       if (newModel) {
         this.emitModelSelected();
@@ -699,8 +773,14 @@ export default {
       if (this.selectedModel) {
         this.emitModelSelected();
       }
-      this.loadAugmentationOptions();
-      this.loadLossWeightOptions();
+      if (this.isUltralyticsEngine) {
+        this.loadAugmentationOptions();
+        this.loadLossWeightOptions();
+      } else {
+        this.resetAugmentationState();
+        this.resetLossWeightState();
+        this.emitConfigChange();
+      }
     },
     epochs() {
       this.emitConfigChange();
@@ -739,6 +819,15 @@ export default {
     },
     lossWeightsEnabled() {
       this.emitConfigChange();
+    },
+    configPath() {
+      this.emitConfigChange();
+    },
+    evalDuringTrain() {
+      this.emitConfigChange();
+    },
+    evalInterval() {
+      this.emitConfigChange();
     }
   },
   methods: {
@@ -773,9 +862,12 @@ export default {
     },
     emitModelSelected() {
       if (!this.selectedModel) return;
+      const architecture = this.findArchitectureByVariant(this.selectedModel);
       this.$emit("model-selected", {
         model: this.selectedModel,
-        architecture_id: this.selectedArchitectureId || null
+        architecture_id: this.selectedArchitectureId || null,
+        engine: this.normalizedEngine,
+        architecture
       });
     },
     findArchitectureByVariant(variant) {
@@ -823,6 +915,14 @@ export default {
       this.selectedFamily = arch?.model_family || arch?.family || this.selectedFamily;
       this.selectedArchitectureId = arch?.arch_id || arch?.architecture_id || arch?.id || null;
       this.selectedModel = arch?.model_variant || null;
+      this.applyArchitectureDefaults(arch);
+    },
+    applyArchitectureDefaults(arch) {
+      if (!this.isPaddleEngine) return;
+      const defaults = arch?.default_params && typeof arch.default_params === "object"
+        ? arch.default_params
+        : {};
+      this.configPath = defaults.config_path || "";
     },
     formatVariantKey(v) {
       const s = String(v || "").trim();
@@ -849,7 +949,8 @@ export default {
       if (full.startsWith(family)) {
         const suffix = full.slice(family.length);
         // e.g. suffix = "n", "s", "m", "l", "x", "-seg", "n-seg"
-        const baseSuffix = suffix.replace(/-(seg|cls)$/i, '');
+        const normalizedSuffix = suffix.replace(/^[-_]/, '');
+        const baseSuffix = normalizedSuffix.replace(/-(seg|cls)$/i, '');
         const taskSuffix = suffix.includes('-seg') ? ' Seg' : suffix.includes('-cls') ? ' Cls' : '';
         const sizeName = sizeNames[baseSuffix.toLowerCase()];
         if (sizeName) return sizeName + taskSuffix;
@@ -877,6 +978,7 @@ export default {
       this.isRotated = !this.isRotated;
       if (!this.isRotated) return;
       this.ensureDefaultModel();
+      if (!this.isUltralyticsEngine) return;
       if (
         this.selectedArchitectureId &&
         !this.augmentationLoading &&
@@ -991,6 +1093,7 @@ export default {
       this.resetAugmentationState();
       this.emitConfigChange();
 
+      if (!this.isUltralyticsEngine) return;
       if (!architectureId) return;
 
       this.augmentationLoading = true;
@@ -1113,6 +1216,7 @@ export default {
       this.resetLossWeightState();
       this.emitConfigChange();
 
+      if (!this.isUltralyticsEngine) return;
       if (!architectureId) return;
 
       this.lossWeightLoading = true;
@@ -1176,13 +1280,15 @@ export default {
       );
     },
     emitConfigChange() {
-      let configPath = "";
-      const augmentation = this.buildAugmentationPayload();
-      const lossWeights = this.buildLossWeightsPayload();
+      const augmentation = this.isUltralyticsEngine ? this.buildAugmentationPayload() : null;
+      const lossWeights = this.isUltralyticsEngine ? this.buildLossWeightsPayload() : null;
+      const parsedImageSize = parseInt(this.imgSize, 10) || 640;
 
       const configData = {
+        engine: this.normalizedEngine,
         epochs: parseInt(this.epochs, 10) || 100,
-        img_size: parseInt(this.imgSize, 10) || 640,
+        img_size: parsedImageSize,
+        input_size: parsedImageSize,
         patience: parseInt(this.patience, 10) || 100,
         learning_rate: parseFloat(this.learningRate) || 0.01,
         batch_size: this.batchSize != null && String(this.batchSize).trim() !== '' ? parseInt(this.batchSize, 10) : 16,
@@ -1192,10 +1298,16 @@ export default {
         pretrained_model_path: this.pretrainedEnabled ? this.pretrainedPath : "",
         dataset_name: this.selectedProject?.dataset?.dataset_name || "",
         save_period: parseInt(this.savePeriod, 10),
-        config_path: configPath,
         augmentation,
         loss_weights: lossWeights,
       };
+      if (this.isPaddleEngine) {
+        configData.config_path = String(this.configPath || "").trim();
+        configData.eval_during_train = !!this.evalDuringTrain;
+        configData.eval_interval = Math.max(1, parseInt(this.evalInterval, 10) || 1);
+      } else {
+        configData.config_path = "";
+      }
 
       this.$emit("config-changed", configData);
     },
@@ -1239,6 +1351,12 @@ export default {
 .panel-title {
   font-size: 16px;
   font-weight: 700;
+}
+
+.panel-subtitle {
+  margin-top: 4px;
+  color: #6a7482;
+  font-size: 12px;
 }
 
 .panel-subtitle {
@@ -1488,6 +1606,10 @@ export default {
 
 .field-input ::v-deep .el-input__inner {
   border-radius: 10px;
+}
+
+.field-input-number {
+  width: 100%;
 }
 
 .augmentation-field-row {

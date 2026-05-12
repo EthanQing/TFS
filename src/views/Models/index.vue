@@ -21,6 +21,15 @@
 
     <section class="md-toolbar">
        <div class="toolbar-left">
+        <el-radio-group v-model="activeFramework" size="small" class="framework-filter">
+            <el-radio-button
+              v-for="item in frameworkTabs"
+              :key="item.key"
+              :label="item.key"
+            >
+              {{ item.label }} ({{ frameworkCounts[item.key] || 0 }})
+            </el-radio-button>
+        </el-radio-group>
         <div class="search-shell">
             <i class="el-icon-search"></i>
             <el-input
@@ -39,16 +48,16 @@
        </div>
        
        <div class="toolbar-right">
-           <el-button type="primary" icon="el-icon-plus" @click="goStep1">新建训练任务</el-button>
+           <el-button type="primary" icon="el-icon-plus" @click="goStep1">新建 {{ activeFrameworkMeta.shortLabel }} 训练任务</el-button>
        </div>
     </section>
 
     <section class="md-body">
        <div v-if="filteredJobs.length === 0" class="empty-state">
            <div class="empty-icon"><i class="el-icon-cpu"></i></div>
-           <div class="empty-title">暂无训练任务</div>
-           <div class="empty-desc">开始新的训练任务以生成模型。</div>
-           <el-button type="primary" @click="goStep1">开始训练</el-button>
+           <div class="empty-title">暂无 {{ activeFrameworkMeta.shortLabel }} 训练任务</div>
+           <div class="empty-desc">在 {{ activeFrameworkMeta.label }} 框架下创建训练任务以生成模型。</div>
+           <el-button type="primary" @click="goStep1">开始 {{ activeFrameworkMeta.shortLabel }} 训练</el-button>
        </div>
 
        <div v-else class="models-grid">
@@ -63,7 +72,10 @@
               <div class="card-body">
                   <div class="card-header">
                       <div class="model-name" :title="job.job_name">{{ job.job_name }}</div>
-                      <div class="model-sub">{{ job.architecture?.model_variant || '未知变体' }}</div>
+                      <div class="model-sub">
+                        {{ job.architecture?.model_variant || '未知变体' }}
+                        <span class="framework-tag">{{ jobFrameworkLabel(job) }}</span>
+                      </div>
                   </div>
                   
                   <div class="card-meta">
@@ -102,7 +114,9 @@
                     </span>
                     <el-dropdown-menu slot="dropdown">
                         <el-dropdown-item command="view">查看详情</el-dropdown-item>
-                        <el-dropdown-item command="export" divided>导出模型</el-dropdown-item>
+                        <el-dropdown-item command="export" divided :disabled="jobFrameworkKey(job) === 'paddle'">
+                          导出模型<span v-if="jobFrameworkKey(job) === 'paddle'">（暂不支持）</span>
+                        </el-dropdown-item>
                         <el-dropdown-item command="delete" divided class="text-danger">删除</el-dropdown-item>
                     </el-dropdown-menu>
                   </el-dropdown>
@@ -113,7 +127,7 @@
 
     <!-- Dialogs -->
     <el-dialog
-      title="Create Training Task"
+      :title="`创建 ${activeFrameworkMeta.label} 训练任务`"
       :visible.sync="dialogVisible"
       width="900px"
       custom-class="training-dialog"
@@ -122,6 +136,9 @@
       <div class="dialog-content-wrapper">
         <component
           :is="currentDialogComponent"
+          :key="activeEngine"
+          :engine="activeEngine"
+          :framework-label="activeFrameworkMeta.label"
           :project="selectedProjectFromContext"
           @use-project="handleUseProject"
           @task-added="onTaskAdded"
@@ -135,6 +152,12 @@
 <script>
 import { fetchTrainingJobs, startTrainingJob, DeleteTrainingJob } from "@/api/training";
 import ModelsStep2 from "@/views/Models/CreateModel/Step2.vue";
+import { resolveFramework } from "@/utils/trainingFramework";
+
+const FRAMEWORK_TABS = [
+  { key: "pytorch", label: "PyTorch (YOLO)", shortLabel: "PyTorch", engine: "ultralytics-yolo" },
+  { key: "paddle", label: "Paddle", shortLabel: "Paddle", engine: "paddle-det" },
+];
 
 export default {
   name: "Models",
@@ -142,6 +165,8 @@ export default {
     return {
       searchQuery: "",
       statusFilter: "all",
+      activeFramework: "pytorch",
+      frameworkTabs: FRAMEWORK_TABS,
       dialogVisible: false,
       trainingJobs: [],
       startingJobs: {},
@@ -163,8 +188,21 @@ export default {
       }
       return this.selectedProject
     },
+    activeFrameworkMeta() {
+      return this.frameworkTabs.find(item => item.key === this.activeFramework) || this.frameworkTabs[0];
+    },
+    activeEngine() {
+      return this.activeFrameworkMeta.engine;
+    },
+    frameworkCounts() {
+      return this.trainingJobs.reduce((acc, job) => {
+        const key = this.jobFrameworkKey(job);
+        acc[key] = (acc[key] || 0) + 1;
+        return acc;
+      }, {});
+    },
     filteredJobs() {
-      let jobs = this.trainingJobs;
+      let jobs = this.trainingJobs.filter(job => this.jobFrameworkKey(job) === this.activeFramework);
       
       // Status Filter
       if (this.statusFilter !== 'all') {
@@ -184,6 +222,21 @@ export default {
     }
   },
   methods: {
+    jobFramework(job) {
+      if (job?.framework_key) {
+        return {
+          frameworkKey: job.framework_key,
+          frameworkLabel: job.framework_label || (job.framework_key === "paddle" ? "Paddle" : "PyTorch"),
+        };
+      }
+      return resolveFramework(job?.engine || job?.architecture?.engine || job?.framework_key || "");
+    },
+    jobFrameworkKey(job) {
+      return job?.framework_key || this.jobFramework(job).frameworkKey;
+    },
+    jobFrameworkLabel(job) {
+      return job?.framework_label || this.jobFramework(job).frameworkLabel;
+    },
     statusClass(status){
       if(!status) return 'status-pending';
       const s = status.toLowerCase();
@@ -207,7 +260,14 @@ export default {
     },
     handleCommand(command, jobId) {
       if (command === "view") this.ShowModelDetail(jobId);
-      else if (command === "export") this.$message.info("Export feature coming soon");
+      else if (command === "export") {
+        const job = this.trainingJobs.find(item => String(item.job_id) === String(jobId));
+        if (this.jobFrameworkKey(job) === "paddle") {
+          this.$message.warning("Paddle 模型导出暂不支持。");
+        } else {
+          this.$message.info("Export feature coming soon");
+        }
+      }
       else if (command === "delete") this.deleteModel(jobId);
     },
     async deleteModel(jobId) {
@@ -387,6 +447,11 @@ export default {
     display: flex;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;
+}
+
+.framework-filter {
+  flex-shrink: 0;
 }
 
 .search-shell {
@@ -475,6 +540,22 @@ export default {
 .model-sub {
     font-size: 0.85rem;
     color: var(--text-secondary);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.framework-tag {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: var(--radius-full);
+    border: 1px solid var(--border-color);
+    background: var(--bg-panel);
+    color: var(--text-secondary);
+    font-size: 0.7rem;
+    font-weight: 600;
 }
 
 .card-meta {

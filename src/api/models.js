@@ -1,7 +1,5 @@
 import { API_BASE } from '@/utils/request';
 
-const HIDDEN_ARCH_ENGINES = new Set(["paddle-det"]);
-
 async function safeJson(res) {
     try {
         return await res.json();
@@ -25,27 +23,20 @@ function pickPageItems(data) {
     return [];
 }
 
-function normalizeEngine(v) {
-    return String(v || "").trim().toLowerCase();
-}
-
-function isArchitectureVisible(it) {
-    const engine = normalizeEngine(it?.engine);
-    if (!engine) return true;
-    return !HIDDEN_ARCH_ENGINES.has(engine);
-}
-
 // FetchArchitectureDetail 获取架构信息接口
-export async function FetchArchitectureDetail() {
+export async function FetchArchitectureDetail({ engine } = {}) {
     try {
-        const response = await fetch(`${API_BASE}/api/v3/architectures`);
+        const params = new URLSearchParams();
+        if (engine) params.set("engine", engine);
+        const qs = params.toString();
+        const response = await fetch(`${API_BASE}/api/v3/architectures${qs ? `?${qs}` : ""}`);
         const data = await safeJson(response);
         if (!response.ok) {
             const msg = (data && (data.detail || data.message)) || `请求失败: ${response.status}`;
             throw new Error(msg);
         }
 
-        const list = (Array.isArray(data) ? data : []).filter(isArchitectureVisible);
+        const list = Array.isArray(data) ? data : [];
         // 前端统一展示字段
         return list.map((it) => ({
             ...it,

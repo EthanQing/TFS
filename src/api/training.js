@@ -53,7 +53,7 @@ function normalizeLooseValue(value) {
 function mapParametersOut(p) {
   const obj = p && typeof p === "object" ? p : {};
   const imageSize =
-    obj.image_size ?? obj.img_size ?? obj.imgsz ?? obj.imageSize ?? obj.imgSize ?? 640;
+    obj.image_size ?? obj.input_size ?? obj.img_size ?? obj.imgsz ?? obj.imageSize ?? obj.imgSize ?? 640;
   return {
     ...obj,
     image_size: imageSize,
@@ -284,7 +284,7 @@ export async function createTrainingJob(trainParameters) {
     const params = {
       epochs: Number(tp.epochs ?? 100) || 100,
       batch_size: tp.batch_size != null ? Number(tp.batch_size) : 16,
-      image_size: Number(tp.image_size ?? tp.img_size ?? tp.imgsz ?? 640) || 640,
+      image_size: Number(tp.image_size ?? tp.input_size ?? tp.img_size ?? tp.imgsz ?? 640) || 640,
       learning_rate: Number(tp.learning_rate ?? 0.01) || 0.01,
       patience: Number(tp.patience ?? 50) || 50,
       device: normStr(tp.device || "auto") || "auto",
@@ -326,9 +326,11 @@ export async function createTrainingJob(trainParameters) {
       "architecture_id",
       "model_architecture",
       "model_variant",
+      "engine",
       "epochs",
       "batch_size",
       "image_size",
+      "input_size",
       "img_size",
       "imgsz",
       "learning_rate",
