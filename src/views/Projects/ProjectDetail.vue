@@ -174,9 +174,28 @@
     </section>
 
     <!-- Create Dialog -->
-    <el-dialog title="创建训练任务" :visible.sync="dialogVisible" :width="dialogWidth" :close-on-click-modal="true"
+    <el-dialog :title="`创建 ${createFrameworkMeta.label} 训练任务`" :visible.sync="dialogVisible" :width="dialogWidth" :close-on-click-modal="true"
       append-to-body custom-class="glass-dialog">
-      <ModelsStep2 :project="projectInfo" @task-added="onTaskAdded" @close="dialogVisible = false" />
+      <div class="create-framework-selector">
+        <span class="create-framework-selector__label">训练框架</span>
+        <el-radio-group v-model="createFramework" size="small">
+          <el-radio-button
+            v-for="item in createFrameworkTabs"
+            :key="item.key"
+            :label="item.key"
+          >
+            {{ item.label }}
+          </el-radio-button>
+        </el-radio-group>
+      </div>
+      <ModelsStep2
+        :key="createEngine"
+        :project="projectInfo"
+        :engine="createEngine"
+        :framework-label="createFrameworkMeta.label"
+        @task-added="onTaskAdded"
+        @close="dialogVisible = false"
+      />
     </el-dialog>
 
     <!-- Export Dialog -->
@@ -237,6 +256,11 @@ import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
 import { referenceStore, loadDatasets } from '@/store/referenceStore';
 import { resolveFramework } from '@/utils/trainingFramework';
 
+const CREATE_FRAMEWORK_TABS = [
+  { key: 'pytorch', label: 'PyTorch (YOLO)', engine: 'ultralytics-yolo' },
+  { key: 'paddle', label: 'Paddle', engine: 'paddle-det' },
+];
+
 export default {
   name: 'ProjectsDetail',
   components: { ModelsStep2 },
@@ -263,6 +287,8 @@ export default {
         dynamic: true,
         imgsz: 640,
       },
+      createFramework: 'pytorch',
+      createFrameworkTabs: CREATE_FRAMEWORK_TABS,
       isBatchMode: false,
       selectedJobIds: [],          // 存放被勾选的 job_id 数组
       batchDeleting: false,        // 批量删除时的 loading 状态
@@ -332,6 +358,12 @@ export default {
     isAllSelected() {
       return this.filteredModels.length > 0 &&
         this.selectedVisibleCount === this.filteredModels.length;
+    },
+    createFrameworkMeta() {
+      return this.createFrameworkTabs.find(item => item.key === this.createFramework) || this.createFrameworkTabs[0];
+    },
+    createEngine() {
+      return this.createFrameworkMeta.engine;
     },
   },
   watch: {
@@ -1163,6 +1195,22 @@ export default {
 
 .action-btn {
   font-weight: 600;
+}
+
+.create-framework-selector {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 4px 14px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06);
+  flex-wrap: wrap;
+}
+
+.create-framework-selector__label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 700;
 }
 
 @media (max-width: 768px) {
