@@ -1,84 +1,290 @@
 <template>
   <div class="official-panel">
-    <div class="panel-top">
-      <div>
-        <div class="panel-title">官方模型目录</div>
-        <div class="panel-subtitle">{{ frameworkDisplayName }} · {{ normalizedEngine }}</div>
-      </div>
-      <div class="dataset-chip" v-if="selectedProject">
-        <span class="label">数据集</span>
-        <span class="value">{{ datasetLabel }}</span>
-      </div>
-    </div>
-
-    <div class="arch-section">
-      <div class="section-title">{{ sectionTitle }}</div>
-      <div v-if="archLoading" class="arch-state">
-        <i class="el-icon-loading"></i>
-        <span>加载架构中...</span>
-      </div>
-      <div v-else-if="archError" class="arch-state error">
-        <i class="el-icon-warning"></i>
-        <span>{{ archError }}</span>
-        <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
-      </div>
-      <div v-else-if="architectureGroups.length" class="arch-tabbed">
-        <!-- Family tabs -->
-        <div class="family-tabs">
-          <button
-            v-for="group in architectureGroups"
-            :key="group.family"
-            :class="['family-tab', { active: selectedFamily === group.family }]"
-            @click="onSelectFamily(group.family)"
-          >
-            {{ group.family }}
-            <span class="tab-count">{{ group.items.length }}</span>
-          </button>
+    <template v-if="isPaddleEngine">
+      <div class="panel-top">
+        <div>
+          <div class="panel-title">官方模型目录</div>
+          <div class="panel-subtitle">{{ frameworkDisplayName }} · {{ normalizedEngine }}</div>
         </div>
-        <!-- Variant chips for selected family -->
-        <div class="variant-chips">
-          <button
-            v-for="arch in selectedFamilyItems"
-            :key="arch.arch_id || arch.model_variant"
-            :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
-            @click="onSelectArchitecture(arch)"
-          >
-            {{ formatVariantShort(arch.model_variant) }}
-          </button>
+        <div class="dataset-chip" v-if="selectedProject">
+          <span class="label">数据集</span>
+          <span class="value">{{ datasetLabel }}</span>
         </div>
       </div>
-      <div v-else class="arch-state">
-        <i class="el-icon-info"></i>
-        <span>暂无可用架构</span>
-      </div>
-    </div>
 
-    <div class="metric-grid">
-      <div class="metric-card">
-        <div class="metric-label">准确率</div>
-        <div class="metric-value">{{ accuracyLabel }}%</div>
-        <div class="metric-bar">
-          <div class="metric-fill" :style="{ width: accuracyWidth + '%' }"></div>
+      <div class="arch-section">
+        <div class="section-title">{{ sectionTitle }}</div>
+        <div v-if="archLoading" class="arch-state">
+          <i class="el-icon-loading"></i>
+          <span>加载架构中...</span>
+        </div>
+        <div v-else-if="archError" class="arch-state error">
+          <i class="el-icon-warning"></i>
+          <span>{{ archError }}</span>
+          <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
+        </div>
+        <div v-else-if="architectureGroups.length" class="arch-tabbed">
+          <div class="family-tabs">
+            <button
+              v-for="group in architectureGroups"
+              :key="group.family"
+              type="button"
+              :class="['family-tab', { active: selectedFamily === group.family }]"
+              @click="onSelectFamily(group.family)"
+            >
+              {{ group.family }}
+              <span class="tab-count">{{ group.items.length }}</span>
+            </button>
+          </div>
+          <div class="variant-chips">
+            <button
+              v-for="arch in selectedFamilyItems"
+              :key="arch.arch_id || arch.model_variant"
+              type="button"
+              :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
+              @click="onSelectArchitecture(arch)"
+            >
+              {{ formatVariantShort(arch.model_variant) }}
+            </button>
+          </div>
+        </div>
+        <div v-else class="arch-state">
+          <i class="el-icon-info"></i>
+          <span>暂无可用架构</span>
         </div>
       </div>
-      <div class="metric-card">
-        <div class="metric-label">速度(ms)</div>
-        <div class="metric-value">{{ speedLabel }}ms</div>
-        <div class="metric-bar">
-          <div class="metric-fill" :style="{ width: speedWidth + '%' }"></div>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label">准确率</div>
+          <div class="metric-value">{{ accuracyLabel }}%</div>
+          <div class="metric-bar">
+            <div class="metric-fill" :style="{ width: accuracyWidth + '%' }"></div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">速度(ms)</div>
+          <div class="metric-value">{{ speedLabel }}ms</div>
+          <div class="metric-bar">
+            <div class="metric-fill" :style="{ width: speedWidth + '%' }"></div>
+          </div>
         </div>
       </div>
-    </div>
 
-    <div class="advanced-panel">
-      <button class="advanced-toggle" type="button" @click="showAdvancedModelConfiguration">
-        <span>高级设置</span>
-        <span class="chevron" :class="{ open: isRotated }"></span>
-      </button>
-      <div v-show="isRotated" class="advanced-grid">
+      <div class="advanced-panel">
+        <button class="advanced-toggle" type="button" @click="toggleAdvancedSettings">
+          <span>高级设置</span>
+          <span class="chevron" :class="{ open: advancedSettingsExpanded }"></span>
+        </button>
+        <div v-show="advancedSettingsExpanded" class="advanced-grid">
+          <div class="field-row">
+            <div class="field-label">预训练权重</div>
+            <el-switch v-model="pretrainedEnabled"></el-switch>
+          </div>
+          <div class="field-row" v-if="pretrainedEnabled">
+            <div class="field-label">上传预训练权重</div>
+            <div class="upload-compact">
+              <el-upload
+                ref="pretrainUploader"
+                action="#"
+                :auto-upload="false"
+                :on-change="handlePretrainFileChange"
+                :show-file-list="false"
+                :disabled="uploadingPretrain"
+                accept=".pt,.pth,.ckpt,.pdparams"
+                class="upload-hidden"
+              >
+                <el-button size="small" type="primary" :loading="uploadingPretrain" class="browse-btn">
+                  <i class="el-icon-folder-opened" v-if="!uploadingPretrain"></i>
+                  {{ uploadingPretrain ? "上传中..." : "选择文件" }}
+                </el-button>
+              </el-upload>
+              <span v-if="pretrainedFileName" class="file-name" :title="pretrainedFileName">
+                <i class="el-icon-document"></i>
+                {{ pretrainedFileName }}
+                <i class="el-icon-close remove-icon" @click="removePretrainFile"></i>
+              </span>
+              <span v-else class="file-hint">.pt / .pth / .ckpt / .pdparams</span>
+            </div>
+            <div v-if="pretrainUploadError" class="upload-error">{{ pretrainUploadError }}</div>
+          </div>
+          <div class="field-row">
+            <div class="field-label">保存周期 (每隔X轮保存一次 【-1禁用】)</div>
+            <el-input v-model="savePeriod" size="small" placeholder="-1" class="field-input">
+              <template slot="append">Epochs</template>
+            </el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">训练轮次</div>
+            <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">图像尺寸</div>
+            <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">学习率</div>
+            <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label-row">
+              <span class="field-label">设备</span>
+              <el-tooltip effect="dark" placement="top" content="默认使用单卡 GPU 0。多卡请用逗号分隔（如 0,1）。如需仅使用 CPU，请输入 cpu。">
+                <i class="el-icon-question hint-icon"></i>
+              </el-tooltip>
+            </div>
+            <el-input v-model="selectedDevice" size="small" placeholder="例: 0 或 0,1 或 cpu" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label-row">
+              <span class="field-label">批次大小</span>
+              <el-tooltip effect="dark" placement="top" :content="batchSizeHint">
+                <i class="el-icon-question hint-icon"></i>
+              </el-tooltip>
+            </div>
+            <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">优化器</div>
+            <el-select v-model="optimizer" size="small" placeholder="Select">
+              <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
+            </el-select>
+          </div>
+          <div class="field-row wide">
+            <div class="field-label-row">
+              <span class="field-label">配置文件路径</span>
+              <el-tooltip effect="dark" placement="top" content="PaddleDetection YAML 配置路径，默认来自所选架构。">
+                <i class="el-icon-question hint-icon"></i>
+              </el-tooltip>
+            </div>
+            <el-input v-model="configPath" size="small" placeholder="configs/ppyoloe/..." class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">训练中评估</div>
+            <el-switch v-model="evalDuringTrain"></el-switch>
+          </div>
+          <div class="field-row">
+            <div class="field-label">评估间隔(轮)</div>
+            <el-input-number
+              v-model="evalInterval"
+              :min="1"
+              :step="1"
+              :disabled="!evalDuringTrain"
+              size="small"
+              controls-position="right"
+              class="field-input-number"
+            ></el-input-number>
+          </div>
+        </div>
+      </div>
+    </template>
 
+    <template v-else>
+    <section class="settings-section settings-section--catalog">
+      <div class="panel-top">
+        <div>
+          <div class="settings-section__title">官方模型目录</div>
+          <div class="settings-section__subtitle">{{ frameworkDisplayName }} · {{ normalizedEngine }}</div>
+        </div>
+        <div class="dataset-chip" v-if="selectedProject">
+          <span class="label">数据集</span>
+          <span class="value">{{ datasetLabel }}</span>
+        </div>
+      </div>
 
-        <!-- Save Period -->
+      <div class="arch-section">
+        <div class="section-title">{{ sectionTitle }}</div>
+        <div v-if="archLoading" class="arch-state">
+          <i class="el-icon-loading"></i>
+          <span>加载架构中...</span>
+        </div>
+        <div v-else-if="archError" class="arch-state error">
+          <i class="el-icon-warning"></i>
+          <span>{{ archError }}</span>
+          <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
+        </div>
+        <div v-else-if="architectureGroups.length" class="arch-tabbed">
+          <div class="family-tabs">
+            <button
+              v-for="group in architectureGroups"
+              :key="group.family"
+              type="button"
+              :class="['family-tab', { active: selectedFamily === group.family }]"
+              @click="onSelectFamily(group.family)"
+            >
+              {{ group.family }}
+              <span class="tab-count">{{ group.items.length }}</span>
+            </button>
+          </div>
+          <div class="variant-chips">
+            <button
+              v-for="arch in selectedFamilyItems"
+              :key="arch.arch_id || arch.model_variant"
+              type="button"
+              :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
+              @click="onSelectArchitecture(arch)"
+            >
+              {{ formatVariantShort(arch.model_variant) }}
+            </button>
+          </div>
+        </div>
+        <div v-else class="arch-state">
+          <i class="el-icon-info"></i>
+          <span>暂无可用架构</span>
+        </div>
+      </div>
+
+      <div class="metric-grid">
+        <div class="metric-card">
+          <div class="metric-label">准确率</div>
+          <div class="metric-value">{{ accuracyLabel }}%</div>
+          <div class="metric-bar">
+            <div class="metric-fill" :style="{ width: accuracyWidth + '%' }"></div>
+          </div>
+        </div>
+        <div class="metric-card">
+          <div class="metric-label">速度(ms)</div>
+          <div class="metric-value">{{ speedLabel }}ms</div>
+          <div class="metric-bar">
+            <div class="metric-fill" :style="{ width: speedWidth + '%' }"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <div class="settings-section__header">
+        <div>
+          <div class="settings-section__title">高级设置</div>
+          <div class="settings-section__subtitle">默认显示训练轮次、图像尺寸和批次大小，其余配置可按需展开。</div>
+        </div>
+        <button class="section-action" type="button" @click="toggleAdvancedSettings">
+          <span>{{ advancedSettingsExpanded ? "收起" : "展开更多" }}</span>
+          <span class="section-chevron" :class="{ open: advancedSettingsExpanded }"></span>
+        </button>
+      </div>
+
+      <div class="advanced-grid-preview">
+        <div class="field-row">
+          <div class="field-label">训练轮次</div>
+          <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
+        </div>
+        <div class="field-row">
+          <div class="field-label">图像尺寸</div>
+          <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
+        </div>
+        <div class="field-row">
+          <div class="field-label-row">
+            <span class="field-label">批次大小</span>
+            <el-tooltip effect="dark" placement="top" :content="batchSizeHint">
+              <i class="el-icon-question hint-icon"></i>
+            </el-tooltip>
+          </div>
+          <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
+        </div>
+      </div>
+
+      <div v-show="advancedSettingsExpanded" class="advanced-grid-extra">
         <div class="field-row">
           <div class="field-label">预训练权重</div>
           <el-switch v-model="pretrainedEnabled"></el-switch>
@@ -98,7 +304,7 @@
             >
               <el-button size="small" type="primary" :loading="uploadingPretrain" class="browse-btn">
                 <i class="el-icon-folder-opened" v-if="!uploadingPretrain"></i>
-                {{ uploadingPretrain ? '上传中...' : '选择文件' }}
+                {{ uploadingPretrain ? "上传中..." : "选择文件" }}
               </el-button>
             </el-upload>
             <span v-if="pretrainedFileName" class="file-name" :title="pretrainedFileName">
@@ -113,19 +319,8 @@
         <div class="field-row">
           <div class="field-label">保存周期 (每隔X轮保存一次 【-1禁用】)</div>
           <el-input v-model="savePeriod" size="small" placeholder="-1" class="field-input">
-             <template slot="append">Epochs</template>
+            <template slot="append">Epochs</template>
           </el-input>
-          <div style="font-size: 10px; color: #999; margin-top: 4px;"></div>
-        </div>
-
-        
-        <div class="field-row">
-          <div class="field-label">训练轮次</div>
-          <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
-        </div>
-        <div class="field-row">
-          <div class="field-label">图像尺寸</div>
-          <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
         </div>
         <div class="field-row" v-if="isUltralyticsEngine">
           <div class="field-label">耐心值</div>
@@ -143,15 +338,6 @@
             </el-tooltip>
           </div>
           <el-input v-model="selectedDevice" size="small" placeholder="例: 0 或 0,1 或 cpu" class="field-input"></el-input>
-        </div>
-        <div class="field-row">
-          <div class="field-label-row">
-            <span class="field-label">批次大小</span>
-            <el-tooltip effect="dark" placement="top" :content="batchSizeHint">
-              <i class="el-icon-question hint-icon"></i>
-            </el-tooltip>
-          </div>
-          <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
         </div>
         <div class="field-row">
           <div class="field-label">优化器</div>
@@ -186,44 +372,158 @@
             ></el-input-number>
           </div>
         </template>
-        <div v-if="isUltralyticsEngine" class="field-row wide augmentation-field-row">
-          <div class="augmentation-panel">
-            <div class="augmentation-panel__header">
-              <div>
-                <div class="field-label">数据增强设置</div>
-                <div class="augmentation-panel__subtitle">
-                  仅提交您显式修改过的增强参数；未修改项继续使用 Ultralytics 默认值。
-                </div>
-              </div>
-              <div v-if="groupedAugmentationOptions.length > 0" class="augmentation-toggle">
-                <span>启用自定义数据增强</span>
-                <el-switch v-model="augmentationEnabled"></el-switch>
-              </div>
-            </div>
+      </div>
+    </section>
 
-            <div v-if="archLoading || augmentationLoading" class="augmentation-state">
-              <i class="el-icon-loading"></i>
-              <span>正在加载数据增强配置...</span>
-            </div>
-            <div v-else-if="augmentationError" class="augmentation-state error">
-              <i class="el-icon-warning"></i>
-              <span>{{ augmentationError }}，可继续创建任务但不会提交增强参数。</span>
-            </div>
-            <div v-else-if="!selectedArchitectureId" class="augmentation-state">
-              <i class="el-icon-info"></i>
-              <span>请先选择模型架构后查看数据增强设置</span>
-            </div>
-            <div v-else-if="!groupedAugmentationOptions.length" class="augmentation-state">
-              <i class="el-icon-info"></i>
-              <span>当前训练框架暂不支持训练时数据增强配置</span>
-            </div>
-            <div v-else class="augmentation-groups">
-              <section
-                v-for="group in groupedAugmentationOptions"
-                :key="group.key"
-                class="augmentation-group"
+    <section class="settings-section">
+      <div class="settings-section__header">
+        <div>
+          <div class="settings-section__title">数据增强设置</div>
+          <div class="settings-section__subtitle">
+            默认显示色彩空间增强、几何变换增强和组合增强 3 个子模块，点击子模块可查看详细参数。
+          </div>
+        </div>
+        <div v-if="isUltralyticsEngine && groupedAugmentationOptions.length > 0" class="settings-switch">
+          <span>启用自定义数据增强</span>
+          <el-switch v-model="augmentationEnabled"></el-switch>
+        </div>
+      </div>
+
+      <div v-if="!isUltralyticsEngine" class="augmentation-state">
+        <i class="el-icon-info"></i>
+        <span>当前框架暂不支持训练时数据增强配置</span>
+      </div>
+      <div v-else-if="archLoading || augmentationLoadingForCurrentArchitecture" class="augmentation-state">
+        <i class="el-icon-loading"></i>
+        <span>正在加载数据增强配置...</span>
+      </div>
+      <div v-else-if="augmentationError" class="augmentation-state error">
+        <i class="el-icon-warning"></i>
+        <span>{{ augmentationError }}，可继续创建任务但不会提交增强参数。</span>
+      </div>
+      <div v-else-if="!selectedArchitectureId" class="augmentation-state">
+        <i class="el-icon-info"></i>
+        <span>请先选择模型架构后查看数据增强设置</span>
+      </div>
+      <div v-else-if="!augmentationResolvedForCurrentArchitecture" class="augmentation-state">
+        <i class="el-icon-loading"></i>
+        <span>正在加载数据增强配置...</span>
+      </div>
+      <div v-else-if="!groupedAugmentationOptions.length" class="augmentation-state">
+        <i class="el-icon-info"></i>
+        <span>当前训练框架暂不支持训练时数据增强配置</span>
+      </div>
+      <div v-else class="augmentation-groups">
+        <section
+          v-for="group in primaryAugmentationGroups"
+          :key="group.key"
+          class="augmentation-group"
+        >
+          <button class="augmentation-group__toggle" type="button" @click="toggleAugmentationGroup(group.key)">
+            <span class="augmentation-group__title">{{ group.label }}</span>
+            <span class="augmentation-group__actions">
+              <span class="group-count">{{ group.items.length }} 项</span>
+              <span class="section-chevron" :class="{ open: isAugmentationGroupExpanded(group.key) }"></span>
+            </span>
+          </button>
+          <div v-show="isAugmentationGroupExpanded(group.key)" class="augmentation-group__body">
+            <div class="augmentation-group__grid">
+              <article
+                v-for="field in group.items"
+                :key="field.key"
+                class="augmentation-item"
               >
-                <div class="augmentation-group__title">{{ group.label }}</div>
+                <div class="augmentation-item__top">
+                  <div>
+                    <div class="augmentation-item__label">{{ field.label || field.key }}</div>
+                    <div class="augmentation-item__meta">
+                      <span>参数名：{{ field.key }}</span>
+                      <span>默认值：{{ formatFieldValue(field.default) }}</span>
+                      <span v-if="field.value_type === 'enum'">
+                        {{ formatAugmentationOptionsText(field) }}
+                      </span>
+                      <span v-else>
+                        {{ formatFieldRange(field) }}
+                      </span>
+                    </div>
+                  </div>
+                  <el-button
+                    type="text"
+                    size="mini"
+                    :disabled="!isAugmentationFieldTouched(field.key)"
+                    @click="resetAugmentationField(field)"
+                  >
+                    恢复默认
+                  </el-button>
+                </div>
+                <div v-if="field.description" class="augmentation-item__desc">
+                  {{ field.description }}
+                </div>
+                <div class="augmentation-item__control">
+                  <el-select
+                    v-if="field.value_type === 'enum'"
+                    :value="getAugmentationFieldValue(field)"
+                    :disabled="!augmentationEnabled || augmentationLoading"
+                    :clearable="!!field.nullable"
+                    size="small"
+                    class="augmentation-select"
+                    placeholder="请选择"
+                    @input="onAugmentationChanged(field, $event)"
+                  >
+                    <el-option
+                      v-for="option in normalizeAugmentationOptions(field.options)"
+                      :key="option.value"
+                      :label="option.label"
+                      :value="option.value"
+                    ></el-option>
+                  </el-select>
+                  <div v-else class="augmentation-number-control">
+                    <el-slider
+                      :value="getAugmentationNumericValue(field)"
+                      :min="getAugmentationFieldMin(field)"
+                      :max="getAugmentationFieldMax(field)"
+                      :step="getAugmentationFieldStep(field)"
+                      :disabled="!augmentationEnabled || augmentationLoading"
+                      @input="onAugmentationChanged(field, $event)"
+                    ></el-slider>
+                    <el-input-number
+                      :value="getAugmentationNumericValue(field)"
+                      :min="getAugmentationFieldMin(field)"
+                      :max="getAugmentationFieldMax(field)"
+                      :step="getAugmentationFieldStep(field)"
+                      :precision="getAugmentationFieldPrecision(field)"
+                      :step-strictly="field.value_type === 'integer'"
+                      :disabled="!augmentationEnabled || augmentationLoading"
+                      size="small"
+                      class="augmentation-input"
+                      @change="onAugmentationChanged(field, $event)"
+                    ></el-input-number>
+                  </div>
+                </div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <div v-if="extraAugmentationGroups.length" class="augmentation-extra">
+          <button class="section-action section-action--full" type="button" @click="toggleExtraAugmentationGroups">
+            <span>{{ extraAugmentationGroupsExpanded ? "收起更多增强设置" : "展开更多增强设置" }}</span>
+            <span class="section-chevron" :class="{ open: extraAugmentationGroupsExpanded }"></span>
+          </button>
+          <div v-show="extraAugmentationGroupsExpanded" class="augmentation-extra__body">
+            <section
+              v-for="group in extraAugmentationGroups"
+              :key="group.key"
+              class="augmentation-group"
+            >
+              <button class="augmentation-group__toggle" type="button" @click="toggleAugmentationGroup(group.key)">
+                <span class="augmentation-group__title">{{ group.label }}</span>
+                <span class="augmentation-group__actions">
+                  <span class="group-count">{{ group.items.length }} 项</span>
+                  <span class="section-chevron" :class="{ open: isAugmentationGroupExpanded(group.key) }"></span>
+                </span>
+              </button>
+              <div v-show="isAugmentationGroupExpanded(group.key)" class="augmentation-group__body">
                 <div class="augmentation-group__grid">
                   <article
                     v-for="field in group.items"
@@ -299,86 +599,92 @@
                     </div>
                   </article>
                 </div>
-              </section>
-            </div>
-          </div>
-        </div>
-        <div v-if="isUltralyticsEngine" class="field-row wide loss-weight-field-row">
-          <div class="loss-weight-panel">
-            <div class="loss-weight-panel__header">
-              <div>
-                <div class="field-label">YOLO Loss 权重设置</div>
-                <div class="loss-weight-panel__subtitle">
-                  仅提交您显式修改过的 Loss 权重；未修改项继续使用 Ultralytics 默认值。
-                </div>
               </div>
-              <div v-if="visibleLossWeightOptions.length > 0" class="loss-weight-toggle">
-                <span>启用自定义 Loss 权重</span>
-                <el-switch v-model="lossWeightsEnabled"></el-switch>
-              </div>
-            </div>
-
-            <div v-if="archLoading || lossWeightLoading" class="loss-weight-state">
-              <i class="el-icon-loading"></i>
-              <span>正在加载 Loss 权重配置...</span>
-            </div>
-            <div v-else-if="lossWeightError" class="loss-weight-state error">
-              <i class="el-icon-warning"></i>
-              <span>{{ lossWeightError }}，可继续创建任务但不会提交 Loss 权重。</span>
-            </div>
-            <div v-else-if="!selectedArchitectureId" class="loss-weight-state">
-              <i class="el-icon-info"></i>
-              <span>请先选择模型架构后查看 YOLO Loss 权重设置</span>
-            </div>
-            <div v-else-if="!visibleLossWeightOptions.length" class="loss-weight-state">
-              <i class="el-icon-info"></i>
-              <span>当前训练框架暂不支持 YOLO Loss 权重配置</span>
-            </div>
-            <div v-else class="loss-weight-grid">
-              <article
-                v-for="field in visibleLossWeightOptions"
-                :key="field.key"
-                class="loss-weight-item"
-              >
-                <div class="loss-weight-item__top">
-                  <div>
-                    <div class="loss-weight-item__label">{{ getLossWeightLabel(field) }}</div>
-                    <div class="loss-weight-item__meta">
-                      <span>参数名：{{ field.key }}</span>
-                      <span>默认值：{{ formatFieldValue(field.default) }}</span>
-                      <span>{{ formatFieldRange(field) }}</span>
-                    </div>
-                  </div>
-                  <el-button
-                    type="text"
-                    size="mini"
-                    :disabled="!isLossWeightFieldTouched(field.key)"
-                    @click="resetLossWeightField(field)"
-                  >
-                    恢复默认
-                  </el-button>
-                </div>
-                <div class="loss-weight-item__desc">
-                  {{ getLossWeightDescription(field) }}
-                </div>
-                <div class="loss-weight-item__control">
-                  <el-input-number
-                    :value="getLossWeightFieldValue(field)"
-                    :min="getFieldMin(field)"
-                    :step="getFieldStep(field, 0.1)"
-                    :precision="getFieldPrecision(field, 0.1)"
-                    :disabled="!lossWeightsEnabled || lossWeightLoading"
-                    size="small"
-                    class="loss-weight-input"
-                    @change="onLossWeightChanged(field, $event)"
-                  ></el-input-number>
-                </div>
-              </article>
-            </div>
+            </section>
           </div>
         </div>
       </div>
-    </div>
+    </section>
+
+    <section class="settings-section">
+      <div class="settings-section__header">
+        <div>
+          <div class="settings-section__title">损失权重设置</div>
+          <div class="settings-section__subtitle">默认直接显示 3 个可配置的 YOLO Loss 权重选项。</div>
+        </div>
+        <div v-if="isUltralyticsEngine && visibleLossWeightOptions.length > 0" class="settings-switch">
+          <span>启用自定义 Loss 权重</span>
+          <el-switch v-model="lossWeightsEnabled"></el-switch>
+        </div>
+      </div>
+
+      <div v-if="!isUltralyticsEngine" class="loss-weight-state">
+        <i class="el-icon-info"></i>
+        <span>当前框架暂不支持 YOLO Loss 权重配置</span>
+      </div>
+      <div v-else-if="archLoading || lossWeightLoadingForCurrentArchitecture" class="loss-weight-state">
+        <i class="el-icon-loading"></i>
+        <span>正在加载 Loss 权重配置...</span>
+      </div>
+      <div v-else-if="lossWeightError" class="loss-weight-state error">
+        <i class="el-icon-warning"></i>
+        <span>{{ lossWeightError }}，可继续创建任务但不会提交 Loss 权重。</span>
+      </div>
+      <div v-else-if="!selectedArchitectureId" class="loss-weight-state">
+        <i class="el-icon-info"></i>
+        <span>请先选择模型架构后查看 YOLO Loss 权重设置</span>
+      </div>
+      <div v-else-if="!lossWeightResolvedForCurrentArchitecture" class="loss-weight-state">
+        <i class="el-icon-loading"></i>
+        <span>正在加载 Loss 权重配置...</span>
+      </div>
+      <div v-else-if="!visibleLossWeightOptions.length" class="loss-weight-state">
+        <i class="el-icon-info"></i>
+        <span>当前训练框架暂不支持 YOLO Loss 权重配置</span>
+      </div>
+      <div v-else class="loss-weight-grid">
+        <article
+          v-for="field in visibleLossWeightOptions"
+          :key="field.key"
+          class="loss-weight-item"
+        >
+          <div class="loss-weight-item__top">
+            <div>
+              <div class="loss-weight-item__label">{{ getLossWeightLabel(field) }}</div>
+              <div class="loss-weight-item__meta">
+                <span>参数名：{{ field.key }}</span>
+                <span>默认值：{{ formatFieldValue(field.default) }}</span>
+                <span>{{ formatFieldRange(field) }}</span>
+              </div>
+            </div>
+            <el-button
+              type="text"
+              size="mini"
+              :disabled="!isLossWeightFieldTouched(field.key)"
+              @click="resetLossWeightField(field)"
+            >
+              恢复默认
+            </el-button>
+          </div>
+          <div class="loss-weight-item__desc">
+            {{ getLossWeightDescription(field) }}
+          </div>
+          <div class="loss-weight-item__control">
+            <el-input-number
+              :value="getLossWeightFieldValue(field)"
+              :min="getFieldMin(field)"
+              :step="getFieldStep(field, 0.1)"
+              :precision="getFieldPrecision(field, 0.1)"
+              :disabled="!lossWeightsEnabled || lossWeightLoading"
+              size="small"
+              class="loss-weight-input"
+              @change="onLossWeightChanged(field, $event)"
+            ></el-input-number>
+          </div>
+        </article>
+      </div>
+    </section>
+    </template>
   </div>
 </template>
 
@@ -397,6 +703,8 @@ const AUGMENTATION_GROUP_ORDER = [
   "segmentation",
   "classification",
 ];
+
+const PRIMARY_AUGMENTATION_GROUP_KEYS = ["color", "geometry", "mix"];
 
 const AUGMENTATION_GROUP_LABELS = {
   color: "色彩空间增强",
@@ -440,7 +748,7 @@ export default {
       selectedModel: null,
       selectedArchitectureId: null,
       selectedFamily: null,
-      isRotated: false,
+      advancedSettingsExpanded: false,
       epochs: "100",
       imgSize: "640",
       patience: "100",
@@ -522,12 +830,18 @@ export default {
       augmentationTouched: {},
       augmentationLoading: false,
       augmentationError: "",
+      augmentationLastRequestedArchitectureId: "",
+      augmentationLastResolvedArchitectureId: "",
+      augmentationExpandedGroups: {},
+      extraAugmentationGroupsExpanded: false,
       lossWeightsEnabled: false,
       lossWeightOptions: [],
       lossWeightValues: {},
       lossWeightTouched: {},
       lossWeightLoading: false,
       lossWeightError: "",
+      lossWeightLastRequestedArchitectureId: "",
+      lossWeightLastResolvedArchitectureId: "",
       configPath: "",
       evalDuringTrain: true,
       evalInterval: 1,
@@ -565,6 +879,9 @@ export default {
     },
     archError() {
       return this.ref?.error?.architectures || "";
+    },
+    normalizedSelectedArchitectureId() {
+      return this.normalizeArchitectureId(this.selectedArchitectureId);
     },
     architectureGroups() {
       const list = Array.isArray(this.ref?.architectures) ? this.ref.architectures : [];
@@ -654,8 +971,42 @@ export default {
           items,
         }));
     },
+    primaryAugmentationGroups() {
+      return PRIMARY_AUGMENTATION_GROUP_KEYS
+        .map((key) => this.groupedAugmentationOptions.find((group) => group.key === key))
+        .filter(Boolean);
+    },
+    extraAugmentationGroups() {
+      return this.groupedAugmentationOptions.filter(
+        (group) => !PRIMARY_AUGMENTATION_GROUP_KEYS.includes(group.key)
+      );
+    },
+    augmentationLoadingForCurrentArchitecture() {
+      return (
+        this.augmentationLoading &&
+        this.augmentationLastRequestedArchitectureId === this.normalizedSelectedArchitectureId
+      );
+    },
+    augmentationResolvedForCurrentArchitecture() {
+      return (
+        !!this.normalizedSelectedArchitectureId &&
+        this.augmentationLastResolvedArchitectureId === this.normalizedSelectedArchitectureId
+      );
+    },
     visibleLossWeightOptions() {
       return this.filterFieldsByTask(this.lossWeightOptions);
+    },
+    lossWeightLoadingForCurrentArchitecture() {
+      return (
+        this.lossWeightLoading &&
+        this.lossWeightLastRequestedArchitectureId === this.normalizedSelectedArchitectureId
+      );
+    },
+    lossWeightResolvedForCurrentArchitecture() {
+      return (
+        !!this.normalizedSelectedArchitectureId &&
+        this.lossWeightLastResolvedArchitectureId === this.normalizedSelectedArchitectureId
+      );
     },
     metrics() {
       const def = { accuracy: 37.3, speedMs: 80.4 };
@@ -739,48 +1090,29 @@ export default {
   watch: {
     "ref.architectures": {
       handler() {
-        this.ensureDefaultModel();
+        this.initializeDefaultArchitecture();
       },
       immediate: true
     },
     taskType(newType) {
       if (newType) {
-          // Clear current selection and re-select default
-          this.selectedModel = null;
-          this.selectedArchitectureId = null;
-          this.selectedFamily = null;
-          this.ensureDefaultModel();
+        this.advancedSettingsExpanded = false;
+        this.resetArchitectureSelection();
+        this.resetAugmentationState();
+        this.resetLossWeightState();
+        this.initializeDefaultArchitecture();
       }
     },
     engine() {
-      this.selectedModel = null;
-      this.selectedArchitectureId = null;
-      this.selectedFamily = null;
+      this.advancedSettingsExpanded = false;
+      this.resetArchitectureSelection();
       this.resetAugmentationState();
       this.resetLossWeightState();
       this.configPath = "";
       this.evalDuringTrain = true;
       this.evalInterval = 1;
-      this.ensureDefaultModel();
+      this.initializeDefaultArchitecture();
       this.emitConfigChange();
-    },
-    selectedModel(newModel) {
-      if (newModel) {
-        this.emitModelSelected();
-      }
-    },
-    selectedArchitectureId() {
-      if (this.selectedModel) {
-        this.emitModelSelected();
-      }
-      if (this.isUltralyticsEngine) {
-        this.loadAugmentationOptions();
-        this.loadLossWeightOptions();
-      } else {
-        this.resetAugmentationState();
-        this.resetLossWeightState();
-        this.emitConfigChange();
-      }
     },
     epochs() {
       this.emitConfigChange();
@@ -834,6 +1166,21 @@ export default {
     reloadArchitectures() {
       loadArchitectures({ force: true });
     },
+    normalizeArchitectureId(value) {
+      return String(value ?? "").trim();
+    },
+    getArchitectureId(arch) {
+      if (!arch || typeof arch !== "object") return null;
+      return arch.arch_id ?? arch.architecture_id ?? arch.id ?? null;
+    },
+    isCurrentArchitecture(architectureId) {
+      return this.normalizeArchitectureId(architectureId) === this.normalizedSelectedArchitectureId;
+    },
+    resetArchitectureSelection() {
+      this.selectedModel = null;
+      this.selectedArchitectureId = null;
+      this.selectedFamily = null;
+    },
     async handlePretrainFileChange(file) {
       const raw = file && (file.raw || file);
       if (!raw) return;
@@ -881,41 +1228,101 @@ export default {
       }
       return null;
     },
-    ensureDefaultModel() {
+    initializeDefaultArchitecture() {
       if (this.archLoading) return;
       if (!this.architectureGroups.length) {
-        this.selectedFamily = null;
-        this.selectedModel = null;
-        this.selectedArchitectureId = null;
+        this.resetArchitectureSelection();
+        this.resetAugmentationState();
+        this.resetLossWeightState();
         return;
-      }
-      // Ensure selectedFamily is set
-      if (!this.selectedFamily && this.architectureGroups.length) {
-        this.selectedFamily = this.architectureGroups[0].family;
       }
       if (this.selectedModel) {
         const matched = this.findArchitectureByVariant(this.selectedModel);
         if (matched) {
-          const matchedId = matched?.arch_id || matched?.architecture_id || matched?.id || null;
-          const matchedFamily = matched?.model_family || matched?.family || this.selectedFamily;
-          if (matchedFamily) this.selectedFamily = matchedFamily;
-          if (matchedId !== this.selectedArchitectureId) {
-            this.selectedArchitectureId = matchedId;
-          }
+          this.selectArchitecture(matched);
+          return;
         }
-        return;
       }
       const first = this.architectureGroups?.[0]?.items?.[0];
-      if (first) this.onSelectArchitecture(first);
+      if (first) this.selectArchitecture(first);
     },
     onSelectFamily(family) {
       this.selectedFamily = family;
     },
     onSelectArchitecture(arch) {
-      this.selectedFamily = arch?.model_family || arch?.family || this.selectedFamily;
-      this.selectedArchitectureId = arch?.arch_id || arch?.architecture_id || arch?.id || null;
-      this.selectedModel = arch?.model_variant || null;
+      this.selectArchitecture(arch, { forceReload: true });
+    },
+    selectArchitecture(arch, { forceReload = false } = {}) {
+      if (!arch) return;
+      const nextFamily = arch?.model_family || arch?.family || this.selectedFamily;
+      const nextArchitectureId = this.getArchitectureId(arch);
+      const nextModel = arch?.model_variant || null;
+      const previousArchitectureId = this.normalizedSelectedArchitectureId;
+      const normalizedNextArchitectureId = this.normalizeArchitectureId(nextArchitectureId);
+      const architectureChanged = previousArchitectureId !== normalizedNextArchitectureId;
+      const modelChanged = this.selectedModel !== nextModel;
+
+      this.selectedFamily = nextFamily;
+      this.selectedArchitectureId = nextArchitectureId;
+      this.selectedModel = nextModel;
       this.applyArchitectureDefaults(arch);
+
+      if (nextModel && (architectureChanged || modelChanged)) {
+        this.emitModelSelected();
+      }
+
+      if (!normalizedNextArchitectureId) {
+        this.resetAugmentationState();
+        this.resetLossWeightState();
+        this.emitConfigChange();
+        return;
+      }
+
+      if (!this.isUltralyticsEngine) {
+        this.resetAugmentationState();
+        this.resetLossWeightState();
+        this.emitConfigChange();
+        return;
+      }
+
+      const augmentationPendingForCurrentArchitecture =
+        this.augmentationLoading &&
+        this.augmentationLastRequestedArchitectureId === normalizedNextArchitectureId;
+      const lossWeightPendingForCurrentArchitecture =
+        this.lossWeightLoading &&
+        this.lossWeightLastRequestedArchitectureId === normalizedNextArchitectureId;
+      const needsAugmentationLoad =
+        (
+          forceReload && !augmentationPendingForCurrentArchitecture
+        ) ||
+        (
+          !augmentationPendingForCurrentArchitecture &&
+          (
+            architectureChanged ||
+            this.augmentationLastResolvedArchitectureId !== normalizedNextArchitectureId
+          )
+        );
+      const needsLossWeightLoad =
+        (
+          forceReload && !lossWeightPendingForCurrentArchitecture
+        ) ||
+        (
+          !lossWeightPendingForCurrentArchitecture &&
+          (
+            architectureChanged ||
+            this.lossWeightLastResolvedArchitectureId !== normalizedNextArchitectureId
+          )
+        );
+
+      if (needsAugmentationLoad) {
+        this.loadAugmentationOptions(nextArchitectureId);
+      }
+      if (needsLossWeightLoad) {
+        this.loadLossWeightOptions(nextArchitectureId);
+      }
+      if (!needsAugmentationLoad && !needsLossWeightLoad) {
+        this.emitConfigChange();
+      }
     },
     applyArchitectureDefaults(arch) {
       if (!this.isPaddleEngine) return;
@@ -974,27 +1381,40 @@ export default {
         return field.tasks.map((it) => String(it || "").toLowerCase()).includes(currentTask);
       });
     },
-    showAdvancedModelConfiguration() {
-      this.isRotated = !this.isRotated;
-      if (!this.isRotated) return;
-      this.ensureDefaultModel();
-      if (!this.isUltralyticsEngine) return;
+    toggleAdvancedSettings() {
+      this.advancedSettingsExpanded = !this.advancedSettingsExpanded;
+      if (!this.advancedSettingsExpanded) return;
+
+      this.initializeDefaultArchitecture();
+      if (!this.isUltralyticsEngine || !this.normalizedSelectedArchitectureId) return;
+
       if (
-        this.selectedArchitectureId &&
-        !this.augmentationLoading &&
-        !this.augmentationOptions.length &&
-        !this.augmentationError
+        !this.augmentationLoadingForCurrentArchitecture &&
+        this.augmentationLastResolvedArchitectureId !== this.normalizedSelectedArchitectureId
       ) {
-        this.loadAugmentationOptions();
+        this.loadAugmentationOptions(this.selectedArchitectureId);
       }
       if (
-        this.selectedArchitectureId &&
-        !this.lossWeightLoading &&
-        !this.lossWeightOptions.length &&
-        !this.lossWeightError
+        !this.lossWeightLoadingForCurrentArchitecture &&
+        this.lossWeightLastResolvedArchitectureId !== this.normalizedSelectedArchitectureId
       ) {
-        this.loadLossWeightOptions();
+        this.loadLossWeightOptions(this.selectedArchitectureId);
       }
+    },
+    toggleAugmentationGroup(groupKey) {
+      if (!groupKey) return;
+      this.$set(
+        this.augmentationExpandedGroups,
+        groupKey,
+        !this.isAugmentationGroupExpanded(groupKey)
+      );
+    },
+    isAugmentationGroupExpanded(groupKey) {
+      if (!groupKey) return false;
+      return !!this.augmentationExpandedGroups[groupKey];
+    },
+    toggleExtraAugmentationGroups() {
+      this.extraAugmentationGroupsExpanded = !this.extraAugmentationGroupsExpanded;
     },
     getNumericFieldDefaultValue(field, fallback = 0) {
       if (!field || typeof field !== "object") return fallback;
@@ -1086,34 +1506,50 @@ export default {
       this.augmentationTouched = {};
       this.augmentationLoading = false;
       this.augmentationError = "";
+      this.augmentationLastRequestedArchitectureId = "";
+      this.augmentationLastResolvedArchitectureId = "";
+      this.augmentationExpandedGroups = {};
+      this.extraAugmentationGroupsExpanded = false;
     },
-    async loadAugmentationOptions() {
-      const architectureId = this.selectedArchitectureId;
+    async loadAugmentationOptions(architectureId = this.selectedArchitectureId) {
+      const normalizedArchitectureId = this.normalizeArchitectureId(architectureId);
 
-      this.resetAugmentationState();
+      this.augmentationEnabled = false;
+      this.augmentationOptions = [];
+      this.augmentationValues = {};
+      this.augmentationTouched = {};
+      this.augmentationLoading = false;
+      this.augmentationError = "";
+      this.augmentationLastRequestedArchitectureId = normalizedArchitectureId;
+      this.augmentationLastResolvedArchitectureId = "";
+      this.augmentationExpandedGroups = {};
+      this.extraAugmentationGroupsExpanded = false;
       this.emitConfigChange();
 
       if (!this.isUltralyticsEngine) return;
-      if (!architectureId) return;
+      if (!normalizedArchitectureId) return;
 
       this.augmentationLoading = true;
       try {
         const data = await fetchTrainingAugmentationOptions({
           architecture_id: architectureId
         });
-        if (this.selectedArchitectureId !== architectureId) return;
+        if (!this.isCurrentArchitecture(architectureId)) return;
         const fields = Array.isArray(data?.fields) ? data.fields : [];
         this.augmentationOptions = fields;
         this.augmentationValues = this.buildAugmentationInitialValues(fields);
         this.augmentationTouched = {};
+        this.augmentationLastResolvedArchitectureId = normalizedArchitectureId;
+        this.augmentationError = "";
       } catch (error) {
-        if (this.selectedArchitectureId !== architectureId) return;
+        if (!this.isCurrentArchitecture(architectureId)) return;
         this.augmentationOptions = [];
         this.augmentationValues = {};
         this.augmentationTouched = {};
         this.augmentationError = error?.message || "加载数据增强配置失败";
+        this.augmentationLastResolvedArchitectureId = normalizedArchitectureId;
       } finally {
-        if (this.selectedArchitectureId === architectureId) {
+        if (this.isCurrentArchitecture(architectureId)) {
           this.augmentationLoading = false;
           this.emitConfigChange();
         }
@@ -1209,34 +1645,46 @@ export default {
       this.lossWeightTouched = {};
       this.lossWeightLoading = false;
       this.lossWeightError = "";
+      this.lossWeightLastRequestedArchitectureId = "";
+      this.lossWeightLastResolvedArchitectureId = "";
     },
-    async loadLossWeightOptions() {
-      const architectureId = this.selectedArchitectureId;
+    async loadLossWeightOptions(architectureId = this.selectedArchitectureId) {
+      const normalizedArchitectureId = this.normalizeArchitectureId(architectureId);
 
-      this.resetLossWeightState();
+      this.lossWeightsEnabled = false;
+      this.lossWeightOptions = [];
+      this.lossWeightValues = {};
+      this.lossWeightTouched = {};
+      this.lossWeightLoading = false;
+      this.lossWeightError = "";
+      this.lossWeightLastRequestedArchitectureId = normalizedArchitectureId;
+      this.lossWeightLastResolvedArchitectureId = "";
       this.emitConfigChange();
 
       if (!this.isUltralyticsEngine) return;
-      if (!architectureId) return;
+      if (!normalizedArchitectureId) return;
 
       this.lossWeightLoading = true;
       try {
         const data = await fetchTrainingLossWeightOptions({
           architecture_id: architectureId
         });
-        if (this.selectedArchitectureId !== architectureId) return;
+        if (!this.isCurrentArchitecture(architectureId)) return;
         const fields = Array.isArray(data?.fields) ? data.fields : [];
         this.lossWeightOptions = fields;
         this.lossWeightValues = this.buildLossWeightInitialValues(fields);
         this.lossWeightTouched = {};
+        this.lossWeightLastResolvedArchitectureId = normalizedArchitectureId;
+        this.lossWeightError = "";
       } catch (error) {
-        if (this.selectedArchitectureId !== architectureId) return;
+        if (!this.isCurrentArchitecture(architectureId)) return;
         this.lossWeightOptions = [];
         this.lossWeightValues = {};
         this.lossWeightTouched = {};
         this.lossWeightError = error?.message || "加载 Loss 权重配置失败";
+        this.lossWeightLastResolvedArchitectureId = normalizedArchitectureId;
       } finally {
-        if (this.selectedArchitectureId === architectureId) {
+        if (this.isCurrentArchitecture(architectureId)) {
           this.lossWeightLoading = false;
           this.emitConfigChange();
         }
@@ -1319,11 +1767,7 @@ export default {
   mounted() {
     loadArchitectures();
     this.$nextTick(() => {
-      this.ensureDefaultModel();
-      // Ensure model-selected is emitted after initial selection
-      if (this.selectedModel) {
-        this.emitModelSelected();
-      }
+      this.initializeDefaultArchitecture();
       this.emitConfigChange();
     });
   }
@@ -1340,6 +1784,46 @@ export default {
   max-width: 100%;
 }
 
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 18px;
+  border: 1px solid #e4e7ee;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+}
+
+.settings-section__header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.settings-section__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #111315;
+}
+
+.settings-section__subtitle {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #6a7482;
+  line-height: 1.6;
+}
+
+.settings-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  color: #2b3a67;
+}
+
 .panel-top {
   display: flex;
   align-items: flex-start;
@@ -1351,18 +1835,13 @@ export default {
 .panel-title {
   font-size: 16px;
   font-weight: 700;
+  color: #111315;
 }
 
 .panel-subtitle {
   margin-top: 4px;
-  color: #6a7482;
-  font-size: 12px;
-}
-
-.panel-subtitle {
   font-size: 13px;
   color: #6a7482;
-  margin-top: 4px;
 }
 
 .dataset-chip {
@@ -1583,6 +2062,56 @@ export default {
   gap: 12px;
 }
 
+.section-action {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #d7def0;
+  border-radius: 999px;
+  background: #f7f9ff;
+  color: #2b3a67;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 14px;
+  transition: all 0.2s ease;
+}
+
+.section-action:hover {
+  border-color: #b7c3f5;
+  background: #eef2ff;
+}
+
+.section-action--full {
+  justify-content: space-between;
+  width: 100%;
+}
+
+.section-chevron {
+  width: 10px;
+  height: 10px;
+  border-right: 2px solid #4f63c7;
+  border-bottom: 2px solid #4f63c7;
+  transform: rotate(45deg);
+  transition: transform 0.2s ease;
+  flex-shrink: 0;
+}
+
+.section-chevron.open {
+  transform: rotate(-135deg);
+}
+
+.advanced-grid-preview,
+.advanced-grid-extra {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+}
+
+.advanced-grid-extra {
+  padding-top: 4px;
+}
+
 .field-row {
   display: flex;
   flex-direction: column;
@@ -1612,41 +2141,8 @@ export default {
   width: 100%;
 }
 
-.augmentation-field-row {
-  padding: 14px;
-}
-
-.augmentation-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.augmentation-panel__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.augmentation-panel__subtitle {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #6a7482;
-  line-height: 1.5;
-}
-
-.augmentation-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #2b3a67;
-}
-
-.augmentation-state {
+.augmentation-state,
+.loss-weight-state {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -1658,7 +2154,8 @@ export default {
   font-size: 12px;
 }
 
-.augmentation-state.error {
+.augmentation-state.error,
+.loss-weight-state.error {
   border-color: rgba(214, 69, 69, 0.35);
   color: #d64545;
 }
@@ -1670,23 +2167,70 @@ export default {
 }
 
 .augmentation-group {
-  padding: 14px;
   border: 1px solid #e4e7ee;
   border-radius: 14px;
   background: #fff;
+  overflow: hidden;
+}
+
+.augmentation-group__toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
 }
 
 .augmentation-group__title {
   font-size: 13px;
   font-weight: 700;
   color: #2b3a67;
-  margin-bottom: 12px;
+}
+
+.augmentation-group__actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  color: #6a7482;
+}
+
+.group-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 48px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  background: #f2f4fb;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.augmentation-group__body {
+  padding: 0 14px 14px;
 }
 
 .augmentation-group__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 12px;
+}
+
+.augmentation-extra {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.augmentation-extra__body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
 .augmentation-item {
@@ -1727,6 +2271,12 @@ export default {
   line-height: 1.5;
 }
 
+.augmentation-item__control {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
 .augmentation-number-control {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
@@ -1740,57 +2290,6 @@ export default {
 
 .augmentation-input {
   width: 128px;
-}
-
-.loss-weight-field-row {
-  padding: 14px;
-}
-
-.loss-weight-panel {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.loss-weight-panel__header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.loss-weight-panel__subtitle {
-  margin-top: 6px;
-  font-size: 12px;
-  color: #6a7482;
-  line-height: 1.5;
-}
-
-.loss-weight-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  color: #2b3a67;
-}
-
-.loss-weight-state {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px;
-  border: 1px dashed #cfd6e6;
-  border-radius: 12px;
-  background: #fff;
-  color: #6a7482;
-  font-size: 12px;
-}
-
-.loss-weight-state.error {
-  border-color: rgba(214, 69, 69, 0.35);
-  color: #d64545;
 }
 
 .loss-weight-grid {
@@ -1912,60 +2411,12 @@ export default {
   margin-top: 4px;
 }
 
-.device-toggle {
-  display: inline-flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-
-.device-toggle button {
-  border: 1px solid #e4e7ee;
-  background: #fff;
-  padding: 6px 12px;
-  border-radius: 999px;
-  font-size: 12px;
-  cursor: pointer;
-  color: #3e4a5b;
-  transition: all 0.2s ease;
-}
-
-.device-toggle button.active {
-  background: #4f63c7;
-  border-color: #4f63c7;
-  color: #fff;
-}
-
-@media (max-width: 720px) {
-  .panel-top {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  .advanced-grid {
-    grid-template-columns: 1fr;
-  }
-  .augmentation-panel__header,
-  .augmentation-item__top,
-  .loss-weight-panel__header,
-  .loss-weight-item__top,
-  .augmentation-number-control {
-    grid-template-columns: 1fr;
-    flex-direction: column;
-    align-items: stretch;
-  }
-  .augmentation-input,
-  .loss-weight-input {
-    width: 100%;
-  }
-}
-
-/* Field label with tooltip */
 .field-label-row {
   display: flex;
   align-items: center;
   gap: 6px;
 }
 
-/* Hint icon (?) */
 .hint-icon {
   font-size: 14px;
   color: #9ca3af;
@@ -1975,5 +2426,34 @@ export default {
 
 .hint-icon:hover {
   color: #4f63c7;
+}
+
+@media (max-width: 720px) {
+  .panel-top {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+  .settings-section__header,
+  .augmentation-group__toggle,
+  .augmentation-item__top,
+  .loss-weight-item__top,
+  .augmentation-number-control {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .advanced-grid {
+    grid-template-columns: 1fr;
+  }
+  .advanced-grid-preview,
+  .advanced-grid-extra,
+  .metric-grid,
+  .augmentation-group__grid,
+  .loss-weight-grid {
+    grid-template-columns: 1fr;
+  }
+  .augmentation-input,
+  .loss-weight-input {
+    width: 100%;
+  }
 }
 </style>

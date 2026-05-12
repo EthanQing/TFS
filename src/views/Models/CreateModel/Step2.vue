@@ -31,14 +31,14 @@
     <section class="step-body">
       <div class="step-toolbar">
         <div class="tab-switcher">
-          <button 
+          <!-- <button 
             type="button" 
             class="tab-btn" 
             :class="{ active: currentTab === 'detection' }"
             @click="currentTab = 'detection'"
           >
             目标检测
-          </button>
+          </button> -->
           <!-- <button 
             type="button" 
             class="tab-btn" 

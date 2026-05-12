@@ -178,18 +178,31 @@
 
     <!-- Create Dialog -->
     <el-dialog :title="`创建 ${createFrameworkMeta.label} 训练任务`" :visible.sync="dialogVisible" :width="dialogWidth" :close-on-click-modal="true"
-      append-to-body custom-class="glass-dialog">
+      append-to-body custom-class="glass-dialog" :top="'5vh'">
       <div class="create-framework-selector">
-        <span class="create-framework-selector__label">训练框架</span>
-        <el-radio-group v-model="createFramework" size="small">
-          <el-radio-button
-            v-for="item in createFrameworkTabs"
-            :key="item.key"
-            :label="item.key"
-          >
-            {{ item.label }}
-          </el-radio-button>
-        </el-radio-group>
+        <!-- <span class="create-framework-selector__label">训练框架</span> -->
+        <div class="create-framework-switch">
+          <el-switch
+            v-model="createFramework"
+            :active-value="'paddle'"
+            :inactive-value="'pytorch'"
+            class="create-framework-switch__control"
+          />
+          <div class="create-framework-switch__labels" aria-hidden="true">
+            <span
+              class="create-framework-switch__label"
+              :class="{ 'is-active': createFramework === 'pytorch' }"
+            >
+              PyTorch (YOLO)
+            </span>
+            <span
+              class="create-framework-switch__label"
+              :class="{ 'is-active': createFramework === 'paddle' }"
+            >
+              Paddle
+            </span>            
+          </div>
+        </div>
       </div>
       <ModelsStep2
         :key="createEngine"
@@ -291,7 +304,6 @@ export default {
         imgsz: 640,
       },
       createFramework: 'pytorch',
-      createFrameworkTabs: CREATE_FRAMEWORK_TABS,
       isBatchMode: false,
       selectedJobIds: [],          // 存放被勾选的 job_id 数组
       batchDeleting: false,        // 批量删除时的 loading 状态
@@ -363,7 +375,7 @@ export default {
         this.selectedVisibleCount === this.filteredModels.length;
     },
     createFrameworkMeta() {
-      return this.createFrameworkTabs.find(item => item.key === this.createFramework) || this.createFrameworkTabs[0];
+      return CREATE_FRAMEWORK_TABS.find(item => item.key === this.createFramework) || CREATE_FRAMEWORK_TABS[0];
     },
     createEngine() {
       return this.createFrameworkMeta.engine;
@@ -1209,7 +1221,7 @@ export default {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 0 4px 14px;
+  padding: 0 24px 14px;
   margin-bottom: 4px;
   border-bottom: 1px solid rgba(0, 0, 0, 0.06);
   flex-wrap: wrap;
@@ -1219,6 +1231,77 @@ export default {
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 700;
+}
+
+.create-framework-switch {
+  position: relative;
+  width: 280px;
+  max-width: 100%;
+}
+
+.create-framework-switch__labels {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+  padding: 0 1px;
+}
+
+.create-framework-switch__label {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 0 8px;
+  color: #6b7280;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+  z-index: 1;
+}
+
+.create-framework-switch__label.is-active {
+  color: #ffffff;
+}
+
+.create-framework-switch ::v-deep .el-switch {
+  display: block;
+  width: 100%;
+  height: 40px;
+}
+
+.create-framework-switch ::v-deep .el-switch__core {
+  width: 100% !important;
+  height: 40px;
+  border: 1px solid #d1d5db;
+  border-radius: 20px;
+  background: #f3f4f6;
+  box-sizing: border-box;
+}
+
+.create-framework-switch ::v-deep .el-switch__core::after {
+  top: 1px;
+  left: 1px;
+  width: calc(50% - 2px);
+  height: calc(100% - 2px);
+  border-radius: 18px;
+  background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
+}
+
+.create-framework-switch ::v-deep .el-switch.is-checked .el-switch__core {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+
+.create-framework-switch ::v-deep .el-switch.is-checked .el-switch__core::after {
+  left: calc(50% + 1px);
+  margin-left: 0;
 }
 
 @media (max-width: 768px) {
@@ -1243,6 +1326,10 @@ export default {
 
   .job-grid {
     grid-template-columns: 1fr;
+  }
+
+  .create-framework-switch {
+    width: 100%;
   }
 }
 </style>
