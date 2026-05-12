@@ -25,25 +25,17 @@
         </div>
         <div v-else-if="architectureGroups.length" class="arch-tabbed">
           <div class="family-tabs">
-            <button
-              v-for="group in architectureGroups"
-              :key="group.family"
-              type="button"
+            <button v-for="group in architectureGroups" :key="group.family" type="button"
               :class="['family-tab', { active: selectedFamily === group.family }]"
-              @click="onSelectFamily(group.family)"
-            >
+              @click="onSelectFamily(group.family)">
               {{ group.family }}
               <span class="tab-count">{{ group.items.length }}</span>
             </button>
           </div>
           <div class="variant-chips">
-            <button
-              v-for="arch in selectedFamilyItems"
-              :key="arch.arch_id || arch.model_variant"
-              type="button"
+            <button v-for="arch in selectedFamilyItems" :key="arch.arch_id || arch.model_variant" type="button"
               :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
-              @click="onSelectArchitecture(arch)"
-            >
+              @click="onSelectArchitecture(arch)">
               {{ formatVariantShort(arch.model_variant) }}
             </button>
           </div>
@@ -78,23 +70,16 @@
         </button>
         <div v-show="advancedSettingsExpanded" class="advanced-grid">
           <div class="field-row">
-            <div class="field-label">预训练权重</div>
-            <el-switch v-model="pretrainedEnabled"></el-switch>
-          </div>
-          <div class="field-row" v-if="pretrainedEnabled">
-            <div class="field-label">上传预训练权重</div>
-            <div class="upload-compact">
-              <el-upload
-                ref="pretrainUploader"
-                action="#"
-                :auto-upload="false"
-                :on-change="handlePretrainFileChange"
-                :show-file-list="false"
-                :disabled="uploadingPretrain"
-                accept=".pt,.pth,.ckpt,.pdparams"
-                class="upload-hidden"
-              >
-                <el-button size="small" type="primary" :loading="uploadingPretrain" class="browse-btn">
+            <div class="pretrain-header">
+              <div class="field-label">预训练权重</div>
+              <el-switch v-model="pretrainedEnabled"></el-switch>
+            </div>
+            <div class="upload-compact" :class="{ 'upload-compact--disabled': pretrainUploadDisabled }">
+              <el-upload ref="pretrainUploader" action="#" :auto-upload="false" :on-change="handlePretrainFileChange"
+                :show-file-list="false" :disabled="pretrainUploadDisabled" accept=".pt,.pth,.ckpt,.pdparams"
+                class="upload-hidden">
+                <el-button size="small" type="primary" :loading="uploadingPretrain" :disabled="pretrainUploadDisabled"
+                  class="browse-btn">
                   <i class="el-icon-folder-opened" v-if="!uploadingPretrain"></i>
                   {{ uploadingPretrain ? "上传中..." : "选择文件" }}
                 </el-button>
@@ -133,7 +118,8 @@
                 <i class="el-icon-question hint-icon"></i>
               </el-tooltip>
             </div>
-            <el-input v-model="selectedDevice" size="small" placeholder="例: 0 或 0,1 或 cpu" class="field-input"></el-input>
+            <el-input v-model="selectedDevice" size="small" placeholder="例: 0 或 0,1 或 cpu"
+              class="field-input"></el-input>
           </div>
           <div class="field-row">
             <div class="field-label-row">
@@ -157,7 +143,8 @@
                 <i class="el-icon-question hint-icon"></i>
               </el-tooltip>
             </div>
-            <el-input v-model="configPath" size="small" placeholder="configs/ppyoloe/..." class="field-input"></el-input>
+            <el-input v-model="configPath" size="small" placeholder="configs/ppyoloe/..."
+              class="field-input"></el-input>
           </div>
           <div class="field-row">
             <div class="field-label">训练中评估</div>
@@ -165,525 +152,421 @@
           </div>
           <div class="field-row">
             <div class="field-label">评估间隔(轮)</div>
-            <el-input-number
-              v-model="evalInterval"
-              :min="1"
-              :step="1"
-              :disabled="!evalDuringTrain"
-              size="small"
-              controls-position="right"
-              class="field-input-number"
-            ></el-input-number>
+            <el-input-number v-model="evalInterval" :min="1" :step="1" :disabled="!evalDuringTrain" size="small"
+              controls-position="right" class="field-input-number"></el-input-number>
           </div>
         </div>
       </div>
     </template>
 
     <template v-else>
-    <section class="settings-section settings-section--catalog">
-      <div class="panel-top">
-        <div>
-          <div class="settings-section__title">官方模型目录</div>
-          <div class="settings-section__subtitle">{{ frameworkDisplayName }} · {{ normalizedEngine }}</div>
+      <section class="settings-section settings-section--catalog">
+        <div class="panel-top">
+          <div>
+            <div class="settings-section__title">官方模型目录</div>
+            <div class="settings-section__subtitle">{{ frameworkDisplayName }} · {{ normalizedEngine }}</div>
+          </div>
+          <div class="dataset-chip" v-if="selectedProject">
+            <span class="label">数据集</span>
+            <span class="value">{{ datasetLabel }}</span>
+          </div>
         </div>
-        <div class="dataset-chip" v-if="selectedProject">
-          <span class="label">数据集</span>
-          <span class="value">{{ datasetLabel }}</span>
-        </div>
-      </div>
 
-      <div class="arch-section">
-        <div class="section-title">{{ sectionTitle }}</div>
-        <div v-if="archLoading" class="arch-state">
-          <i class="el-icon-loading"></i>
-          <span>加载架构中...</span>
-        </div>
-        <div v-else-if="archError" class="arch-state error">
-          <i class="el-icon-warning"></i>
-          <span>{{ archError }}</span>
-          <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
-        </div>
-        <div v-else-if="architectureGroups.length" class="arch-tabbed">
-          <div class="family-tabs">
-            <button
-              v-for="group in architectureGroups"
-              :key="group.family"
-              type="button"
-              :class="['family-tab', { active: selectedFamily === group.family }]"
-              @click="onSelectFamily(group.family)"
-            >
-              {{ group.family }}
-              <span class="tab-count">{{ group.items.length }}</span>
-            </button>
+        <div class="arch-section">
+          <div class="section-title">{{ sectionTitle }}</div>
+          <div v-if="archLoading" class="arch-state">
+            <i class="el-icon-loading"></i>
+            <span>加载架构中...</span>
           </div>
-          <div class="variant-chips">
-            <button
-              v-for="arch in selectedFamilyItems"
-              :key="arch.arch_id || arch.model_variant"
-              type="button"
-              :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
-              @click="onSelectArchitecture(arch)"
-            >
-              {{ formatVariantShort(arch.model_variant) }}
-            </button>
+          <div v-else-if="archError" class="arch-state error">
+            <i class="el-icon-warning"></i>
+            <span>{{ archError }}</span>
+            <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
+          </div>
+          <div v-else-if="architectureGroups.length" class="arch-tabbed">
+            <div class="family-tabs">
+              <button v-for="group in architectureGroups" :key="group.family" type="button"
+                :class="['family-tab', { active: selectedFamily === group.family }]"
+                @click="onSelectFamily(group.family)">
+                {{ group.family }}
+                <span class="tab-count">{{ group.items.length }}</span>
+              </button>
+            </div>
+            <div class="variant-chips">
+              <button v-for="arch in selectedFamilyItems" :key="arch.arch_id || arch.model_variant" type="button"
+                :class="['arch-chip', { active: selectedModel === arch.model_variant }]"
+                @click="onSelectArchitecture(arch)">
+                {{ formatVariantShort(arch.model_variant) }}
+              </button>
+            </div>
+          </div>
+          <div v-else class="arch-state">
+            <i class="el-icon-info"></i>
+            <span>暂无可用架构</span>
           </div>
         </div>
-        <div v-else class="arch-state">
-          <i class="el-icon-info"></i>
-          <span>暂无可用架构</span>
-        </div>
-      </div>
 
-      <div class="metric-grid">
-        <div class="metric-card">
-          <div class="metric-label">准确率</div>
-          <div class="metric-value">{{ accuracyLabel }}%</div>
-          <div class="metric-bar">
-            <div class="metric-fill" :style="{ width: accuracyWidth + '%' }"></div>
+        <div class="metric-grid">
+          <div class="metric-card">
+            <div class="metric-label">准确率</div>
+            <div class="metric-value">{{ accuracyLabel }}%</div>
+            <div class="metric-bar">
+              <div class="metric-fill" :style="{ width: accuracyWidth + '%' }"></div>
+            </div>
+          </div>
+          <div class="metric-card">
+            <div class="metric-label">速度(ms)</div>
+            <div class="metric-value">{{ speedLabel }}ms</div>
+            <div class="metric-bar">
+              <div class="metric-fill" :style="{ width: speedWidth + '%' }"></div>
+            </div>
           </div>
         </div>
-        <div class="metric-card">
-          <div class="metric-label">速度(ms)</div>
-          <div class="metric-value">{{ speedLabel }}ms</div>
-          <div class="metric-bar">
-            <div class="metric-fill" :style="{ width: speedWidth + '%' }"></div>
-          </div>
-        </div>
-      </div>
-    </section>
+      </section>
 
-    <section class="settings-section">
-      <div class="settings-section__header">
-        <div>
-          <div class="settings-section__title">高级设置</div>
-          <div class="settings-section__subtitle">默认显示训练轮次、图像尺寸和批次大小，其余配置可按需展开。</div>
+      <section class="settings-section">
+        <div class="settings-section__header">
+          <div>
+            <div class="settings-section__title">高级设置</div>
+            <div class="settings-section__subtitle">默认显示训练轮次、图像尺寸和批次大小，其余配置可按需展开。</div>
+          </div>
+          <button class="section-action" type="button" @click="toggleAdvancedSettings">
+            <span>{{ advancedSettingsExpanded ? "收起" : "更多" }}</span>
+            <span class="section-chevron" :class="{ open: advancedSettingsExpanded }"></span>
+          </button>
         </div>
-        <button class="section-action" type="button" @click="toggleAdvancedSettings">
-          <span>{{ advancedSettingsExpanded ? "收起" : "展开更多" }}</span>
-          <span class="section-chevron" :class="{ open: advancedSettingsExpanded }"></span>
-        </button>
-      </div>
 
-      <div class="advanced-grid-preview">
-        <div class="field-row">
-          <div class="field-label">训练轮次</div>
-          <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
-        </div>
-        <div class="field-row">
-          <div class="field-label">图像尺寸</div>
-          <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
-        </div>
-        <div class="field-row">
-          <div class="field-label-row">
-            <span class="field-label">批次大小</span>
-            <el-tooltip effect="dark" placement="top" :content="batchSizeHint">
-              <i class="el-icon-question hint-icon"></i>
-            </el-tooltip>
+        <div class="advanced-grid-preview">
+          <div class="field-row">
+            <div class="field-label">训练轮次</div>
+            <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
           </div>
-          <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
-        </div>
-      </div>
-
-      <div v-show="advancedSettingsExpanded" class="advanced-grid-extra">
-        <div class="field-row">
-          <div class="field-label">预训练权重</div>
-          <el-switch v-model="pretrainedEnabled"></el-switch>
-        </div>
-        <div class="field-row" v-if="pretrainedEnabled">
-          <div class="field-label">上传预训练权重</div>
-          <div class="upload-compact">
-            <el-upload
-              ref="pretrainUploader"
-              action="#"
-              :auto-upload="false"
-              :on-change="handlePretrainFileChange"
-              :show-file-list="false"
-              :disabled="uploadingPretrain"
-              accept=".pt,.pth,.ckpt,.pdparams"
-              class="upload-hidden"
-            >
-              <el-button size="small" type="primary" :loading="uploadingPretrain" class="browse-btn">
-                <i class="el-icon-folder-opened" v-if="!uploadingPretrain"></i>
-                {{ uploadingPretrain ? "上传中..." : "选择文件" }}
-              </el-button>
-            </el-upload>
-            <span v-if="pretrainedFileName" class="file-name" :title="pretrainedFileName">
-              <i class="el-icon-document"></i>
-              {{ pretrainedFileName }}
-              <i class="el-icon-close remove-icon" @click="removePretrainFile"></i>
-            </span>
-            <span v-else class="file-hint">.pt / .pth / .ckpt / .pdparams</span>
+          <div class="field-row">
+            <div class="field-label">图像尺寸</div>
+            <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
           </div>
-          <div v-if="pretrainUploadError" class="upload-error">{{ pretrainUploadError }}</div>
-        </div>
-        <div class="field-row">
-          <div class="field-label">保存周期 (每隔X轮保存一次 【-1禁用】)</div>
-          <el-input v-model="savePeriod" size="small" placeholder="-1" class="field-input">
-            <template slot="append">Epochs</template>
-          </el-input>
-        </div>
-        <div class="field-row" v-if="isUltralyticsEngine">
-          <div class="field-label">耐心值</div>
-          <el-input v-model="patience" size="small" placeholder="100" class="field-input"></el-input>
-        </div>
-        <div class="field-row">
-          <div class="field-label">学习率</div>
-          <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
-        </div>
-        <div class="field-row">
-          <div class="field-label-row">
-            <span class="field-label">设备</span>
-            <el-tooltip effect="dark" placement="top" content="默认使用单卡 GPU 0。多卡请用逗号分隔（如 0,1）。如需仅使用 CPU，请输入 cpu。">
-              <i class="el-icon-question hint-icon"></i>
-            </el-tooltip>
-          </div>
-          <el-input v-model="selectedDevice" size="small" placeholder="例: 0 或 0,1 或 cpu" class="field-input"></el-input>
-        </div>
-        <div class="field-row">
-          <div class="field-label">优化器</div>
-          <el-select v-model="optimizer" size="small" placeholder="Select">
-            <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
-          </el-select>
-        </div>
-        <template v-if="isPaddleEngine">
-          <div class="field-row wide">
+          <div class="field-row">
             <div class="field-label-row">
-              <span class="field-label">配置文件路径</span>
-              <el-tooltip effect="dark" placement="top" content="PaddleDetection YAML 配置路径，默认来自所选架构。">
+              <span class="field-label">批次大小</span>
+              <el-tooltip effect="dark" placement="top" :content="batchSizeHint">
                 <i class="el-icon-question hint-icon"></i>
               </el-tooltip>
             </div>
-            <el-input v-model="configPath" size="small" placeholder="configs/ppyoloe/..." class="field-input"></el-input>
-          </div>
-          <div class="field-row">
-            <div class="field-label">训练中评估</div>
-            <el-switch v-model="evalDuringTrain"></el-switch>
-          </div>
-          <div class="field-row">
-            <div class="field-label">评估间隔(轮)</div>
-            <el-input-number
-              v-model="evalInterval"
-              :min="1"
-              :step="1"
-              :disabled="!evalDuringTrain"
-              size="small"
-              controls-position="right"
-              class="field-input-number"
-            ></el-input-number>
-          </div>
-        </template>
-      </div>
-    </section>
-
-    <section class="settings-section">
-      <div class="settings-section__header">
-        <div>
-          <div class="settings-section__title">数据增强设置</div>
-          <div class="settings-section__subtitle">
-            默认显示色彩空间增强、几何变换增强和组合增强 3 个子模块，点击子模块可查看详细参数。
+            <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
           </div>
         </div>
-        <div v-if="isUltralyticsEngine && groupedAugmentationOptions.length > 0" class="settings-switch">
-          <span>启用自定义数据增强</span>
-          <el-switch v-model="augmentationEnabled"></el-switch>
-        </div>
-      </div>
 
-      <div v-if="!isUltralyticsEngine" class="augmentation-state">
-        <i class="el-icon-info"></i>
-        <span>当前框架暂不支持训练时数据增强配置</span>
-      </div>
-      <div v-else-if="archLoading || augmentationLoadingForCurrentArchitecture" class="augmentation-state">
-        <i class="el-icon-loading"></i>
-        <span>正在加载数据增强配置...</span>
-      </div>
-      <div v-else-if="augmentationError" class="augmentation-state error">
-        <i class="el-icon-warning"></i>
-        <span>{{ augmentationError }}，可继续创建任务但不会提交增强参数。</span>
-      </div>
-      <div v-else-if="!selectedArchitectureId" class="augmentation-state">
-        <i class="el-icon-info"></i>
-        <span>请先选择模型架构后查看数据增强设置</span>
-      </div>
-      <div v-else-if="!augmentationResolvedForCurrentArchitecture" class="augmentation-state">
-        <i class="el-icon-loading"></i>
-        <span>正在加载数据增强配置...</span>
-      </div>
-      <div v-else-if="!groupedAugmentationOptions.length" class="augmentation-state">
-        <i class="el-icon-info"></i>
-        <span>当前训练框架暂不支持训练时数据增强配置</span>
-      </div>
-      <div v-else class="augmentation-groups">
-        <section
-          v-for="group in primaryAugmentationGroups"
-          :key="group.key"
-          class="augmentation-group"
-        >
-          <button class="augmentation-group__toggle" type="button" @click="toggleAugmentationGroup(group.key)">
-            <span class="augmentation-group__title">{{ group.label }}</span>
-            <span class="augmentation-group__actions">
-              <span class="group-count">{{ group.items.length }} 项</span>
-              <span class="section-chevron" :class="{ open: isAugmentationGroupExpanded(group.key) }"></span>
-            </span>
-          </button>
-          <div v-show="isAugmentationGroupExpanded(group.key)" class="augmentation-group__body">
-            <div class="augmentation-group__grid">
-              <article
-                v-for="field in group.items"
-                :key="field.key"
-                class="augmentation-item"
-              >
-                <div class="augmentation-item__top">
-                  <div>
-                    <div class="augmentation-item__label">{{ field.label || field.key }}</div>
-                    <div class="augmentation-item__meta">
-                      <span>参数名：{{ field.key }}</span>
-                      <span>默认值：{{ formatFieldValue(field.default) }}</span>
-                      <span v-if="field.value_type === 'enum'">
-                        {{ formatAugmentationOptionsText(field) }}
-                      </span>
-                      <span v-else>
-                        {{ formatFieldRange(field) }}
-                      </span>
-                    </div>
-                  </div>
-                  <el-button
-                    type="text"
-                    size="mini"
-                    :disabled="!isAugmentationFieldTouched(field.key)"
-                    @click="resetAugmentationField(field)"
-                  >
-                    恢复默认
+        <div v-show="advancedSettingsExpanded" class="advanced-grid-extra">
+          <div class="field-row">
+            <div class="pretrain-header">
+              <div class="field-label">预训练权重</div>
+              <el-switch v-model="pretrainedEnabled"></el-switch>
+            </div>
+            <div>
+              <div class="upload-compact" :class="{ 'upload-compact--disabled': pretrainUploadDisabled }">
+                <el-upload ref="pretrainUploader" action="#" :auto-upload="false" :on-change="handlePretrainFileChange"
+                  :show-file-list="false" :disabled="pretrainUploadDisabled" accept=".pt,.pth,.ckpt,.pdparams"
+                  class="upload-hidden">
+                  <el-button size="small" type="primary" :loading="uploadingPretrain" :disabled="pretrainUploadDisabled"
+                    class="browse-btn">
+                    <i class="el-icon-folder-opened" v-if="!uploadingPretrain"></i>
+                    {{ uploadingPretrain ? "上传中..." : "选择文件" }}
                   </el-button>
-                </div>
-                <div v-if="field.description" class="augmentation-item__desc">
-                  {{ field.description }}
-                </div>
-                <div class="augmentation-item__control">
-                  <el-select
-                    v-if="field.value_type === 'enum'"
-                    :value="getAugmentationFieldValue(field)"
-                    :disabled="!augmentationEnabled || augmentationLoading"
-                    :clearable="!!field.nullable"
-                    size="small"
-                    class="augmentation-select"
-                    placeholder="请选择"
-                    @input="onAugmentationChanged(field, $event)"
-                  >
-                    <el-option
-                      v-for="option in normalizeAugmentationOptions(field.options)"
-                      :key="option.value"
-                      :label="option.label"
-                      :value="option.value"
-                    ></el-option>
-                  </el-select>
-                  <div v-else class="augmentation-number-control">
-                    <el-slider
-                      :value="getAugmentationNumericValue(field)"
-                      :min="getAugmentationFieldMin(field)"
-                      :max="getAugmentationFieldMax(field)"
-                      :step="getAugmentationFieldStep(field)"
-                      :disabled="!augmentationEnabled || augmentationLoading"
-                      @input="onAugmentationChanged(field, $event)"
-                    ></el-slider>
-                    <el-input-number
-                      :value="getAugmentationNumericValue(field)"
-                      :min="getAugmentationFieldMin(field)"
-                      :max="getAugmentationFieldMax(field)"
-                      :step="getAugmentationFieldStep(field)"
-                      :precision="getAugmentationFieldPrecision(field)"
-                      :step-strictly="field.value_type === 'integer'"
-                      :disabled="!augmentationEnabled || augmentationLoading"
-                      size="small"
-                      class="augmentation-input"
-                      @change="onAugmentationChanged(field, $event)"
-                    ></el-input-number>
-                  </div>
-                </div>
-              </article>
+                </el-upload>
+                <span v-if="pretrainedFileName" class="file-name" :title="pretrainedFileName">
+                  <i class="el-icon-document"></i>
+                  {{ pretrainedFileName }}
+                  <i class="el-icon-close remove-icon" @click="removePretrainFile"></i>
+                </span>
+                <span v-else class="file-hint">.pt / .pth / .ckpt / .pdparams</span>
+              </div>
+              <div v-if="pretrainUploadError" class="upload-error">{{ pretrainUploadError }}</div>
             </div>
           </div>
-        </section>
+          <div class="field-row">
+            <div class="field-label">保存周期 (每隔X轮保存一次 【-1禁用】)</div>
+            <el-input v-model="savePeriod" size="small" placeholder="-1" class="field-input">
+              <template slot="append">Epochs</template>
+            </el-input>
+          </div>
+          <div class="field-row" v-if="isUltralyticsEngine">
+            <div class="field-label">耐心值</div>
+            <el-input v-model="patience" size="small" placeholder="100" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">学习率</div>
+            <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label-row">
+              <span class="field-label">设备</span>
+              <el-tooltip effect="dark" placement="top" content="默认使用单卡 GPU 0。多卡请用逗号分隔（如 0,1）。如需仅使用 CPU，请输入 cpu。">
+                <i class="el-icon-question hint-icon"></i>
+              </el-tooltip>
+            </div>
+            <el-input v-model="selectedDevice" size="small" placeholder="例: 0 或 0,1 或 cpu"
+              class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">优化器</div>
+            <el-select v-model="optimizer" size="small" placeholder="Select">
+              <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
+            </el-select>
+          </div>
+          <template v-if="isPaddleEngine">
+            <div class="field-row wide">
+              <div class="field-label-row">
+                <span class="field-label">配置文件路径</span>
+                <el-tooltip effect="dark" placement="top" content="PaddleDetection YAML 配置路径，默认来自所选架构。">
+                  <i class="el-icon-question hint-icon"></i>
+                </el-tooltip>
+              </div>
+              <el-input v-model="configPath" size="small" placeholder="configs/ppyoloe/..."
+                class="field-input"></el-input>
+            </div>
+            <div class="field-row">
+              <div class="field-label">训练中评估</div>
+              <el-switch v-model="evalDuringTrain"></el-switch>
+            </div>
+            <div class="field-row">
+              <div class="field-label">评估间隔(轮)</div>
+              <el-input-number v-model="evalInterval" :min="1" :step="1" :disabled="!evalDuringTrain" size="small"
+                controls-position="right" class="field-input-number"></el-input-number>
+            </div>
+          </template>
+        </div>
+      </section>
 
-        <div v-if="extraAugmentationGroups.length" class="augmentation-extra">
-          <button class="section-action section-action--full" type="button" @click="toggleExtraAugmentationGroups">
-            <span>{{ extraAugmentationGroupsExpanded ? "收起更多增强设置" : "展开更多增强设置" }}</span>
-            <span class="section-chevron" :class="{ open: extraAugmentationGroupsExpanded }"></span>
-          </button>
-          <div v-show="extraAugmentationGroupsExpanded" class="augmentation-extra__body">
-            <section
-              v-for="group in extraAugmentationGroups"
-              :key="group.key"
-              class="augmentation-group"
-            >
-              <button class="augmentation-group__toggle" type="button" @click="toggleAugmentationGroup(group.key)">
-                <span class="augmentation-group__title">{{ group.label }}</span>
-                <span class="augmentation-group__actions">
-                  <span class="group-count">{{ group.items.length }} 项</span>
-                  <span class="section-chevron" :class="{ open: isAugmentationGroupExpanded(group.key) }"></span>
-                </span>
-              </button>
-              <div v-show="isAugmentationGroupExpanded(group.key)" class="augmentation-group__body">
-                <div class="augmentation-group__grid">
-                  <article
-                    v-for="field in group.items"
-                    :key="field.key"
-                    class="augmentation-item"
-                  >
-                    <div class="augmentation-item__top">
-                      <div>
-                        <div class="augmentation-item__label">{{ field.label || field.key }}</div>
-                        <div class="augmentation-item__meta">
-                          <span>参数名：{{ field.key }}</span>
-                          <span>默认值：{{ formatFieldValue(field.default) }}</span>
-                          <span v-if="field.value_type === 'enum'">
-                            {{ formatAugmentationOptionsText(field) }}
-                          </span>
-                          <span v-else>
-                            {{ formatFieldRange(field) }}
-                          </span>
+      <section class="settings-section">
+        <div class="settings-section__header">
+          <div>
+            <div class="settings-section__title">数据增强设置</div>
+            <div class="settings-section__subtitle">
+              默认显示色彩空间增强、几何变换增强和组合增强 3 个子模块，点击子模块可查看详细参数。
+            </div>
+          </div>
+          <div v-if="isUltralyticsEngine && groupedAugmentationOptions.length > 0" class="settings-switch">
+            <span>启用自定义数据增强</span>
+            <el-switch v-model="augmentationEnabled"></el-switch>
+          </div>
+        </div>
+
+        <div v-if="!isUltralyticsEngine" class="augmentation-state">
+          <i class="el-icon-info"></i>
+          <span>当前框架暂不支持训练时数据增强配置</span>
+        </div>
+        <div v-else-if="archLoading || augmentationLoadingForCurrentArchitecture" class="augmentation-state">
+          <i class="el-icon-loading"></i>
+          <span>正在加载数据增强配置...</span>
+        </div>
+        <div v-else-if="augmentationError" class="augmentation-state error">
+          <i class="el-icon-warning"></i>
+          <span>{{ augmentationError }}，可继续创建任务但不会提交增强参数。</span>
+        </div>
+        <div v-else-if="!selectedArchitectureId" class="augmentation-state">
+          <i class="el-icon-info"></i>
+          <span>请先选择模型架构后查看数据增强设置</span>
+        </div>
+        <div v-else-if="!augmentationResolvedForCurrentArchitecture" class="augmentation-state">
+          <i class="el-icon-loading"></i>
+          <span>正在加载数据增强配置...</span>
+        </div>
+        <div v-else-if="!groupedAugmentationOptions.length" class="augmentation-state">
+          <i class="el-icon-info"></i>
+          <span>当前训练框架暂不支持训练时数据增强配置</span>
+        </div>
+        <div v-else class="augmentation-groups">
+          <section v-for="group in primaryAugmentationGroups" :key="group.key" class="augmentation-group">
+            <button class="augmentation-group__toggle" type="button" @click="toggleAugmentationGroup(group.key)">
+              <span class="augmentation-group__title">{{ group.label }}</span>
+              <span class="augmentation-group__actions">
+                <span class="group-count">{{ group.items.length }} 项</span>
+                <span class="section-chevron" :class="{ open: isAugmentationGroupExpanded(group.key) }"></span>
+              </span>
+            </button>
+            <div v-show="isAugmentationGroupExpanded(group.key)" class="augmentation-group__body">
+              <div class="augmentation-group__grid">
+                <article v-for="field in group.items" :key="field.key" class="augmentation-item">
+                  <div class="augmentation-item__top">
+                    <div>
+                      <div class="augmentation-item__label">{{ field.label || field.key }}</div>
+                      <div class="augmentation-item__meta">
+                        <span>参数名：{{ field.key }}</span>
+                        <span>默认值：{{ formatFieldValue(field.default) }}</span>
+                        <span v-if="field.value_type === 'enum'">
+                          {{ formatAugmentationOptionsText(field) }}
+                        </span>
+                        <span v-else>
+                          {{ formatFieldRange(field) }}
+                        </span>
+                      </div>
+                    </div>
+                    <el-button type="text" size="mini" :disabled="!isAugmentationFieldTouched(field.key)"
+                      @click="resetAugmentationField(field)">
+                      恢复默认
+                    </el-button>
+                  </div>
+                  <div v-if="field.description" class="augmentation-item__desc">
+                    {{ field.description }}
+                  </div>
+                  <div class="augmentation-item__control">
+                    <el-select v-if="field.value_type === 'enum'" :value="getAugmentationFieldValue(field)"
+                      :disabled="!augmentationEnabled || augmentationLoading" :clearable="!!field.nullable" size="small"
+                      class="augmentation-select" placeholder="请选择" @input="onAugmentationChanged(field, $event)">
+                      <el-option v-for="option in normalizeAugmentationOptions(field.options)" :key="option.value"
+                        :label="option.label" :value="option.value"></el-option>
+                    </el-select>
+                    <div v-else class="augmentation-number-control">
+                      <el-slider :value="getAugmentationNumericValue(field)" :min="getAugmentationFieldMin(field)"
+                        :max="getAugmentationFieldMax(field)" :step="getAugmentationFieldStep(field)"
+                        :disabled="!augmentationEnabled || augmentationLoading"
+                        @input="onAugmentationChanged(field, $event)"></el-slider>
+                      <el-input-number :value="getAugmentationNumericValue(field)" :min="getAugmentationFieldMin(field)"
+                        :max="getAugmentationFieldMax(field)" :step="getAugmentationFieldStep(field)"
+                        :precision="getAugmentationFieldPrecision(field)"
+                        :step-strictly="field.value_type === 'integer'"
+                        :disabled="!augmentationEnabled || augmentationLoading" size="small" class="augmentation-input"
+                        @change="onAugmentationChanged(field, $event)"></el-input-number>
+                    </div>
+                  </div>
+                </article>
+              </div>
+            </div>
+          </section>
+
+          <div v-if="extraAugmentationGroups.length" class="augmentation-extra">
+            <button class="section-action section-action--full" type="button" @click="toggleExtraAugmentationGroups">
+              <span>{{ extraAugmentationGroupsExpanded ? "收起更多增强设置" : "展开更多增强设置" }}</span>
+              <span class="section-chevron" :class="{ open: extraAugmentationGroupsExpanded }"></span>
+            </button>
+            <div v-show="extraAugmentationGroupsExpanded" class="augmentation-extra__body">
+              <section v-for="group in extraAugmentationGroups" :key="group.key" class="augmentation-group">
+                <button class="augmentation-group__toggle" type="button" @click="toggleAugmentationGroup(group.key)">
+                  <span class="augmentation-group__title">{{ group.label }}</span>
+                  <span class="augmentation-group__actions">
+                    <span class="group-count">{{ group.items.length }} 项</span>
+                    <span class="section-chevron" :class="{ open: isAugmentationGroupExpanded(group.key) }"></span>
+                  </span>
+                </button>
+                <div v-show="isAugmentationGroupExpanded(group.key)" class="augmentation-group__body">
+                  <div class="augmentation-group__grid">
+                    <article v-for="field in group.items" :key="field.key" class="augmentation-item">
+                      <div class="augmentation-item__top">
+                        <div>
+                          <div class="augmentation-item__label">{{ field.label || field.key }}</div>
+                          <div class="augmentation-item__meta">
+                            <span>参数名：{{ field.key }}</span>
+                            <span>默认值：{{ formatFieldValue(field.default) }}</span>
+                            <span v-if="field.value_type === 'enum'">
+                              {{ formatAugmentationOptionsText(field) }}
+                            </span>
+                            <span v-else>
+                              {{ formatFieldRange(field) }}
+                            </span>
+                          </div>
+                        </div>
+                        <el-button type="text" size="mini" :disabled="!isAugmentationFieldTouched(field.key)"
+                          @click="resetAugmentationField(field)">
+                          恢复默认
+                        </el-button>
+                      </div>
+                      <div v-if="field.description" class="augmentation-item__desc">
+                        {{ field.description }}
+                      </div>
+                      <div class="augmentation-item__control">
+                        <el-select v-if="field.value_type === 'enum'" :value="getAugmentationFieldValue(field)"
+                          :disabled="!augmentationEnabled || augmentationLoading" :clearable="!!field.nullable"
+                          size="small" class="augmentation-select" placeholder="请选择"
+                          @input="onAugmentationChanged(field, $event)">
+                          <el-option v-for="option in normalizeAugmentationOptions(field.options)" :key="option.value"
+                            :label="option.label" :value="option.value"></el-option>
+                        </el-select>
+                        <div v-else class="augmentation-number-control">
+                          <el-slider :value="getAugmentationNumericValue(field)" :min="getAugmentationFieldMin(field)"
+                            :max="getAugmentationFieldMax(field)" :step="getAugmentationFieldStep(field)"
+                            :disabled="!augmentationEnabled || augmentationLoading"
+                            @input="onAugmentationChanged(field, $event)"></el-slider>
+                          <el-input-number :value="getAugmentationNumericValue(field)"
+                            :min="getAugmentationFieldMin(field)" :max="getAugmentationFieldMax(field)"
+                            :step="getAugmentationFieldStep(field)" :precision="getAugmentationFieldPrecision(field)"
+                            :step-strictly="field.value_type === 'integer'"
+                            :disabled="!augmentationEnabled || augmentationLoading" size="small"
+                            class="augmentation-input" @change="onAugmentationChanged(field, $event)"></el-input-number>
                         </div>
                       </div>
-                      <el-button
-                        type="text"
-                        size="mini"
-                        :disabled="!isAugmentationFieldTouched(field.key)"
-                        @click="resetAugmentationField(field)"
-                      >
-                        恢复默认
-                      </el-button>
-                    </div>
-                    <div v-if="field.description" class="augmentation-item__desc">
-                      {{ field.description }}
-                    </div>
-                    <div class="augmentation-item__control">
-                      <el-select
-                        v-if="field.value_type === 'enum'"
-                        :value="getAugmentationFieldValue(field)"
-                        :disabled="!augmentationEnabled || augmentationLoading"
-                        :clearable="!!field.nullable"
-                        size="small"
-                        class="augmentation-select"
-                        placeholder="请选择"
-                        @input="onAugmentationChanged(field, $event)"
-                      >
-                        <el-option
-                          v-for="option in normalizeAugmentationOptions(field.options)"
-                          :key="option.value"
-                          :label="option.label"
-                          :value="option.value"
-                        ></el-option>
-                      </el-select>
-                      <div v-else class="augmentation-number-control">
-                        <el-slider
-                          :value="getAugmentationNumericValue(field)"
-                          :min="getAugmentationFieldMin(field)"
-                          :max="getAugmentationFieldMax(field)"
-                          :step="getAugmentationFieldStep(field)"
-                          :disabled="!augmentationEnabled || augmentationLoading"
-                          @input="onAugmentationChanged(field, $event)"
-                        ></el-slider>
-                        <el-input-number
-                          :value="getAugmentationNumericValue(field)"
-                          :min="getAugmentationFieldMin(field)"
-                          :max="getAugmentationFieldMax(field)"
-                          :step="getAugmentationFieldStep(field)"
-                          :precision="getAugmentationFieldPrecision(field)"
-                          :step-strictly="field.value_type === 'integer'"
-                          :disabled="!augmentationEnabled || augmentationLoading"
-                          size="small"
-                          class="augmentation-input"
-                          @change="onAugmentationChanged(field, $event)"
-                        ></el-input-number>
-                      </div>
-                    </div>
-                  </article>
+                    </article>
+                  </div>
+                </div>
+              </section>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-section__header">
+          <div>
+            <div class="settings-section__title">损失权重设置</div>
+            <div class="settings-section__subtitle">默认直接显示 3 个可配置的 YOLO Loss 权重选项。</div>
+          </div>
+          <div v-if="isUltralyticsEngine && visibleLossWeightOptions.length > 0" class="settings-switch">
+            <span>启用自定义 Loss 权重</span>
+            <el-switch v-model="lossWeightsEnabled"></el-switch>
+          </div>
+        </div>
+
+        <div v-if="!isUltralyticsEngine" class="loss-weight-state">
+          <i class="el-icon-info"></i>
+          <span>当前框架暂不支持 YOLO Loss 权重配置</span>
+        </div>
+        <div v-else-if="archLoading || lossWeightLoadingForCurrentArchitecture" class="loss-weight-state">
+          <i class="el-icon-loading"></i>
+          <span>正在加载 Loss 权重配置...</span>
+        </div>
+        <div v-else-if="lossWeightError" class="loss-weight-state error">
+          <i class="el-icon-warning"></i>
+          <span>{{ lossWeightError }}，可继续创建任务但不会提交 Loss 权重。</span>
+        </div>
+        <div v-else-if="!selectedArchitectureId" class="loss-weight-state">
+          <i class="el-icon-info"></i>
+          <span>请先选择模型架构后查看 YOLO Loss 权重设置</span>
+        </div>
+        <div v-else-if="!lossWeightResolvedForCurrentArchitecture" class="loss-weight-state">
+          <i class="el-icon-loading"></i>
+          <span>正在加载 Loss 权重配置...</span>
+        </div>
+        <div v-else-if="!visibleLossWeightOptions.length" class="loss-weight-state">
+          <i class="el-icon-info"></i>
+          <span>当前训练框架暂不支持 YOLO Loss 权重配置</span>
+        </div>
+        <div v-else class="loss-weight-grid">
+          <article v-for="field in visibleLossWeightOptions" :key="field.key" class="loss-weight-item">
+            <div class="loss-weight-item__top">
+              <div>
+                <div class="loss-weight-item__label">{{ getLossWeightLabel(field) }}</div>
+                <div class="loss-weight-item__meta">
+                  <span>参数名：{{ field.key }}</span>
+                  <span>默认值：{{ formatFieldValue(field.default) }}</span>
+                  <span>{{ formatFieldRange(field) }}</span>
                 </div>
               </div>
-            </section>
-          </div>
-        </div>
-      </div>
-    </section>
-
-    <section class="settings-section">
-      <div class="settings-section__header">
-        <div>
-          <div class="settings-section__title">损失权重设置</div>
-          <div class="settings-section__subtitle">默认直接显示 3 个可配置的 YOLO Loss 权重选项。</div>
-        </div>
-        <div v-if="isUltralyticsEngine && visibleLossWeightOptions.length > 0" class="settings-switch">
-          <span>启用自定义 Loss 权重</span>
-          <el-switch v-model="lossWeightsEnabled"></el-switch>
-        </div>
-      </div>
-
-      <div v-if="!isUltralyticsEngine" class="loss-weight-state">
-        <i class="el-icon-info"></i>
-        <span>当前框架暂不支持 YOLO Loss 权重配置</span>
-      </div>
-      <div v-else-if="archLoading || lossWeightLoadingForCurrentArchitecture" class="loss-weight-state">
-        <i class="el-icon-loading"></i>
-        <span>正在加载 Loss 权重配置...</span>
-      </div>
-      <div v-else-if="lossWeightError" class="loss-weight-state error">
-        <i class="el-icon-warning"></i>
-        <span>{{ lossWeightError }}，可继续创建任务但不会提交 Loss 权重。</span>
-      </div>
-      <div v-else-if="!selectedArchitectureId" class="loss-weight-state">
-        <i class="el-icon-info"></i>
-        <span>请先选择模型架构后查看 YOLO Loss 权重设置</span>
-      </div>
-      <div v-else-if="!lossWeightResolvedForCurrentArchitecture" class="loss-weight-state">
-        <i class="el-icon-loading"></i>
-        <span>正在加载 Loss 权重配置...</span>
-      </div>
-      <div v-else-if="!visibleLossWeightOptions.length" class="loss-weight-state">
-        <i class="el-icon-info"></i>
-        <span>当前训练框架暂不支持 YOLO Loss 权重配置</span>
-      </div>
-      <div v-else class="loss-weight-grid">
-        <article
-          v-for="field in visibleLossWeightOptions"
-          :key="field.key"
-          class="loss-weight-item"
-        >
-          <div class="loss-weight-item__top">
-            <div>
-              <div class="loss-weight-item__label">{{ getLossWeightLabel(field) }}</div>
-              <div class="loss-weight-item__meta">
-                <span>参数名：{{ field.key }}</span>
-                <span>默认值：{{ formatFieldValue(field.default) }}</span>
-                <span>{{ formatFieldRange(field) }}</span>
-              </div>
+              <el-button type="text" size="mini" :disabled="!isLossWeightFieldTouched(field.key)"
+                @click="resetLossWeightField(field)">
+                恢复默认
+              </el-button>
             </div>
-            <el-button
-              type="text"
-              size="mini"
-              :disabled="!isLossWeightFieldTouched(field.key)"
-              @click="resetLossWeightField(field)"
-            >
-              恢复默认
-            </el-button>
-          </div>
-          <div class="loss-weight-item__desc">
-            {{ getLossWeightDescription(field) }}
-          </div>
-          <div class="loss-weight-item__control">
-            <el-input-number
-              :value="getLossWeightFieldValue(field)"
-              :min="getFieldMin(field)"
-              :step="getFieldStep(field, 0.1)"
-              :precision="getFieldPrecision(field, 0.1)"
-              :disabled="!lossWeightsEnabled || lossWeightLoading"
-              size="small"
-              class="loss-weight-input"
-              @change="onLossWeightChanged(field, $event)"
-            ></el-input-number>
-          </div>
-        </article>
-      </div>
-    </section>
+            <div class="loss-weight-item__desc">
+              {{ getLossWeightDescription(field) }}
+            </div>
+            <div class="loss-weight-item__control">
+              <el-input-number :value="getLossWeightFieldValue(field)" :min="getFieldMin(field)"
+                :step="getFieldStep(field, 0.1)" :precision="getFieldPrecision(field, 0.1)"
+                :disabled="!lossWeightsEnabled || lossWeightLoading" size="small" class="loss-weight-input"
+                @change="onLossWeightChanged(field, $event)"></el-input-number>
+            </div>
+          </article>
+        </div>
+      </section>
     </template>
   </div>
 </template>
@@ -762,7 +645,7 @@ export default {
         { value: "SGD", label: "SGD" }
       ],
       optimizer: "Auto",
-      pretrainedEnabled: true,
+      pretrainedEnabled: false,
       pretrainedFileName: "",
       pretrainedPath: "",
       uploadingPretrain: false,
@@ -1002,6 +885,9 @@ export default {
         this.lossWeightLastRequestedArchitectureId === this.normalizedSelectedArchitectureId
       );
     },
+    pretrainUploadDisabled() {
+      return this.uploadingPretrain || !this.pretrainedEnabled;
+    },
     lossWeightResolvedForCurrentArchitecture() {
       return (
         !!this.normalizedSelectedArchitectureId &&
@@ -1140,11 +1026,12 @@ export default {
         this.pretrainedFileName = "";
         this.pretrainedPath = "";
         this.pretrainUploadError = "";
+        this.clearPretrainUploaderFiles();
       }
       this.emitConfigChange();
     },
     savePeriod() {
-        this.emitConfigChange();
+      this.emitConfigChange();
     },
     augmentationEnabled() {
       this.emitConfigChange();
@@ -1163,6 +1050,13 @@ export default {
     }
   },
   methods: {
+    clearPretrainUploaderFiles() {
+      const uploaderRef = this.$refs.pretrainUploader;
+      const uploader = Array.isArray(uploaderRef) ? uploaderRef[0] : uploaderRef;
+      if (uploader && typeof uploader.clearFiles === "function") {
+        uploader.clearFiles();
+      }
+    },
     reloadArchitectures() {
       loadArchitectures({ force: true });
     },
@@ -1182,6 +1076,10 @@ export default {
       this.selectedFamily = null;
     },
     async handlePretrainFileChange(file) {
+      if (this.pretrainUploadDisabled) {
+        this.clearPretrainUploaderFiles();
+        return;
+      }
       const raw = file && (file.raw || file);
       if (!raw) return;
       this.pretrainUploadError = "";
@@ -1199,12 +1097,14 @@ export default {
         this.emitConfigChange();
       } finally {
         this.uploadingPretrain = false;
+        this.clearPretrainUploaderFiles();
       }
     },
     removePretrainFile() {
       this.pretrainedFileName = "";
       this.pretrainedPath = "";
       this.pretrainUploadError = "";
+      this.clearPretrainUploaderFiles();
       this.emitConfigChange();
     },
     emitModelSelected() {
@@ -1901,6 +1801,7 @@ export default {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
 .family-tabs::-webkit-scrollbar {
   display: none;
 }
@@ -2348,6 +2249,7 @@ export default {
 /* Compact upload row */
 .upload-compact {
   display: flex;
+  justify-content: space-between;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
@@ -2368,6 +2270,15 @@ export default {
 
 .browse-btn:hover {
   background: linear-gradient(135deg, #1a2d8a 0%, #111f68 100%) !important;
+}
+
+.browse-btn.is-disabled,
+.browse-btn.is-disabled:hover,
+.browse-btn.is-disabled:focus {
+  background: #eef1f6 !important;
+  border-color: #dcdfe6 !important;
+  color: #b7beca !important;
+  box-shadow: none !important;
 }
 
 .file-name {
@@ -2405,6 +2316,16 @@ export default {
   color: #9ca3af;
 }
 
+.upload-compact--disabled,
+.pretrain-header--disabled {
+  opacity: 0.68;
+}
+
+.upload-compact--disabled .file-hint,
+.pretrain-header--disabled .file-hint {
+  color: #c0c4cc;
+}
+
 .upload-error {
   font-size: 11px;
   color: #d64545;
@@ -2428,11 +2349,19 @@ export default {
   color: #4f63c7;
 }
 
+.pretrain-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
 @media (max-width: 720px) {
   .panel-top {
     flex-direction: column;
     align-items: flex-start;
   }
+
   .settings-section__header,
   .augmentation-group__toggle,
   .augmentation-item__top,
@@ -2441,9 +2370,11 @@ export default {
     flex-direction: column;
     align-items: stretch;
   }
+
   .advanced-grid {
     grid-template-columns: 1fr;
   }
+
   .advanced-grid-preview,
   .advanced-grid-extra,
   .metric-grid,
@@ -2451,6 +2382,7 @@ export default {
   .loss-weight-grid {
     grid-template-columns: 1fr;
   }
+
   .augmentation-input,
   .loss-weight-input {
     width: 100%;
