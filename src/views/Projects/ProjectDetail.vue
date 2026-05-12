@@ -35,57 +35,32 @@
       </div>
     </header>
 
-    <section class="pd-body glass-panel">
-      <header class="pd-toolbar">
+    <section class="pd-body glass-panel" @click="handleBatchBlankClick">
+      <header class="pd-toolbar" @click.stop>
         <div class="toolbar-right">
           <div class="search-shell">
             <i class="el-icon-search"></i>
             <el-input v-model="searchQuery" placeholder="搜索训练任务" class="search-input" clearable></el-input>
           </div>
-          <el-button
-            v-if="!isBatchMode"
-            size="mini"
-            class="batch-entry-btn"
-            :disabled="filteredModels.length === 0"
-            @click="enterBatchMode"
-          >
-            <i class="el-icon-finished"></i>
-            批量操作
-          </el-button>
-          <div v-else class="batch-tool">
-            <div class="batch-tool__info">
-              <span class="batch-tool__badge">
-                <i class="el-icon-finished"></i>
-                批量操作中
-              </span>
-              <span class="batch-tool__count">
-                已选 {{ selectedJobIds.length }} 个
-              </span>
-              <span class="batch-tool__hint">
-                点击卡片或勾选框可快速选择任务
-              </span>
-            </div>
-            <div class="batch-tool__actions">
-              <el-button size="mini" @click="toggleSelectAll">
-                {{ isAllSelected ? '取消全选' : '全选当前列表' }}
-              </el-button>
-              <el-button
-                type="danger"
-                size="mini"
-                :disabled="selectedJobIds.length === 0"
-                :loading="batchDeleting"
-                @click="batchDeleteConfirm"
-              >
-                删除所选
-              </el-button>
-              <el-button size="mini" @click="exitBatchMode">
-                退出批量操作
-              </el-button>
-            </div>
+          <div class="batch-toolbar">
+            <template v-if="isBatchMode">
+              <button type="button" class="batch-icon-btn" :class="{ 'is-active': isAllSelected }"
+                :disabled="filteredModels.length === 0 || batchDeleting" :title="isAllSelected ? '取消全选' : '全选'"
+                @click="toggleSelectAll">
+                <img :src="isAllSelected ? selectAllOnIcon : selectAllOffIcon" :alt="isAllSelected ? '取消全选' : '全选'"
+                  class="batch-icon-btn__image">
+              </button>
+              <button type="button" class="batch-icon-btn batch-icon-btn--danger"
+                :disabled="selectedJobIds.length === 0 || batchDeleting" title="删除所选" @click="batchDeleteConfirm">
+                <i :class="batchDeleting ? 'el-icon-loading' : 'el-icon-delete'"></i>
+              </button>
+            </template>
+            <button type="button" class="batch-icon-btn" :class="{ 'is-active': isBatchMode }"
+              :disabled="(!isBatchMode && filteredModels.length === 0) || batchDeleting"
+              :title="isBatchMode ? '退出批量操作' : '批量操作'" @click="toggleBatchMode">
+              <img :src="multiselectIcon" :alt="isBatchMode ? '退出批量操作' : '批量操作'" class="batch-icon-btn__image">
+            </button>
           </div>
-        </div>
-        <div class="pd-summary">
-          {{ filteredModels.length }} 个任务
         </div>
       </header>
 
@@ -99,12 +74,9 @@
           <span>暂无训练任务</span>
         </div>
         <div v-else class="job-grid">
-          <div
-            v-for="model in filteredModels"
-            :key="model.job_id"
+          <div v-for="model in filteredModels" :key="model.job_id"
             :class="['job-card', { 'batch-mode': isBatchMode, selected: isJobSelected(model.job_id) }]"
-            @click="handleJobCardClick(model)"
-          >
+            @click.stop="handleJobCardClick(model)">
             <div class="job-status-indicator" :class="statusClass(model.status)"></div>
             <div class="job-main">
               <div class="job-header">
@@ -132,14 +104,9 @@
               </div>
             </div>
             <div class="job-actions" :class="{ 'batch-mode': isBatchMode }" @click.stop>
-              <div v-if="isBatchMode" class="job-batch-check">
-                <el-checkbox
-                  :value="isJobSelected(model.job_id)"
-                  @change="updateJobSelection(model.job_id, $event)"
-                ></el-checkbox>
-                <span class="job-batch-check__text">
-                  {{ isJobSelected(model.job_id) ? '已选中' : '选择' }}
-                </span>
+              <div v-if="isBatchMode">
+                <el-checkbox :value="isJobSelected(model.job_id)"
+                  @change="updateJobSelection(model.job_id, $event)"></el-checkbox>
               </div>
               <div class="job-action-group">
                 <el-button v-if="model.status === 'pending'" type="success" size="mini"
@@ -177,41 +144,25 @@
     </section>
 
     <!-- Create Dialog -->
-    <el-dialog :title="`创建 ${createFrameworkMeta.label} 训练任务`" :visible.sync="dialogVisible" :width="dialogWidth" :close-on-click-modal="true"
-      append-to-body custom-class="glass-dialog" :top="'5vh'">
+    <el-dialog :title="`创建 ${createFrameworkMeta.label} 训练任务`" :visible.sync="dialogVisible" :width="dialogWidth"
+      :close-on-click-modal="true" append-to-body custom-class="glass-dialog" :top="'5vh'">
       <div class="create-framework-selector">
         <!-- <span class="create-framework-selector__label">训练框架</span> -->
         <div class="create-framework-switch">
-          <el-switch
-            v-model="createFramework"
-            :active-value="'paddle'"
-            :inactive-value="'pytorch'"
-            class="create-framework-switch__control"
-          />
+          <el-switch v-model="createFramework" :active-value="'paddle'" :inactive-value="'pytorch'"
+            class="create-framework-switch__control" />
           <div class="create-framework-switch__labels" aria-hidden="true">
-            <span
-              class="create-framework-switch__label"
-              :class="{ 'is-active': createFramework === 'pytorch' }"
-            >
+            <span class="create-framework-switch__label" :class="{ 'is-active': createFramework === 'pytorch' }">
               PyTorch (YOLO)
             </span>
-            <span
-              class="create-framework-switch__label"
-              :class="{ 'is-active': createFramework === 'paddle' }"
-            >
+            <span class="create-framework-switch__label" :class="{ 'is-active': createFramework === 'paddle' }">
               Paddle
-            </span>            
+            </span>
           </div>
         </div>
       </div>
-      <ModelsStep2
-        :key="createEngine"
-        :project="projectInfo"
-        :engine="createEngine"
-        :framework-label="createFrameworkMeta.label"
-        @task-added="onTaskAdded"
-        @close="dialogVisible = false"
-      />
+      <ModelsStep2 :key="createEngine" :project="projectInfo" :engine="createEngine"
+        :framework-label="createFrameworkMeta.label" @task-added="onTaskAdded" @close="dialogVisible = false" />
     </el-dialog>
 
     <!-- Export Dialog -->
@@ -271,6 +222,9 @@ import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
 import { referenceStore, loadDatasets } from '@/store/referenceStore';
 import { resolveFramework } from '@/utils/trainingFramework';
+import multiselectIcon from '@/assets/icon/Multiselect.svg';
+import selectAllOffIcon from '@/assets/icon/Select All Off.svg';
+import selectAllOnIcon from '@/assets/icon/Select All.svg';
 
 const CREATE_FRAMEWORK_TABS = [
   { key: 'pytorch', label: 'PyTorch (YOLO)', engine: 'ultralytics-yolo' },
@@ -303,6 +257,9 @@ export default {
         dynamic: true,
         imgsz: 640,
       },
+      multiselectIcon,
+      selectAllOffIcon,
+      selectAllOnIcon,
       createFramework: 'pytorch',
       isBatchMode: false,
       selectedJobIds: [],          // 存放被勾选的 job_id 数组
@@ -417,12 +374,22 @@ export default {
       if (this._resizeHandler) this._resizeHandler();
       this.dialogVisible = true;
     },
-    enterBatchMode() {
+    toggleBatchMode() {
+      if (this.batchDeleting) return;
+      if (this.isBatchMode) {
+        this.exitBatchMode();
+        return;
+      }
+      if (this.filteredModels.length === 0) return;
       this.isBatchMode = true;
     },
     exitBatchMode() {
       this.isBatchMode = false;
       this.selectedJobIds = [];
+    },
+    handleBatchBlankClick() {
+      if (!this.isBatchMode || this.batchDeleting) return;
+      this.exitBatchMode();
     },
     handleJobCardClick(model) {
       if (this.isBatchMode) {
@@ -630,6 +597,7 @@ export default {
     },
     // 切换全选状态
     toggleSelectAll() {
+      if (!this.isBatchMode || this.filteredJobIds.length === 0) return;
       const visible = new Set(this.filteredJobIds);
       if (this.isAllSelected) {
         this.selectedJobIds = this.selectedJobIds.filter(id => !visible.has(id));
@@ -918,78 +886,86 @@ export default {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
+  width: 100%;
   flex-wrap: wrap;
 }
 
-.batch-entry-btn {
+.batch-toolbar {
+  margin-left: auto;
   flex-shrink: 0;
-  border-radius: var(--radius-full) !important;
-  padding: 8px 16px;
-  font-weight: 600;
-  color: #2b3a67;
-  border-color: rgba(79, 99, 199, 0.24);
-  background: linear-gradient(135deg, rgba(79, 99, 199, 0.08), rgba(79, 99, 199, 0.03));
-}
-
-.batch-entry-btn:hover,
-.batch-entry-btn:focus {
-  color: #1f2d5c;
-  border-color: rgba(79, 99, 199, 0.4);
-  background: linear-gradient(135deg, rgba(79, 99, 199, 0.14), rgba(79, 99, 199, 0.06));
-}
-
-.batch-tool {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  padding: 0.65rem 0.9rem;
-  border-radius: 18px;
-  border: 1px solid rgba(79, 99, 199, 0.16);
-  background: linear-gradient(135deg, rgba(79, 99, 199, 0.08), rgba(79, 99, 199, 0.02));
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
-  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  min-width: 36px;
 }
 
-.batch-tool__info {
-  display: flex;
-  align-items: center;
-  gap: 0.75rem;
-  flex-wrap: wrap;
-}
-
-.batch-tool__badge {
+.batch-icon-btn {
+  width: 36px;
+  height: 36px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
-  padding: 0.35rem 0.8rem;
-  border-radius: var(--radius-full);
-  background: rgba(79, 99, 199, 0.12);
-  color: #2b3a67;
-  font-weight: 700;
+  justify-content: center;
+  border: 1px solid rgba(79, 99, 199, 0.18);
+  border-radius: 12px;
+  background: #ffffff;
+  color: #334155;
+  cursor: pointer;
+  transition: opacity 0.2s ease, transform 0.2s ease, background-color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
 }
 
-.batch-tool__count {
-  color: var(--text-main);
-  font-weight: 700;
+.batch-icon-btn:hover:not(:disabled),
+.batch-icon-btn:focus-visible:not(:disabled) {
+  border-color: rgba(79, 99, 199, 0.3);
+  background: rgba(79, 99, 199, 0.06);
+  box-shadow: 0 10px 22px rgba(79, 99, 199, 0.12);
+  transform: translateY(-1px);
+  outline: none;
 }
 
-.batch-tool__hint {
-  color: var(--text-secondary);
+.batch-icon-btn.is-active {
+  border-color: rgba(79, 99, 199, 0.34);
+  background: linear-gradient(135deg, rgba(79, 99, 199, 0.18), rgba(79, 99, 199, 0.08));
+  box-shadow: 0 10px 24px rgba(79, 99, 199, 0.16);
 }
 
-.batch-tool__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-wrap: wrap;
+.batch-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+  box-shadow: none;
+}
+
+.batch-icon-btn__image {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+
+.batch-icon-btn i {
+  font-size: 18px;
+}
+
+.batch-icon-btn--danger {
+  color: #dc2626;
+  border-color: rgba(220, 38, 38, 0.18);
+}
+
+.batch-icon-btn--danger:hover:not(:disabled),
+.batch-icon-btn--danger:focus-visible:not(:disabled) {
+  border-color: rgba(220, 38, 38, 0.3);
+  background: rgba(220, 38, 38, 0.06);
+  box-shadow: 0 10px 22px rgba(220, 38, 38, 0.12);
 }
 
 .search-shell {
   display: flex;
+  flex: 0 0 320px;
+  width: 320px;
+  max-width: 100%;
   align-items: center;
   gap: 0.5rem;
   padding: 0.4rem 1rem;
@@ -1003,11 +979,6 @@ export default {
   background: transparent;
   padding: 0;
   height: auto;
-}
-
-.pd-summary {
-  color: var(--text-secondary);
-  font-size: 0.875rem;
 }
 
 .pd-list {
@@ -1071,28 +1042,6 @@ export default {
 
 .job-card.selected:hover {
   background: linear-gradient(135deg, rgba(79, 99, 199, 0.16), rgba(79, 99, 199, 0.07));
-}
-
-.job-batch-check {
-  position: absolute;
-  left: 1rem;
-  bottom: 1rem;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.7rem;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.94);
-  border: 1px solid rgba(79, 99, 199, 0.18);
-  color: #2b3a67;
-  font-size: 0.75rem;
-  font-weight: 600;
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.08);
-}
-
-.job-batch-check__text {
-  white-space: nowrap;
 }
 
 .job-status-indicator {
@@ -1279,7 +1228,7 @@ export default {
   width: 100% !important;
   height: 40px;
   border: 1px solid #d1d5db;
-  border-radius: 20px;
+  border-radius: 15px;
   background: #f3f4f6;
   box-sizing: border-box;
 }
@@ -1289,7 +1238,7 @@ export default {
   left: 1px;
   width: calc(50% - 2px);
   height: calc(100% - 2px);
-  border-radius: 18px;
+  border-radius: 15px;
   background: linear-gradient(135deg, #2563eb 0%, #1d4ed8 100%);
   box-shadow: 0 8px 18px rgba(37, 99, 235, 0.22);
 }
@@ -1313,15 +1262,15 @@ export default {
 
   .toolbar-right {
     gap: 0.75rem;
+    flex-wrap: wrap;
   }
 
-  .batch-tool {
+  .search-shell {
     width: 100%;
   }
 
-  .batch-tool__info,
-  .batch-tool__actions {
-    width: 100%;
+  .batch-toolbar {
+    min-width: 36px;
   }
 
   .job-grid {
