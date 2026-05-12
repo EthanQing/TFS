@@ -139,3 +139,24 @@ export async function uploadInferenceImage(file) {
         throw error;
     }
 }
+
+// fetchQualifiedModelsByModelVersionId 检查模型版本是否已被标记为合格
+export async function fetchQualifiedModelsByModelVersionId(modelVersionId) {
+    const url = `${API_BASE}/api/v3/qualified-models?model_version_id=${encodeURIComponent(modelVersionId)}&page=1&page_size=1`;
+    const res = await fetch(url);
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return Array.isArray(data?.items) ? data.items : [];
+}
+
+// markModelAsQualified 将模型版本标记为合格
+export async function markModelAsQualified({ model_version_id, qualified_by, note } = {}) {
+    const res = await fetch(`${API_BASE}/api/v3/qualified-models`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ model_version_id, qualified_by, note }),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return data;
+}

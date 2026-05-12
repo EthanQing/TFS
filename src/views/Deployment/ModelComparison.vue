@@ -12,6 +12,63 @@
                 <el-button size="small" @click="showSelector = true">
                     <i class="el-icon-plus"></i> 选择模型 ({{ selectedRuns.length }})
                 </el-button>
+                <el-dropdown
+                    trigger="click"
+                    placement="bottom-start"
+                    :disabled="!hasQualifiableRuns"
+                    size="small"
+                    @command="handleDropdownMarkQualified"
+                    v-if="selectedRuns.length > 0"
+                >
+                    <el-button size="small" type="success" plain :disabled="!hasQualifiableRuns">
+                        <i class="el-icon-success"></i> 标记为合格
+                        <i class="el-icon-arrow-down el-icon--right"></i>
+                    </el-button>
+                    <el-dropdown-menu slot="dropdown">
+                        <el-dropdown-item
+                            v-for="run in qualifiableRuns"
+                            :key="'qual-'+getRunId(run)"
+                            :command="run"
+                            :disabled="!!getQualifiedStatus(run)?.checking"
+                        >
+                            <div class="qualified-dropdown-item">
+                                <span class="qualified-run-name">{{ getRunLabel(run) }}</span>
+                                <span v-if="getQualifiedStatus(run)?.isQualified">
+                                    <el-tag size="mini" type="success" effect="dark">已合格</el-tag>
+                                </span>
+                                <span v-else-if="getQualifiedStatus(run)?.checking">
+                                    <el-tag size="mini" type="info" effect="plain">检查中</el-tag>
+                                </span>
+                                <span v-else-if="getQualifiedStatus(run)?.loadingMark">
+                                    <el-tag size="mini" type="warning" effect="plain">标记中</el-tag>
+                                </span>
+                                <span v-else-if="!getQualifiedStatus(run)?.modelVersionId">
+                                    <el-tag size="mini" type="danger" effect="plain">无版本</el-tag>
+                                </span>
+                                <span v-else>
+                                    <el-tag size="mini" type="warning" effect="plain">待标记</el-tag>
+                                </span>
+                            </div>
+                        </el-dropdown-item>
+                        <el-dropdown-item
+                            v-if="nonQualifiableRuns.length > 0"
+                            :disabled="true"
+                            divided
+                        >
+                            <span class="qualified-section-label">不可标记:</span>
+                        </el-dropdown-item>
+                        <el-dropdown-item
+                            v-for="run in nonQualifiableRuns"
+                            :key="'dis-'+getRunId(run)"
+                            :disabled="true"
+                        >
+                            <div class="qualified-dropdown-item">
+                                <span class="qualified-run-name">{{ getRunLabel(run) }}</span>
+                                <el-tag size="mini" type="info" effect="plain">{{ getRunStatusHint(run) }}</el-tag>
+                            </div>
+                        </el-dropdown-item>
+                    </el-dropdown-menu>
+                </el-dropdown>
                 <el-button size="small" type="primary" plain :loading="exporting" :disabled="!canExport"
                     @click="handleExportCompare">
                     <i class="el-icon-download"></i> 导出对比结果
@@ -245,6 +302,12 @@ import {
 } from "@/api/projects";
 import { fetchTrainingJobsPage, FetchTrainingJobsMetrics_detailed, CompareTrainingRuns, FetchTrainingJobParameters } from "@/api/training";
 import { resolveFramework, isFrameworkCompatible } from "@/utils/trainingFramework";
+import {
+    fetchModelVersionsByRunId,
+    registerModelVersionFromRun,
+    fetchQualifiedModelsByModelVersionId,
+    markModelAsQualified,
+} from "@/api/models";
 import { buildWorkbook, downloadWorkbook } from "@/utils/trainingCompareExport";
 
 export default {
@@ -287,7 +350,10 @@ export default {
             baselineRequestSeq: 0,
 
             // Chart instances
-            chartInstances: {}
+            chartInstances: {},
+
+            // Qualified model state
+            qualifiedStatusMap: {},
         };
     },
     computed: {
@@ -565,6 +631,21 @@ export default {
             if (!this.compareData || !Array.isArray(this.compareData.runs)) return false;
             return this.compareData.runs.length > 0;
         },
+        qualifiableRuns() {
+            return this.selectedRuns.filter(run => {
+                const status = String(run.status || '').toLowerCase();
+                return status === 'completed';
+            });
+        },
+        nonQualifiableRuns() {
+            return this.selectedRuns.filter(run => {
+                const status = String(run.status || '').toLowerCase();
+                return status !== 'completed';
+            });
+        },
+        hasQualifiableRuns() {
+            return this.qualifiableRuns.length > 0;
+        },
     },
     watch: {
         activeTab(val) {
@@ -588,6 +669,15 @@ export default {
                 this.syncBaselineAfterSelectionChange();
                 this.loadComparisonData();
                 this.loadTrainingParamsFromRuns();
+                this.qualifiedStatusMap = {};
+                this.$nextTick(() => {
+                    this.selectedRuns.forEach(run => {
+                        const status = String(run.status || '').toLowerCase();
+                        if (status === 'completed') {
+                            this.refreshQualifiedStatusForRun(run);
+                        }
+                    });
+                });
             } else {
                 this.compareData = null;
                 this.metricsData = {};
@@ -595,6 +685,7 @@ export default {
                 this.baselineRunId = null;
                 this.baselineCandidateRunId = null;
                 this.persistedBaselineRunId = null;
+                this.qualifiedStatusMap = {};
             }
         },
         showSelector(val) {
@@ -1356,7 +1447,138 @@ export default {
             } catch (e) {
                 console.error(`Failed to init chart ${key}`, e);
             }
-        }
+        },
+
+        // --- Qualified Model Methods ---
+
+        getQualifiedStatus(run) {
+            const runId = String(this.getRunId(run) || '');
+            return this.qualifiedStatusMap[runId] || null;
+        },
+
+        getRunStatusHint(run) {
+            const status = String(run.status || '').toLowerCase();
+            if (status === 'running' || status === 'queued' || status === 'created') {
+                return '训练完成后才能标记';
+            }
+            if (status === 'failed') {
+                return '训练失败，不能标记';
+            }
+            return '训练未完成';
+        },
+
+        async refreshQualifiedStatusForRun(run) {
+            const runId = String(this.getRunId(run) || '');
+            if (!runId) return;
+
+            if (!this.qualifiedStatusMap[runId]) {
+                this.$set(this.qualifiedStatusMap, runId, {
+                    isQualified: false,
+                    modelVersionId: null,
+                    checking: true,
+                    loadingMark: false,
+                });
+            } else {
+                this.$set(this.qualifiedStatusMap[runId], 'checking', true);
+            }
+
+            try {
+                let modelVersionId = null;
+                const versions = await fetchModelVersionsByRunId(runId, 1, 5);
+                if (versions.length > 0) {
+                    modelVersionId = versions[0].model_version_id || versions[0].id || null;
+                } else {
+                    try {
+                        const registered = await registerModelVersionFromRun({
+                            run_id: runId,
+                            version: `run-${String(runId).slice(0, 8)}`,
+                            stage: 'development',
+                            description: 'Auto-registered from training run',
+                        });
+                        modelVersionId = registered?.model_version_id || registered?.id || null;
+                    } catch (regErr) {
+                        console.warn('Failed to auto-register model version:', regErr);
+                    }
+                }
+
+                this.$set(this.qualifiedStatusMap[runId], 'modelVersionId', modelVersionId);
+
+                if (!modelVersionId) {
+                    this.$set(this.qualifiedStatusMap[runId], 'checking', false);
+                    return;
+                }
+
+                const qualifiedItems = await fetchQualifiedModelsByModelVersionId(modelVersionId);
+                const isQualified = Array.isArray(qualifiedItems) && qualifiedItems.length > 0;
+                this.$set(this.qualifiedStatusMap[runId], 'isQualified', isQualified);
+            } catch (err) {
+                console.warn(`Failed to check qualified status for run ${runId}:`, err);
+            } finally {
+                this.$set(this.qualifiedStatusMap[runId], 'checking', false);
+            }
+        },
+
+        async handleDropdownMarkQualified(run) {
+            const status = this.getQualifiedStatus(run);
+            if (!status || status.checking || status.loadingMark) return;
+            if (status.isQualified) return;
+            if (!status.modelVersionId) {
+                this.$message.warning('未找到模型版本，请刷新后重试');
+                return;
+            }
+            await this.handleMarkQualified(run);
+        },
+
+        async handleMarkQualified(run) {
+            const status = this.getQualifiedStatus(run);
+            if (!status || !status.modelVersionId) return;
+
+            try {
+                await this.$confirm(
+                    '确认将该模型标记为合格吗？该操作不会重新训练或修改模型文件。',
+                    '确认标记',
+                    {
+                        confirmButtonText: '确认标记',
+                        cancelButtonText: '取消',
+                        type: 'info',
+                    }
+                );
+            } catch (_) {
+                return;
+            }
+
+            const runId = String(this.getRunId(run) || '');
+            this.$set(this.qualifiedStatusMap[runId], 'loadingMark', true);
+            try {
+                const result = await markModelAsQualified({
+                    model_version_id: status.modelVersionId,
+                    qualified_by: '管理员',
+                    note: '',
+                });
+
+                if (result?.created) {
+                    this.$message.success(result?.message || '模型已标记为合格');
+                } else {
+                    this.$message.success(result?.message || '模型已标记为合格');
+                }
+                this.$set(this.qualifiedStatusMap[runId], 'isQualified', true);
+            } catch (err) {
+                const errorMsg = this.getMarkQualifiedErrorMessage(err);
+                this.$message.error(errorMsg);
+            } finally {
+                this.$set(this.qualifiedStatusMap[runId], 'loadingMark', false);
+            }
+        },
+
+        getMarkQualifiedErrorMessage(err) {
+            const msg = (err && err.message) || '';
+            if (msg.includes('模型版本不存在')) return '未找到模型版本，请刷新后重试';
+            if (msg.includes('训练任务不存在')) return '训练任务不存在或已被删除';
+            if (msg.includes('训练任务已失败')) return '训练失败，不能标记为合格';
+            if (msg.includes('仅 completed')) return '训练完成后才能标记为合格';
+            if (/Network|timeout|fetch|Failed to fetch/i.test(msg)) return '标记失败，请检查网络后重试';
+            return msg || '标记失败，请稍后重试';
+        },
     }
 };
 </script>
@@ -1647,5 +1869,28 @@ export default {
     line-height: 32px;
     font-weight: 600;
     color: var(--color-primary);
+}
+
+/* Qualified Model Dropdown */
+.qualified-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 240px;
+    justify-content: space-between;
+}
+
+.qualified-run-name {
+    flex: 1;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 13px;
+}
+
+.qualified-section-label {
+    color: #94a3b8;
+    font-size: 12px;
+    font-weight: 600;
 }
 </style>

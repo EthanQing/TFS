@@ -24,6 +24,22 @@
         <div class="tm-stat action-stat">
            <el-button size="small" icon="el-icon-setting" @click="showChartConfig = true">图表设置</el-button>
         </div>
+        <div v-if="status === 'completed'" class="tm-stat action-stat">
+          <el-button
+            v-if="!qualifiedStatus?.isQualified"
+            type="success"
+            size="small"
+            icon="el-icon-success"
+            :loading="qualifiedStatus?.checking || qualifiedStatus?.loadingMark"
+            :disabled="qualifiedStatus?.checking || !qualifiedStatus?.modelVersionId"
+            @click="handleMarkQualified"
+          >
+            {{ qualifiedStatus?.checking ? '检查中...' : '标记为合格' }}
+          </el-button>
+          <el-tag v-else type="success" effect="dark" size="medium">
+            <i class="el-icon-success"></i> 已合格
+          </el-tag>
+        </div>
       </div>
     </section>
 
@@ -121,6 +137,12 @@ import {
   openTrainingRunMetricsStream,
 } from "@/api/training";
 import { fetchChartConfig, saveChartConfig } from "@/api/chartConfig";
+import {
+  fetchModelVersionsByRunId,
+  registerModelVersionFromRun,
+  fetchQualifiedModelsByModelVersionId,
+  markModelAsQualified,
+} from "@/api/models";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "deleted"]);
 const METRIC_ALIAS_GROUPS = [
@@ -188,7 +210,8 @@ export default {
       showChartConfig: false,
       chartVisibility: {},
       savingConfig: false,
-      configLoaded: false
+      configLoaded: false,
+      qualifiedStatus: null,
     };
   },
   computed: {
@@ -314,6 +337,7 @@ export default {
       this.streamNotice = "";
       this.streamLastMetricId = 0;
       this.streamLastEventId = 0;
+      this.qualifiedStatus = null;
     },
     nextEvalEpoch(currentEpoch, evalInterval) {
       const interval = Math.max(1, Math.floor(Number(evalInterval) || 1));
@@ -375,6 +399,9 @@ export default {
         this.streamDone = true;
         this.stopFallbackPolling();
         this.closeMetricsStream();
+      }
+      if (normalizeStatus(this.status) === 'completed') {
+        this.$nextTick(() => this.refreshQualifiedStatus());
       }
     },
     normalizeIncomingMetricKeys(metricDict) {
@@ -553,6 +580,9 @@ export default {
 
       try {
         await this.syncSnapshot({ withStatus: true, withMetrics: true });
+        if (normalizeStatus(this.status) === 'completed') {
+          this.refreshQualifiedStatus();
+        }
         if (this.isTerminalStatus()) return;
         this.connectMetricsStream();
         if (!this.streamController) this.startFallbackPolling(true);
@@ -608,6 +638,9 @@ export default {
             this.streamNotice = "";
             try {
               await this.syncSnapshot({ withStatus: true, withMetrics: true });
+              if (normalizeStatus(this.status) === 'completed') {
+                this.refreshQualifiedStatus();
+              }
             } catch (err) {
               console.error("Error syncing final metrics snapshot:", err);
             }
@@ -753,7 +786,107 @@ export default {
       const vis = {};
       (this.allMetricGroups || []).forEach(g => { vis[g.key] = true; });
       this.chartVisibility = vis;
-    }
+    },
+
+    // --- Qualified Model Methods ---
+
+    async refreshQualifiedStatus() {
+      if (!this.jobId || normalizeStatus(this.status) !== 'completed') return;
+
+      this.qualifiedStatus = {
+        isQualified: false,
+        modelVersionId: null,
+        checking: true,
+        loadingMark: false,
+      };
+
+      try {
+        let modelVersionId = null;
+        const versions = await fetchModelVersionsByRunId(this.jobId, 1, 5);
+        if (versions.length > 0) {
+          modelVersionId = versions[0].model_version_id || versions[0].id || null;
+        } else {
+          try {
+            const registered = await registerModelVersionFromRun({
+              run_id: this.jobId,
+              version: `run-${String(this.jobId).slice(0, 8)}`,
+              stage: 'development',
+              description: 'Auto-registered from training run',
+            });
+            modelVersionId = registered?.model_version_id || registered?.id || null;
+          } catch (regErr) {
+            console.warn('Failed to auto-register model version:', regErr);
+          }
+        }
+
+        this.qualifiedStatus.modelVersionId = modelVersionId;
+
+        if (!modelVersionId) {
+          this.qualifiedStatus.checking = false;
+          return;
+        }
+
+        const qualifiedItems = await fetchQualifiedModelsByModelVersionId(modelVersionId);
+        const isQualified = Array.isArray(qualifiedItems) && qualifiedItems.length > 0;
+        this.qualifiedStatus.isQualified = isQualified;
+      } catch (err) {
+        console.warn(`Failed to check qualified status for job ${this.jobId}:`, err);
+      } finally {
+        this.qualifiedStatus.checking = false;
+      }
+    },
+
+    async handleMarkQualified() {
+      if (!this.qualifiedStatus?.modelVersionId) {
+        this.$message.warning('未找到模型版本，请稍后重试');
+        return;
+      }
+
+      try {
+        await this.$confirm(
+          '确认将该模型标记为合格吗？该操作不会重新训练或修改模型文件。',
+          '确认标记',
+          {
+            confirmButtonText: '确认标记',
+            cancelButtonText: '取消',
+            type: 'info',
+          }
+        );
+      } catch (_) {
+        return;
+      }
+
+      this.qualifiedStatus.loadingMark = true;
+      try {
+        const result = await markModelAsQualified({
+          model_version_id: this.qualifiedStatus.modelVersionId,
+          qualified_by: '管理员',
+          note: '',
+        });
+
+        if (result?.created) {
+          this.$message.success(result?.message || '模型已标记为合格');
+        } else {
+          this.$message.success(result?.message || '模型已标记为合格');
+        }
+        this.qualifiedStatus.isQualified = true;
+      } catch (err) {
+        const errorMsg = this.getQualifiedErrorMessage(err);
+        this.$message.error(errorMsg);
+      } finally {
+        this.qualifiedStatus.loadingMark = false;
+      }
+    },
+
+    getQualifiedErrorMessage(err) {
+      const msg = (err && err.message) || '';
+      if (msg.includes('模型版本不存在')) return '未找到模型版本，请刷新后重试';
+      if (msg.includes('训练任务不存在')) return '训练任务不存在或已被删除';
+      if (msg.includes('训练任务已失败')) return '训练失败，不能标记为合格';
+      if (msg.includes('仅 completed')) return '训练完成后才能标记为合格';
+      if (/Network|timeout|fetch|Failed to fetch/i.test(msg)) return '标记失败，请检查网络后重试';
+      return msg || '标记失败，请稍后重试';
+    },
   },
   beforeDestroy() {
     this.cleanupAllPolling();
