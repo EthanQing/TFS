@@ -23,6 +23,7 @@ const StandardDatasetDetail = () => import('@/views/Datasets/StandardDatasetDeta
 const ProjectDetail = () => import('@/views/Projects/ProjectDetail.vue')
 const ProjectCharts = () => import('@/views/Projects/ProjectCharts.vue')
 const TrainManager = () => import('@/views/Training/TrainManager.vue')
+const TrainingReport = () => import('@/views/Training/TrainingReport.vue')
 const Configuration = () => import('@/views/Training/Configuration.vue')
 const Preview = () => import('@/views/Training/Preview.vue')
 const TrainLogs = () => import('@/views/Training/TrainLogs.vue')
@@ -104,6 +105,12 @@ export default new VueRouter({
         {
             path: '/performance-monitor',
             component: PerformanceMonitor
+        },
+        {
+            path: '/training-report',
+            name: 'TrainingReport',
+            component: TrainingReport,
+            meta: { title: '训练报告' }
         },
 
         {

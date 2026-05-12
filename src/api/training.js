@@ -775,6 +775,62 @@ export async function FetchTrainingJobModelSize(jobId) {
   }
 }
 
+// FetchTrainingReport 获取训练结果报告
+export async function FetchTrainingReport(runId) {
+  try {
+    const id = normStr(runId);
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/report`);
+    const data = await safeJson(res);
+    if (!res.ok) {
+      const err = new Error(toErrorMessage(data, res));
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    return data;
+  } catch (error) {
+    console.error("获取训练报告失败:", error);
+    throw error;
+  }
+}
+
+function filenameFromDisposition(disposition) {
+  const text = String(disposition || "");
+  const utf8Match = text.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match && utf8Match[1]) {
+    try {
+      return decodeURIComponent(utf8Match[1]);
+    } catch (_) {
+      return utf8Match[1];
+    }
+  }
+  const asciiMatch = text.match(/filename="?([^";]+)"?/i);
+  return asciiMatch && asciiMatch[1] ? asciiMatch[1] : "";
+}
+
+// DownloadTrainingReportDocx 下载可编辑的 DOCX 训练报告
+export async function DownloadTrainingReportDocx(runId) {
+  try {
+    const id = normStr(runId);
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/report.docx`);
+    if (!res.ok) {
+      const data = await safeJson(res);
+      const err = new Error(toErrorMessage(data, res));
+      err.status = res.status;
+      err.data = data;
+      throw err;
+    }
+    const blob = await res.blob();
+    const filename =
+      filenameFromDisposition(res.headers.get("Content-Disposition")) ||
+      `训练报告_${id || "training-run"}.docx`;
+    return { blob, filename };
+  } catch (error) {
+    console.error("下载训练报告 DOCX 失败:", error);
+    throw error;
+  }
+}
+
 // ExportModel 导出模型
 export async function ExportModel(jobId, options = {}) {
   try {

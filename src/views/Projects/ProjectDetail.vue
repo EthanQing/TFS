@@ -160,6 +160,9 @@
                   </span>
                   <el-dropdown-menu slot="dropdown">
                     <!-- <el-dropdown-item v-if="model.status === 'completed'" command="setbaseline">设为基准</el-dropdown-item> -->
+                    <el-dropdown-item v-if="model.status === 'completed'" command="report" icon="el-icon-document">
+                      查看报告
+                    </el-dropdown-item>
                     <el-dropdown-item command="delete" icon="el-icon-delete" class="danger-text">删除</el-dropdown-item>
                     <el-dropdown-item command="export" icon="el-icon-download" :disabled="isPaddleModel(model)">
                       导出<span v-if="isPaddleModel(model)">（Paddle 暂不支持）</span>
@@ -468,9 +471,14 @@ export default {
       }
     },
     handlePDCommand(command, jobId) {
+      if (command === 'report') this.openTrainingReport(jobId);
       if (command === 'delete') this.deletePDJob(jobId);
       if (command === 'export') this.openExportDialog(jobId);
       if (command === 'setbaseline') this.$message.info('设为基准功能待实现');
+    },
+    openTrainingReport(jobId) {
+      if (!jobId) return;
+      this.$router.push({ path: '/training-report', query: { runId: jobId } });
     },
     findProjectModel(jobId) {
       return (this.projectModels || []).find(model => String(model.job_id) === String(jobId)) || null;

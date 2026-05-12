@@ -25,6 +25,11 @@
            <el-button size="small" icon="el-icon-setting" @click="showChartConfig = true">图表设置</el-button>
         </div>
         <div v-if="status === 'completed'" class="tm-stat action-stat">
+          <el-button type="primary" size="small" icon="el-icon-document" @click="openReport">
+            训练报告
+          </el-button>
+        </div>
+        <div v-if="status === 'completed'" class="tm-stat action-stat">
           <el-button
             v-if="!qualifiedStatus?.isQualified"
             type="success"
@@ -786,6 +791,13 @@ export default {
       const vis = {};
       (this.allMetricGroups || []).forEach(g => { vis[g.key] = true; });
       this.chartVisibility = vis;
+    },
+    openReport() {
+      if (!this.jobId) {
+        this.$message.warning('缺少训练任务 ID');
+        return;
+      }
+      this.$router.push({ path: '/training-report', query: { runId: this.jobId } });
     },
 
     // --- Qualified Model Methods ---
