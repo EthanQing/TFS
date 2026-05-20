@@ -5,9 +5,10 @@
 import {
     API_BASE,
     safeJson, postJson, putJson, deleteJson, getJson,
-    xhrUploadJson,
+    xhrUploadJson, chunkedUpload, pollUploadTask,
     toAbsUrl, encodePathSegments, formatMb, normalizeFileArray,
     pickErrorMessage,
+    saveUploadSession, loadUploadSession, clearUploadSession, findResumableSession,
 } from './apiUtils';
 
 const PREFIX = `${API_BASE}/api/v3/illegal-datasets`;
@@ -94,6 +95,41 @@ export async function deleteIllegalDataset(datasetId, { deleteFiles = false, for
 
 // ── Upload ────────────────────────────────────────────────────────────────
 
+/**
+ * 【分片上传】违规数据集 ZIP — 推荐使用。
+ *
+ * 流程：创建上传会话 → 分片上传 → 完成合并 → 返回 task_id
+ * 调用方通过 onTaskReady 获取 task_id 后，可调用 pollUploadTask 轮询服务端处理状态。
+ *
+ * @param {string|number} datasetId
+ * @param {File} file
+ * @param {Object} options - 透传给 chunkedUpload，额外支持 message / created_by / mode
+ * @returns {{ promise: Promise, cancel: Function }}
+ */
+export function uploadIllegalDatasetChunked(datasetId, file, options = {}) {
+    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
+    const baseUrl = `${PREFIX}/${encodeURIComponent(datasetId)}`;
+    const { message, created_by, mode, ...rest } = options;
+
+    const extraCreateFields = { mode: mode || 'upload' };
+    if (message) extraCreateFields.message = message;
+    if (created_by) extraCreateFields.created_by = created_by;
+
+    const extraCompleteFields = {};
+    if (message) extraCompleteFields.message = message;
+
+    return chunkedUpload(baseUrl, file, {
+        ...rest,
+        extraCreateFields,
+        extraCompleteFields,
+    });
+}
+
+/**
+ * 【已废弃】单次整包上传，仅保留作为后端未实现分片接口时的兼容降级。
+ * 新代码请使用 uploadIllegalDatasetChunked({ mode: 'upload' })。
+ * TODO: 后端分片接口稳定后删除此函数及其调用路径。
+ */
 export function uploadIllegalDatasetArchive(
     datasetId,
     file,
@@ -112,6 +148,11 @@ export function uploadIllegalDatasetArchive(
     );
 }
 
+/**
+ * 【已废弃】单次追加整包上传，仅保留作为后端未实现分片接口时的兼容降级。
+ * 新代码请使用 uploadIllegalDatasetChunked({ mode: 'append' })。
+ * TODO: 后端分片接口稳定后删除此函数及其调用路径。
+ */
 export function appendIllegalDatasetArchive(
     datasetId,
     file,
@@ -244,7 +285,9 @@ export async function fetchIllegalDatasetView(datasetId, { versionId = null, cla
                 ...item,
                 image_name: item.name,
                 image_path: relPath || item.name,
-                image_url: toAbsUrl(backendImageUrl),
+                image_url: toAbsUrl(backendImageUrl) || (relPath
+                    ? buildIllegalThumbnailUrl(datasetId, relPath, { versionId })
+                    : ''),
                 thumbnail_url: toAbsUrl(
                     backendThumbnailUrl ||
                     (relPath ? buildIllegalThumbnailUrl(datasetId, relPath, { versionId, size: 320 }) : backendImageUrl)

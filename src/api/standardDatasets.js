@@ -5,9 +5,10 @@
 import {
     API_BASE, WS_BASE,
     safeJson, postJson, deleteJson, getJson,
-    xhrUploadJson,
+    xhrUploadJson, chunkedUpload, pollUploadTask,
     toAbsUrl, encodePathSegments, formatMb,
     pickErrorMessage, createReconnectingWs,
+    saveUploadSession, loadUploadSession, clearUploadSession, findResumableSession,
 } from './apiUtils';
 
 const PREFIX = `${API_BASE}/api/v3/standard-datasets`;
@@ -87,6 +88,36 @@ export async function deleteStandardDataset(datasetId, { deleteFiles = false, fo
 
 // ── Upload ────────────────────────────────────────────────────────────────
 
+/**
+ * 【分片上传】标准数据集 ZIP — 推荐使用。
+ *
+ * 流程：创建上传会话 → 分片上传 → 完成合并 → 返回 task_id
+ * 调用方通过 onTaskReady 获取 task_id 后，可调用 pollUploadTask 轮询服务端处理状态。
+ *
+ * @param {string|number} datasetId
+ * @param {File} file
+ * @param {Object} options - 透传给 chunkedUpload，额外支持 created_by
+ * @returns {{ promise: Promise, cancel: Function }}
+ */
+export function uploadStandardDatasetChunked(datasetId, file, options = {}) {
+    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
+    const baseUrl = `${PREFIX}/${encodeURIComponent(datasetId)}`;
+    const { created_by, ...rest } = options;
+
+    const extraCreateFields = { mode: 'upload' };
+    if (created_by) extraCreateFields.created_by = created_by;
+
+    return chunkedUpload(baseUrl, file, {
+        ...rest,
+        extraCreateFields,
+    });
+}
+
+/**
+ * 【已废弃】单次整包上传，仅保留作为后端未实现分片接口时的兼容降级。
+ * 新代码请使用 uploadStandardDatasetChunked。
+ * TODO: 后端分片接口稳定后删除此函数及其调用路径。
+ */
 export function uploadStandardDatasetArchive(
     datasetId,
     file,
@@ -165,7 +196,10 @@ export async function fetchStandardDatasetView(datasetId, { classId = null, page
                 ...item,
                 image_name: item.name,
                 image_path: relPath || item.name,
-                image_url: toAbsUrl(item.url),
+                // item.url 可能为空，fallback 到缩略图接口（不带 size 参数 = 原图）
+                image_url: toAbsUrl(item.url) || (relPath
+                    ? buildStandardThumbnailUrl(datasetId, relPath)
+                    : ''),
                 thumbnail_url: relPath
                     ? buildStandardThumbnailUrl(datasetId, relPath, { size: 320 })
                     : toAbsUrl(item.thumbnail_url),

@@ -11,6 +11,19 @@
           <p class="upload-subtitle">支持上传包含图片和标注的 .zip 格式文件</p>
         </div>
 
+        <!-- Resume Notification -->
+        <transition name="fade">
+          <div v-if="resumeAvailable && !isUploading" class="resume-banner">
+            <div class="resume-content">
+              <i class="el-icon-refresh"></i>
+              <span>检测到可恢复的上传会话，将跳过已上传的分片</span>
+            </div>
+            <button class="resume-dismiss" type="button" @click="dismissResume">
+              <i class="el-icon-close"></i>
+            </button>
+          </div>
+        </transition>
+
         <!-- Drop Area -->
         <div
           class="drop-area"
@@ -57,19 +70,27 @@
           <!-- Uploading State -->
           <div v-if="isUploading" class="uploading-state">
             <div class="upload-status-header">
-              <span class="status-text">{{ progress === 100 ? '正在处理...' : '正在上传...' }}</span>
+              <span class="status-text">{{ stageDisplayLabel }}</span>
               <span class="status-percent">{{ progress }}%</span>
             </div>
-            
+
             <div class="progress-track">
-              <div 
-                class="progress-fill" 
-                :class="{ 'processing': progress === 100 }"
+              <div
+                class="progress-fill"
+                :class="{ 'processing': progress === 100 && isProcessing }"
                 :style="{ width: progress + '%' }"
               ></div>
             </div>
-            
-            <p class="uploading-filename truncate">{{ selectedFile.name }}</p>
+
+            <p v-if="selectedFile" class="uploading-filename truncate">{{ selectedFile.name }}</p>
+            <p v-else-if="resumedFileName" class="uploading-filename truncate">{{ resumedFileName }}</p>
+
+            <!-- 取消按钮 -->
+            <div class="cancel-row">
+              <button class="btn-cancel" type="button" @click="cancelUpload">
+                <i class="el-icon-close"></i> 取消上传
+              </button>
+            </div>
           </div>
         </div>
         
@@ -91,7 +112,7 @@
           >
             <i v-if="isUploading" class="el-icon-loading btn-icon"></i>
             <i v-else class="el-icon-upload2 btn-icon"></i>
-            <span>{{ isUploading ? '上传中...' : '开始上传' }}</span>
+            <span>{{ isUploading ? '上传中...' : (resumeAvailable ? '恢复上传' : '开始上传') }}</span>
           </button>
         </div>
         
@@ -115,13 +136,43 @@
 
 <script>
 import {
+  uploadIllegalDatasetChunked,
   uploadIllegalDatasetArchive,
   appendIllegalDatasetArchive,
 } from '@/api/illegalDatasets';
-import { uploadStandardDatasetArchive } from '@/api/standardDatasets';
+import {
+  uploadStandardDatasetChunked,
+  uploadStandardDatasetArchive,
+} from '@/api/standardDatasets';
+import {
+  pollUploadTask,
+  saveUploadSession,
+  clearUploadSession,
+  findResumableSession,
+  saveUploadTask,
+  loadUploadTask,
+  clearUploadTask,
+} from '@/api/apiUtils';
 
 const DATASET_KIND_ILLEGAL = 'illegal';
 const DATASET_KIND_STANDARD = 'standard';
+
+// 服务端处理阶段 → 中文标签映射
+const STAGE_LABELS = {
+  creating: '正在创建上传会话...',
+  resuming: '正在恢复上传会话...',
+  uploading: '正在上传分片...',
+  completing: '正在合并分片...',
+  queued: '正在排队等待处理...',
+  extracting: '正在解压数据集...',
+  validating: '正在校验数据内容...',
+  done: '处理完成',
+  failed: '处理失败',
+  cancelled: '已取消',
+};
+
+// 终态阶段
+const TERMINAL_STAGES = ['done', 'failed', 'cancelled'];
 
 export default {
   name: 'UploadZip',
@@ -166,6 +217,17 @@ export default {
       cancelUploadRequest: null,
       uploadSuccess: false,
       successTimer: null,
+      // 分片上传扩展状态
+      serverStage: '',
+      serverStageMessage: '',
+      uploadAbortController: null,
+      pollAbortController: null,
+      taskId: null,
+      currentSessionId: null,
+      resumeAvailable: false,
+      resumeSessionId: null,
+      resumeInfo: null,
+      resumedFileName: '',
     };
   },
   computed: {
@@ -207,11 +269,23 @@ export default {
       if (this.resolvedDatasetKind === DATASET_KIND_ILLEGAL && mode === 'append') return 'append';
       return 'upload';
     },
+    isProcessing() {
+      return this.serverStage && !TERMINAL_STAGES.includes(this.serverStage);
+    },
+    stageDisplayLabel() {
+      return STAGE_LABELS[this.serverStage] || this.serverStageMessage || '处理中...';
+    },
+  },
+  mounted() {
+    this.tryAutoResumeTask();
   },
   beforeDestroy() {
     if (this.successTimer) clearTimeout(this.successTimer);
+    this.abortAll();
   },
   methods: {
+    // ── helpers ──────────────────────────────────────────────────────────
+
     formatSize(bytes) {
       if (!bytes || bytes === 0) return '0 B';
       const k = 1024;
@@ -219,25 +293,91 @@ export default {
       const i = Math.floor(Math.log(bytes) / Math.log(k));
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
     },
+
+    translateError(error) {
+      const msg = error && error.message ? String(error.message) : '上传失败';
+      // 网络中断
+      if (msg.toLowerCase().includes('network error') || msg.includes('NetworkError')
+          || msg.includes('Failed to fetch') || msg.includes('TypeError')) {
+        return { title: '网络连接中断', detail: '请检查网络后重试，已上传的分片不会丢失', canRetry: true };
+      }
+      // 取消
+      if (msg.includes('取消') || msg.includes('cancel') || msg.includes('abort')) {
+        return { title: '已取消上传', detail: msg, canRetry: false };
+      }
+      // 合并失败
+      if (msg.includes('merge') || msg.includes('completing') || msg.includes('合并')) {
+        return { title: '分片合并失败', detail: msg, canRetry: false };
+      }
+      // 解压失败
+      if (msg.includes('extract') || msg.includes('zip') || msg.includes('解压') || msg.includes('corrupt')) {
+        return { title: '解压失败', detail: 'ZIP 文件可能已损坏或格式不支持: ' + msg, canRetry: true };
+      }
+      // 磁盘空间
+      if (msg.includes('disk') || msg.includes('space') || msg.includes('空间')) {
+        return { title: '磁盘空间不足', detail: msg, canRetry: false };
+      }
+      // 409 conflict
+      if (msg.includes('409') || msg.includes('conflict') || msg.includes('不可变')) {
+        return { title: '数据集不可变更', detail: msg, canRetry: false };
+      }
+      // 分片上传失败
+      if (msg.includes('分片') || msg.includes('part')) {
+        return { title: '分片上传失败', detail: msg, canRetry: true };
+      }
+      // 通用错误
+      return { title: '上传失败', detail: msg, canRetry: true };
+    },
+
+    abortAll() {
+      if (this.uploadAbortController) {
+        try { this.uploadAbortController.abort(); } catch (_) { /* ignore */ }
+        this.uploadAbortController = null;
+      }
+      if (this.pollAbortController) {
+        try { this.pollAbortController.abort(); } catch (_) { /* ignore */ }
+        this.pollAbortController = null;
+      }
+    },
+
+    resetState() {
+      this.errorMessage = '';
+      this.serverStage = '';
+      this.serverStageMessage = '';
+      this.taskId = null;
+      this.currentSessionId = null;
+      this.resumeAvailable = false;
+      this.resumeSessionId = null;
+      this.resumeInfo = null;
+      this.resumedFileName = '';
+    },
+
+    // ── file handling ─────────────────────────────────────────────────────
+
     clearFile() {
       this.selectedFile = null;
       this.errorMessage = '';
+      this.resetState();
       if (this.$refs.fileInput) {
         this.$refs.fileInput.value = '';
       }
     },
+
     handleFileSelect(event) {
       const file = event.target.files[0];
       this.validateAndSetFile(file);
     },
+
     handleDragOver(event) {
       if (this.isUploading) return;
       event.preventDefault();
       this.isDragover = true;
     },
+
     handleDragLeave() {
       this.isDragover = false;
     },
+
     handleDrop(event) {
       if (this.isUploading) return;
       event.preventDefault();
@@ -246,9 +386,11 @@ export default {
         this.validateAndSetFile(event.dataTransfer.files[0]);
       }
     },
+
     validateAndSetFile(file) {
       this.errorMessage = '';
       this.uploadSuccess = false;
+      this.resetState();
       if (!file) {
         this.selectedFile = null;
         return;
@@ -259,13 +401,43 @@ export default {
         return;
       }
       this.selectedFile = file;
+      // 检查是否有可恢复的会话
+      this.checkResumableSession(file);
     },
+
+    checkResumableSession(file) {
+      const found = findResumableSession({
+        datasetId: this.datasetId,
+        datasetKind: this.resolvedDatasetKind,
+        fileName: file.name,
+        fileSize: file.size,
+      });
+      if (found) {
+        this.resumeAvailable = true;
+        this.resumeSessionId = found.sessionId;
+        this.resumeInfo = found.info;
+      } else {
+        this.resumeAvailable = false;
+        this.resumeSessionId = null;
+        this.resumeInfo = null;
+      }
+    },
+
+    dismissResume() {
+      this.resumeAvailable = false;
+      this.resumeSessionId = null;
+      this.resumeInfo = null;
+    },
+
+    // ── upload ────────────────────────────────────────────────────────────
+
     getUploader() {
       if (this.resolvedDatasetKind === DATASET_KIND_ILLEGAL) {
-        return this.resolvedMode === 'append' ? appendIllegalDatasetArchive : uploadIllegalDatasetArchive;
+        return uploadIllegalDatasetChunked;
       }
-      return uploadStandardDatasetArchive;
+      return uploadStandardDatasetChunked;
     },
+
     async uploadFile() {
       if (!this.selectedFile) return;
       if (!this.datasetId) {
@@ -276,49 +448,189 @@ export default {
       this.isUploading = true;
       this.progress = 0;
       this.uploadStage = 'uploading';
-      this.cancelUploadRequest = null;
       this.uploadSuccess = false;
       this.errorMessage = '';
+      this.serverStage = '';
+      this.serverStageMessage = '';
+      this.taskId = null;
+
+      // 中断之前的操作
+      this.abortAll();
+      this.uploadAbortController = new AbortController();
+
+      const useResume = this.resumeAvailable && this.resumeSessionId;
+      this.dismissResume();
 
       try {
-        const req = this.getUploader()(this.datasetId, this.selectedFile, {
+        const uploadFn = this.getUploader();
+
+        // 构建额外参数
+        const extraOpts = {};
+        if (this.resolvedMode === 'append') {
+          extraOpts.mode = 'append';
+        }
+
+        const req = uploadFn(this.datasetId, this.selectedFile, {
+          ...extraOpts,
+          signal: this.uploadAbortController.signal,
+          resumeSessionId: useResume ? this.resumeSessionId : null,
           onProgress: ({ loaded, total, percent }) => {
             const l = Number(loaded) || 0;
             const t = Number(total) || 0;
-            const pct = percent !== null && percent !== undefined ? Number(percent) || 0 : (t > 0 ? Math.round((l / t) * 100) : 0);
+            const pct = percent !== null && percent !== undefined
+              ? Number(percent) || 0
+              : (t > 0 ? Math.round((l / t) * 100) : 0);
             this.progress = Math.max(0, Math.min(100, pct));
           },
           onUploadDone: () => {
             this.uploadStage = 'processing';
             this.progress = Math.max(this.progress, 100);
           },
+          onStageChange: (stage, info) => {
+            this.serverStage = stage;
+            this.serverStageMessage = String(info && info.message || '');
+          },
+          onSessionCreated: (info) => {
+            // 保存会话信息到 localStorage 以便断点续传
+            if (info && info.sessionId) {
+              this.currentSessionId = info.sessionId;
+              saveUploadSession(info.sessionId, {
+                datasetId: String(this.datasetId),
+                datasetKind: this.resolvedDatasetKind,
+                fileName: this.selectedFile.name,
+                fileSize: this.selectedFile.size,
+                mode: this.resolvedMode,
+              });
+            }
+          },
+          onTaskReady: (taskId) => {
+            this.taskId = taskId;
+            // 持久化任务信息，页面刷新后可恢复轮询
+            saveUploadTask(this.datasetId, this.resolvedDatasetKind, taskId, {
+              sessionId: this.currentSessionId,
+              fileName: this.selectedFile.name,
+              fileSize: this.selectedFile.size,
+              mode: this.resolvedMode,
+            });
+            // 启动任务轮询
+            this.startPolling(taskId);
+          },
         });
+
         this.cancelUploadRequest = req.cancel;
         await req.promise;
 
-        this.isUploading = false;
-        this.progress = 100;
-        this.uploadSuccess = true;
-        this.successTimer = setTimeout(() => {
-          this.uploadSuccess = false;
-          this.clearFile();
-        }, 3000);
-        this.$emit('upload-success', this.datasetId);
-      } catch (error) {
-        this.isUploading = false;
-        this.uploadSuccess = false;
-        const msg = error && error.message ? String(error.message) : '上传失败';
-        if (msg.toLowerCase().includes('cancel')) {
-          this.errorMessage = '已取消上传';
-          this.$emit('upload-fail', 'cancelled');
-        } else {
-          this.errorMessage = `上传失败: ${msg}`;
-          this.$emit('upload-fail', error || msg);
+        // 如果没有 task_id（后端未实现），直接视为成功
+        if (!this.taskId) {
+          this.handleFinalSuccess();
         }
+      } catch (error) {
+        this.abortAll();
+        // 上传失败，清理持久化（未到 task 阶段不清理 task，仅清理 session）
+        if (this.currentSessionId && !this.taskId) {
+          clearUploadSession(this.currentSessionId);
+        }
+        const { title, detail, canRetry } = this.translateError(error);
+        this.errorMessage = `${title}: ${detail}`;
+        this.isUploading = false;
+        this.$emit('upload-fail', { title, detail, canRetry, raw: error });
       } finally {
         this.cancelUploadRequest = null;
-        this.uploadStage = 'idle';
+        this.uploadAbortController = null;
       }
+    },
+
+    async startPolling(taskId) {
+      this.pollAbortController = new AbortController();
+      try {
+        const result = await pollUploadTask(taskId, {
+          signal: this.pollAbortController.signal,
+          interval: 2000,
+          onStageChange: (stage, info) => {
+            this.serverStage = stage;
+            this.serverStageMessage = STAGE_LABELS[stage] || String(info && info.message || '处理中...');
+            this.progress = Math.max(this.progress, Number(info && info.progress) || 0);
+          },
+        });
+        // 任务成功完成
+        this.serverStage = 'done';
+        this.serverStageMessage = STAGE_LABELS.done;
+        this.handleFinalSuccess();
+      } catch (error) {
+        // 任务失败或轮询中断
+        const msg = error && error.message ? String(error.message) : '处理失败';
+        if (msg.includes('取消')) {
+          this.serverStage = 'cancelled';
+          this.serverStageMessage = '已取消处理';
+          this.isUploading = false;
+          clearUploadTask(this.datasetId, this.resolvedDatasetKind);
+          return;
+        }
+        this.serverStage = 'failed';
+        this.serverStageMessage = msg;
+        this.isUploading = false;
+        this.errorMessage = `服务端处理失败: ${msg}`;
+        // 任务终态为 failed，清理持久化
+        clearUploadTask(this.datasetId, this.resolvedDatasetKind);
+        this.$emit('upload-fail', { title: '服务端处理失败', detail: msg, canRetry: false, raw: error });
+      } finally {
+        this.pollAbortController = null;
+      }
+    },
+
+    async tryAutoResumeTask() {
+      // 页面刷新后，检查是否有正在处理的任务
+      const saved = loadUploadTask(this.datasetId, this.resolvedDatasetKind);
+      if (!saved || !saved.taskId) return;
+
+      // 有活跃任务，尝试恢复轮询
+      this.isUploading = true;
+      this.progress = 100;
+      this.uploadStage = 'processing';
+      this.serverStage = 'queued';
+      this.serverStageMessage = '正在恢复任务状态...';
+      this.taskId = saved.taskId;
+      this.currentSessionId = saved.sessionId || null;
+      this.resumedFileName = saved.fileName || '';
+
+      this.$nextTick(() => {
+        this.startPolling(saved.taskId);
+      });
+    },
+
+    handleFinalSuccess() {
+      this.isUploading = false;
+      this.progress = 100;
+      this.uploadSuccess = true;
+      this.serverStage = 'done';
+
+      // 清理 localStorage 中的会话和任务
+      if (this.currentSessionId) {
+        clearUploadSession(this.currentSessionId);
+      }
+      clearUploadTask(this.datasetId, this.resolvedDatasetKind);
+
+      this.successTimer = setTimeout(() => {
+        this.uploadSuccess = false;
+        this.clearFile();
+      }, 3000);
+      this.$emit('upload-success', this.datasetId);
+    },
+
+    cancelUpload() {
+      this.abortAll();
+      if (typeof this.cancelUploadRequest === 'function') {
+        try { this.cancelUploadRequest(); } catch (_) { /* ignore */ }
+      }
+      // 清理持久化状态
+      if (this.currentSessionId) {
+        clearUploadSession(this.currentSessionId);
+      }
+      clearUploadTask(this.datasetId, this.resolvedDatasetKind);
+      this.isUploading = false;
+      this.serverStage = 'cancelled';
+      this.errorMessage = '已取消上传';
+      this.$emit('upload-fail', { title: '已取消上传', detail: '用户取消', canRetry: false, raw: 'cancelled' });
     },
   },
 };
@@ -689,6 +1001,62 @@ export default {
 .zoom-enter, .zoom-leave-to {
   opacity: 0;
   transform: scale(0.95);
+}
+
+/* Resume Banner */
+.resume-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  margin-bottom: 16px;
+  background: #eff6ff;
+  border: 1px solid #93c5fd;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  color: #1d4ed8;
+}
+.resume-content {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.resume-dismiss {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #64748b;
+  padding: 4px;
+  border-radius: 4px;
+  font-size: 14px;
+}
+.resume-dismiss:hover {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+/* Cancel Button */
+.cancel-row {
+  margin-top: 12px;
+  text-align: center;
+}
+.btn-cancel {
+  padding: 6px 16px;
+  background: #fff;
+  color: #ef4444;
+  border: 1px solid #fecaca;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: all 0.2s;
+}
+.btn-cancel:hover {
+  background: #fef2f2;
+  border-color: #fca5a5;
 }
 
 /* Utils */
