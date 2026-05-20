@@ -138,6 +138,18 @@
                 </div>
               </div>
             </div>
+
+            <div v-if="hasMoreImages" class="load-more-row">
+              <el-button
+                :loading="loadingMore"
+                :disabled="loadingMore"
+                size="small"
+                @click="loadMoreImages"
+              >
+                <template v-if="loadingMore">加载中...</template>
+                <template v-else>加载更多 (已显示 {{ selectedImages.length }} / {{ viewTotalCount }} 张)</template>
+              </el-button>
+            </div>
           </main>
         </div>
       </template>
@@ -237,6 +249,11 @@ export default {
       uploadFile: null,
       uploading: false,
       uploadProgress: 0,
+      // 分页加载
+      loadingMore: false,
+      viewTotalCount: 0,
+      viewTotalPages: 0,
+      viewCurrentPage: 0,
       showAugmentationDialog: false,
       showSplitDialog: false,
       showImagePreview: false,
@@ -310,6 +327,9 @@ export default {
       if (!this.hasSplit) return '未划分';
       const summary = this.splitSummary || {};
       return `训练 ${summary.train_count || 0} / 验证 ${summary.val_count || 0} / 测试 ${summary.test_count || 0}`;
+    },
+    hasMoreImages() {
+      return this.viewCurrentPage > 0 && this.viewCurrentPage < this.viewTotalPages;
     },
     filteredClassList() {
       const query = String(this.input || '').trim().toLowerCase();
@@ -394,6 +414,7 @@ export default {
       return classInfo && classInfo.name ? classInfo.name : '-';
     },
     isSelectedClass(classInfo) {
+      if (this.selectedClassId === null || this.selectedClassId === undefined) return false;
       return Number(this.selectedClassId) === Number(classInfo && classInfo.class_id);
     },
     async refreshAll() {
@@ -424,6 +445,9 @@ export default {
       if (!this.datasetId || this.isEmpty) {
         this.categories = [];
         this.selectedImages = [];
+        this.viewTotalCount = 0;
+        this.viewTotalPages = 0;
+        this.viewCurrentPage = 0;
         return;
       }
       const token = ++this.viewRequestToken;
@@ -436,14 +460,13 @@ export default {
         if (token !== this.viewRequestToken) return;
         this.categories = Array.isArray(firstPage && firstPage.categories) ? firstPage.categories : [];
         this.selectedImages = Array.isArray(firstPage && firstPage.items) ? firstPage.items : [];
-        const totalPages = Number(firstPage && firstPage.meta && firstPage.meta.total_pages) || 1;
-        if (totalPages > 1) {
-          this.loadRemainingViewPages({
-            token,
-            classId: this.selectedClassId,
-            startPage: 2,
-            totalPages,
-          });
+        this.viewTotalCount = Number(firstPage && firstPage.meta && firstPage.meta.total_items) || 0;
+        this.viewTotalPages = Number(firstPage && firstPage.meta && firstPage.meta.total_pages) || 1;
+        this.viewCurrentPage = 1;
+
+        // 首次加载：自动加载前 2 页（共 240 张）以快速展示，超出则显示"加载更多"
+        if (this.viewTotalPages > 1) {
+          this.loadMoreImages({ token, silent: true });
         }
       } catch (error) {
         console.error(error);
@@ -452,22 +475,49 @@ export default {
         this.selectedImages = [];
       }
     },
-    async loadRemainingViewPages({ token, classId, startPage, totalPages }) {
-      for (let page = startPage; page <= totalPages; page += 1) {
-        if (token !== this.viewRequestToken) return;
-        try {
-          const pageData = await fetchStandardDatasetView(this.datasetId, {
-            classId,
+    async loadMoreImages({ token = null, silent = false } = {}) {
+      const batchSize = 2; // 每次并行加载 2 页
+      const startPage = this.viewCurrentPage + 1;
+      const endPage = Math.min(this.viewTotalPages, startPage + batchSize - 1);
+      if (startPage > this.viewTotalPages) return;
+
+      if (!silent) {
+        this.loadingMore = true;
+      }
+
+      const currentToken = token || this.viewRequestToken;
+      const pagePromises = [];
+      for (let page = startPage; page <= endPage; page += 1) {
+        pagePromises.push(
+          fetchStandardDatasetView(this.datasetId, {
+            classId: this.selectedClassId,
             page,
             pageSize: 120,
-          });
-          if (token !== this.viewRequestToken) return;
-          const items = Array.isArray(pageData && pageData.items) ? pageData.items : [];
-          if (items.length) {
-            this.selectedImages = this.selectedImages.concat(items);
+          }).catch(() => null)
+        );
+      }
+
+      try {
+        const results = await Promise.all(pagePromises);
+        if (currentToken !== this.viewRequestToken) return;
+
+        const newItems = [];
+        let loadedPages = 0;
+        for (const pageData of results) {
+          if (pageData && Array.isArray(pageData.items)) {
+            newItems.push(...pageData.items);
+            loadedPages += 1;
           }
-        } catch (_) {
-          return;
+        }
+        if (newItems.length) {
+          this.selectedImages = this.selectedImages.concat(newItems);
+        }
+        this.viewCurrentPage = startPage + loadedPages - 1;
+      } catch (_) {
+        // 静默处理：部分页面失败不影响已加载的内容
+      } finally {
+        if (!silent) {
+          this.loadingMore = false;
         }
       }
     },
@@ -577,7 +627,20 @@ export default {
       this.clearPreviewCanvas();
     },
     handleModalImageError(event) {
-      if (event && event.target) event.target.style.display = 'none';
+      const img = event && event.target;
+      if (!img || !this.previewImage) return;
+      // 如果原图加载失败，尝试用缩略图（不带 size 参数）
+      if (!img.dataset.fallback) {
+        img.dataset.fallback = '1';
+        const fallbackUrl = this.previewImage.thumbnail_url
+          ? this.previewImage.thumbnail_url.replace(/[?&]size=\d+/, '')
+          : '';
+        if (fallbackUrl && fallbackUrl !== img.src) {
+          img.src = fallbackUrl;
+          return;
+        }
+      }
+      img.style.display = 'none';
       this.clearPreviewCanvas();
     },
     handlePreviewImageLoad() {
@@ -642,8 +705,21 @@ export default {
       if (!boxes.length) return;
 
       const rect = this.getPreviewRenderedImageRect();
-      if (!rect || !rect.naturalW || !rect.naturalH) return;
-      const { offsetX, offsetY, drawW, drawH, naturalW, naturalH } = rect;
+      if (!rect || !rect.drawW || !rect.drawH) return;
+      const { offsetX, offsetY, drawW, drawH } = rect;
+
+      // 标注的坐标空间：优先用后端返回的 width/height，其次用图片原始尺寸
+      const annW = Number(this.previewAnnotationData && this.previewAnnotationData.width) || rect.naturalW || drawW;
+      const annH = Number(this.previewAnnotationData && this.previewAnnotationData.height) || rect.naturalH || drawH;
+
+      // 检测是否为 YOLO 归一化坐标：没有任何坐标值 > 1，则视为归一化（0-1）
+      const isNormalized = !boxes.some((box) =>
+        Number(box.x1) > 1 || Number(box.y1) > 1 || Number(box.x2) > 1 || Number(box.y2) > 1
+      );
+
+      // 将标注转换到渲染坐标系
+      const scaleX = drawW / (isNormalized ? 1 : annW);
+      const scaleY = drawH / (isNormalized ? 1 : annH);
 
       ctx.lineWidth = 2;
       ctx.font = '13px sans-serif';
@@ -651,10 +727,10 @@ export default {
 
       boxes.forEach((box) => {
         const color = this.getAnnotationColor(box.class_id);
-        const x = offsetX + (Number(box.x1) || 0) * drawW / naturalW;
-        const y = offsetY + (Number(box.y1) || 0) * drawH / naturalH;
-        const w = Math.max(0, ((Number(box.x2) || 0) - (Number(box.x1) || 0)) * drawW / naturalW);
-        const h = Math.max(0, ((Number(box.y2) || 0) - (Number(box.y1) || 0)) * drawH / naturalH);
+        const x = offsetX + (Number(box.x1) || 0) * scaleX;
+        const y = offsetY + (Number(box.y1) || 0) * scaleY;
+        const w = Math.max(1, ((Number(box.x2) || 0) - (Number(box.x1) || 0)) * scaleX);
+        const h = Math.max(1, ((Number(box.y2) || 0) - (Number(box.y1) || 0)) * scaleY);
 
         ctx.strokeStyle = color;
         ctx.strokeRect(x, y, w, h);
@@ -1250,6 +1326,12 @@ export default {
 
 .modal-meta-row .value.muted {
   color: #94a3b8;
+}
+
+.load-more-row {
+  display: flex;
+  justify-content: center;
+  padding: 20px 0 8px;
 }
 
 @media (max-width: 1200px) {

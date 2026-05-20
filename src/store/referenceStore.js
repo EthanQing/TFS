@@ -57,7 +57,7 @@ export async function loadDatasets({ force = false } = {}) {
   referenceStore.loading.datasets = true;
   referenceStore.error.datasets = '';
   try {
-    const list = await fetchStandardDatasets({ page: 1, pageSize: 500 });
+    const list = await fetchStandardDatasets({ page: 1, pageSize: 100 });
     referenceStore.datasets = Array.isArray(list) ? list : [];
     referenceStore.loaded.datasets = true;
   } catch (e) {
@@ -92,7 +92,7 @@ export async function loadProjects({ force = false } = {}) {
   referenceStore.loading.projects = true;
   referenceStore.error.projects = '';
   try {
-    referenceStore.projects = await fetchProjects(1, 500);
+    referenceStore.projects = await fetchProjects(1, 100);
     referenceStore.loaded.projects = true;
   } catch (e) {
     referenceStore.projects = [];
