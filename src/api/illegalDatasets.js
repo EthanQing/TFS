@@ -5,10 +5,9 @@
 import {
     API_BASE,
     safeJson, postJson, putJson, deleteJson, getJson,
-    xhrUploadJson, chunkedUpload, pollUploadTask,
+    xhrUploadJson, chunkedUpload,
     toAbsUrl, encodePathSegments, formatMb, normalizeFileArray,
     pickErrorMessage,
-    saveUploadSession, loadUploadSession, clearUploadSession, findResumableSession,
 } from './apiUtils';
 
 const PREFIX = `${API_BASE}/api/v3/illegal-datasets`;
@@ -50,9 +49,10 @@ export async function fetchIllegalDatasets(page = 1, pageSize = 50) {
             dataset_name: item.name || item.dataset_name,
             dataset_type: item.dataset_type || item.type || 'detection',
             dataset_id: item.illegal_dataset_id || item.id,
-            num_images: item.statistics?.num_images || 0,
+            num_images: item.statistics?.num_images ?? item.statistics?.total_images ?? item.statistics?.image_count ?? 0,
             num_classes: item.statistics?.num_classes || 0,
             dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
+            preview_image_url: toAbsUrl(item.preview_image_url || ''),
         }));
     } catch (error) {
         console.error('获取原始数据集失败:', error);
@@ -260,6 +260,35 @@ export async function publishIllegalDataset(
         split: split && typeof split === 'object' ? split : {},
         publish_config: publish_config && typeof publish_config === 'object' ? publish_config : {},
     });
+}
+
+export async function createIllegalDatasetPublishJob(
+    datasetId,
+    {
+        name,
+        description = null,
+        version_id = null,
+        label_filters = [],
+        label_mapping_overrides = null,
+        split = null,
+        publish_config = null,
+    } = {}
+) {
+    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/publish-jobs`, {
+        name,
+        description: description || undefined,
+        version_id: version_id != null && version_id !== '' ? Number(version_id) : undefined,
+        label_filters: Array.isArray(label_filters) ? label_filters : [],
+        label_mapping_overrides: label_mapping_overrides && typeof label_mapping_overrides === 'object' ? label_mapping_overrides : {},
+        split: split && typeof split === 'object' ? split : {},
+        publish_config: publish_config && typeof publish_config === 'object' ? publish_config : {},
+    });
+}
+
+export async function fetchIllegalDatasetPublishJob(datasetId, jobId) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    if (!jobId) throw new Error('缺少 jobId');
+    return getJson(`${PREFIX}/${encodeURIComponent(datasetId)}/publish-jobs/${encodeURIComponent(jobId)}`);
 }
 
 // ── View / Annotations / Statistics / Files ──────────────────────────────

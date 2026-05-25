@@ -137,12 +137,9 @@
 <script>
 import {
   uploadIllegalDatasetChunked,
-  uploadIllegalDatasetArchive,
-  appendIllegalDatasetArchive,
 } from '@/api/illegalDatasets';
 import {
   uploadStandardDatasetChunked,
-  uploadStandardDatasetArchive,
 } from '@/api/standardDatasets';
 import {
   pollUploadTask,
@@ -224,6 +221,8 @@ export default {
       pollAbortController: null,
       taskId: null,
       currentSessionId: null,
+      cancelRequested: false,
+      cancelEventSent: false,
       resumeAvailable: false,
       resumeSessionId: null,
       resumeInfo: null,
@@ -346,10 +345,30 @@ export default {
       this.serverStageMessage = '';
       this.taskId = null;
       this.currentSessionId = null;
+      this.cancelRequested = false;
+      this.cancelEventSent = false;
       this.resumeAvailable = false;
       this.resumeSessionId = null;
       this.resumeInfo = null;
       this.resumedFileName = '';
+    },
+
+    isCancelledUpload(error) {
+      if (this.cancelRequested) return true;
+      const msg = error && error.message ? String(error.message) : String(error || '');
+      const lower = msg.toLowerCase();
+      return msg.includes('取消') || lower.includes('cancel') || lower.includes('abort');
+    },
+
+    emitUploadCancel(detail = '用户取消') {
+      if (this.cancelEventSent) return;
+      this.cancelEventSent = true;
+      this.$emit('upload-cancel', {
+        title: '已取消上传',
+        detail,
+        canRetry: false,
+        raw: 'cancelled',
+      });
     },
 
     // ── file handling ─────────────────────────────────────────────────────
@@ -453,6 +472,8 @@ export default {
       this.serverStage = '';
       this.serverStageMessage = '';
       this.taskId = null;
+      this.cancelRequested = false;
+      this.cancelEventSent = false;
 
       // 中断之前的操作
       this.abortAll();
@@ -531,8 +552,15 @@ export default {
           clearUploadSession(this.currentSessionId);
         }
         const { title, detail, canRetry } = this.translateError(error);
-        this.errorMessage = `${title}: ${detail}`;
         this.isUploading = false;
+        if (this.isCancelledUpload(error) || title === '已取消上传') {
+          this.serverStage = 'cancelled';
+          this.serverStageMessage = STAGE_LABELS.cancelled;
+          this.errorMessage = title;
+          this.emitUploadCancel(detail);
+          return;
+        }
+        this.errorMessage = `${title}: ${detail}`;
         this.$emit('upload-fail', { title, detail, canRetry, raw: error });
       } finally {
         this.cancelUploadRequest = null;
@@ -543,7 +571,7 @@ export default {
     async startPolling(taskId) {
       this.pollAbortController = new AbortController();
       try {
-        const result = await pollUploadTask(taskId, {
+        await pollUploadTask(taskId, {
           signal: this.pollAbortController.signal,
           interval: 2000,
           onStageChange: (stage, info) => {
@@ -618,6 +646,7 @@ export default {
     },
 
     cancelUpload() {
+      this.cancelRequested = true;
       this.abortAll();
       if (typeof this.cancelUploadRequest === 'function') {
         try { this.cancelUploadRequest(); } catch (_) { /* ignore */ }
@@ -629,8 +658,9 @@ export default {
       clearUploadTask(this.datasetId, this.resolvedDatasetKind);
       this.isUploading = false;
       this.serverStage = 'cancelled';
+      this.serverStageMessage = STAGE_LABELS.cancelled;
       this.errorMessage = '已取消上传';
-      this.$emit('upload-fail', { title: '已取消上传', detail: '用户取消', canRetry: false, raw: 'cancelled' });
+      this.emitUploadCancel();
     },
   },
 };

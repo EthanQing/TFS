@@ -98,7 +98,8 @@
           <div class="empty-action">
             <UploadZip :dataset-id="datasetId" dataset-kind="illegal" mode="upload" :external-file.sync="uploadFile"
               :external-uploading.sync="uploading" :external-progress.sync="uploadProgress"
-              @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail" />
+              @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail"
+              @upload-cancel="handleUploadCancel" />
           </div>
         </div>
 
@@ -286,13 +287,15 @@
     <el-dialog title="首次上传 ZIP" :visible.sync="uploadDialogVisible" width="680px" append-to-body>
       <UploadZip :dataset-id="datasetId" dataset-kind="illegal" mode="upload" :external-file.sync="uploadFile"
         :external-uploading.sync="uploading" :external-progress.sync="uploadProgress"
-        @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail" />
+        @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail"
+        @upload-cancel="handleUploadCancel" />
     </el-dialog>
 
     <el-dialog title="追加上传新版本" :visible.sync="appendDialogVisible" width="680px" append-to-body>
       <UploadZip :dataset-id="datasetId" dataset-kind="illegal" mode="append" :external-file.sync="appendFile"
         :external-uploading.sync="appending" :external-progress.sync="appendProgress"
-        @upload-success="handleAppendSuccess" @upload-fail="handleUploadFail" />
+        @upload-success="handleAppendSuccess" @upload-fail="handleUploadFail"
+        @upload-cancel="handleUploadCancel" />
     </el-dialog>
   </div>
 </template>
@@ -308,7 +311,8 @@ import {
   fetchIllegalDatasetLabelMappings,
   updateIllegalDatasetLabelMappings,
   activateIllegalDatasetVersion,
-  publishIllegalDataset,
+  createIllegalDatasetPublishJob,
+  fetchIllegalDatasetPublishJob,
 } from '@/api/illegalDatasets';
 
 export default {
@@ -358,6 +362,10 @@ export default {
       appending: false,
       appendProgress: 0,
       selectedVersionId: null, // 用于版本选择器
+      publishJobId: '',
+      publishJobPhase: '',
+      publishJobProgress: 0,
+      publishJobPollToken: 0,
     };
   },
   computed: {
@@ -485,6 +493,9 @@ export default {
     this.loadIllegalLabelPresets({ silent: true });
     this.loadAll();
   },
+  beforeDestroy() {
+    this.stopPublishJobPolling();
+  },
   methods: {
     goBack() {
       this.$router.push('/datasets');
@@ -523,6 +534,50 @@ export default {
       const date = new Date(Number(value) * 1000);
       if (Number.isNaN(date.getTime())) return '-';
       return date.toLocaleString();
+    },
+    sleep(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms));
+    },
+    stopPublishJobPolling() {
+      this.publishJobPollToken += 1;
+    },
+    publishPhaseLabel(phase, status = '') {
+      const key = String(phase || status || '').trim().toLowerCase();
+      const map = {
+        queued: '任务排队中',
+        preparing: '准备转换参数',
+        materializing: '整理原始数据',
+        converting: '执行数据转换',
+        publishing: '生成标准数据集',
+        done: '转换完成',
+        failed: '转换失败',
+        cancelled: '转换已取消',
+      };
+      return map[key] || '执行中';
+    },
+    async waitForPublishJob(jobId) {
+      const token = Date.now();
+      this.publishJobPollToken = token;
+      while (this.publishJobPollToken === token) {
+        const job = await fetchIllegalDatasetPublishJob(this.datasetId, jobId);
+        this.publishJobId = String(job && job.job_id || '');
+        this.publishJobPhase = String(job && (job.phase || job.status) || '');
+        this.publishJobProgress = Number(job && job.progress) || 0;
+
+        const status = String(job && job.status || '').trim().toLowerCase();
+        if (status === 'completed') {
+          return job;
+        }
+        if (status === 'failed') {
+          throw new Error(job && job.error_message ? job.error_message : '服务端处理失败');
+        }
+        if (status === 'cancelled') {
+          throw new Error('转换任务已取消');
+        }
+
+        await this.sleep(2000);
+      }
+      throw new Error('转换轮询已取消');
     },
     getPresetStorageKey() {
       return 'illegal_label_mapping_presets_v3';
@@ -1073,15 +1128,30 @@ export default {
       }
 
       this.publishing = true;
+      this.stopPublishJobPolling();
       try {
-        const result = await publishIllegalDataset(this.datasetId, {
+        const job = await createIllegalDatasetPublishJob(this.datasetId, {
           name,
           version_id: this.publishForm.version_id || this.activeVersionId || undefined,
           label_filters: [],
           label_mapping_overrides: effectiveMapping,
           publish_config: this.buildPublishConfig(),
         });
+        const jobId = String(job && job.job_id || '').trim();
+        if (!jobId) {
+          throw new Error('服务端未返回转换任务 ID');
+        }
+        this.publishJobId = jobId;
+        this.publishJobPhase = String(job.phase || job.status || '');
+        this.publishJobProgress = Number(job.progress) || 0;
+        this.$message.info(`转换任务已提交：${this.publishPhaseLabel(this.publishJobPhase, job.status)}`);
+
+        const finalJob = await this.waitForPublishJob(jobId);
+        const result = finalJob && finalJob.result ? finalJob.result : null;
         const standardDatasetId = result && result.standard_dataset_id;
+        if (!standardDatasetId) {
+          throw new Error('转换任务已完成，但未返回标准数据集 ID');
+        }
         this.$message.success(`标准数据集已转换完成：#${standardDatasetId}`);
         if (standardDatasetId) {
           this.$confirm('标准数据集已生成，是否立即前往详情页查看？', '转换成功', {
@@ -1094,9 +1164,15 @@ export default {
         }
         await this.loadAll();
       } catch (error) {
-        console.error(error);
-        this.$message.error(`转换失败：${error.message || error}`);
+        if (String(error && error.message || '') !== '转换轮询已取消') {
+          console.error(error);
+          this.$message.error(`转换失败：${error.message || error}`);
+        }
       } finally {
+        this.stopPublishJobPolling();
+        this.publishJobId = '';
+        this.publishJobPhase = '';
+        this.publishJobProgress = 0;
         this.publishing = false;
       }
     },
@@ -1117,7 +1193,13 @@ export default {
       this.loadAll();
     },
     handleUploadFail(error) {
-      this.$message.error(`上传失败：${error && error.message ? error.message : error || '未知错误'}`);
+      const title = error && error.title ? error.title : '上传失败';
+      const detail = error && error.detail ? error.detail : (error && error.message ? error.message : error || '未知错误');
+      this.$message.error(detail ? `${title}：${detail}` : title);
+    },
+    handleUploadCancel(error) {
+      const title = error && error.title ? error.title : '已取消上传';
+      this.$message.info(title);
     },
   },
 };

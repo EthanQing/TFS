@@ -158,17 +158,14 @@
 </template>
 
 <script>
-import { fetchIllegalDatasets, fetchIllegalDatasetDetail, createIllegalDataset, deleteIllegalDataset } from "@/api/illegalDatasets";
-import { fetchStandardDatasets, fetchStandardDatasetDetail, createStandardDataset, deleteStandardDataset } from "@/api/standardDatasets";
-import { buildIllegalThumbnailUrl } from "@/api/illegalDatasets";
-import { buildStandardThumbnailUrl } from "@/api/standardDatasets";
+import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset } from "@/api/illegalDatasets";
+import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset } from "@/api/standardDatasets";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
-  name: "Datasets",
+  name: "DatasetsPage",
   data() {
     return {
-      activeTab: "illegal",
       loading: false,
       searchQuery: "",
       filterType: "all",
@@ -310,7 +307,6 @@ export default {
       try {
         this.loading = true;
         let list;
-        let detail;
         if (this.activeTab === 'illegal') {
           list = await fetchIllegalDatasets();
         } else {
@@ -319,7 +315,7 @@ export default {
 
         this.datasets = Array.isArray(list) ? list : [];
         this.seedPreviewFromCache();
-        this.loadPreviewsParallel(4);
+        this.loadPreviewsParallel();
       } catch (e) {
         console.error('Failed to fetch datasets:', e);
         this.datasets = [];
@@ -331,7 +327,14 @@ export default {
       this.datasets.forEach(d => {
         const key = `ds_preview_${this.activeTab}_${d.dataset_id}`;
         const cached = localStorage.getItem(key) || '';
-        if (cached && !/images\/image\.png$/.test(cached)) {
+        const backendPreview = d.preview_image_url || '';
+        const imageCount = Number(d.num_images || 0);
+        if (imageCount <= 0) {
+          localStorage.removeItem(key);
+          this.$set(d, 'preview_image_url', '');
+        } else if (backendPreview) {
+          this.$set(d, 'preview_image_url', backendPreview);
+        } else if (cached && !/images\/image\.png$/.test(cached)) {
           this.$set(d, 'preview_image_url', cached);
         } else {
           this.$set(d, 'preview_image_url', '');
@@ -339,7 +342,7 @@ export default {
       });
       this.$forceUpdate();
     },
-    async loadPreviewsParallel(concurrency = 4) {
+    async loadPreviewsParallel() {
       // Logic for preview can be implemented here by calling thumbnail endpoints.
       // E.g., picking the first file of the dataset. For now, since view api gives it,
       // we might not need separate requests if we don't have the file paths here.

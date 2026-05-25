@@ -56,7 +56,8 @@
           <div class="empty-action">
             <UploadZip :dataset-id="datasetId" dataset-kind="standard" mode="upload" :external-file.sync="uploadFile"
               :external-uploading.sync="uploading" :external-progress.sync="uploadProgress"
-              @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail" />
+              @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail"
+              @upload-cancel="handleUploadCancel" />
           </div>
         </div>
 
@@ -773,7 +774,13 @@ export default {
       this.loadAll();
     },
     handleUploadFail(error) {
-      this.$message.error(`上传失败：${error && error.message ? error.message : error || '未知错误'}`);
+      const title = error && error.title ? error.title : '上传失败';
+      const detail = error && error.detail ? error.detail : (error && error.message ? error.message : error || '未知错误');
+      this.$message.error(detail ? `${title}：${detail}` : title);
+    },
+    handleUploadCancel(error) {
+      const title = error && error.title ? error.title : '已取消上传';
+      this.$message.info(title);
     },
     handlePublished(payload) {
       this.showAugmentationDialog = false;

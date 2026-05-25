@@ -575,8 +575,14 @@ export default {
                 };
             };
 
-            const to4 = (v) => (Number.isFinite(Number(v)) ? Number(v).toFixed(4) : '-');
-            const to2 = (v) => (Number.isFinite(Number(v)) ? Number(v).toFixed(2) : '-');
+            const to4 = (v) => {
+                const n = this.toFiniteNumber(v);
+                return n !== null ? n.toFixed(4) : '-';
+            };
+            const to2 = (v) => {
+                const n = this.toFiniteNumber(v);
+                return n !== null ? n.toFixed(2) : '-';
+            };
 
             return [
                 buildCard(
@@ -735,6 +741,7 @@ export default {
             return map;
         },
         toFiniteNumber(v) {
+            if (v === null || v === undefined || v === '') return null;
             const n = Number(v);
             return Number.isFinite(n) ? n : null;
         },

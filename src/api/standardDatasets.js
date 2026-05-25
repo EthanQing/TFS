@@ -5,10 +5,9 @@
 import {
     API_BASE, WS_BASE,
     safeJson, postJson, deleteJson, getJson,
-    xhrUploadJson, chunkedUpload, pollUploadTask,
+    xhrUploadJson, chunkedUpload,
     toAbsUrl, encodePathSegments, formatMb,
     pickErrorMessage, createReconnectingWs,
-    saveUploadSession, loadUploadSession, clearUploadSession, findResumableSession,
 } from './apiUtils';
 
 const PREFIX = `${API_BASE}/api/v3/standard-datasets`;
@@ -43,9 +42,10 @@ export async function fetchStandardDatasets({ page = 1, pageSize = 50 } = {}) {
             dataset_type: item.dataset_type || item.type || 'detection',
             dataset_id: item.standard_dataset_id,
             format: 'yolo',
-            num_images: item.statistics?.num_images || 0,
+            num_images: item.statistics?.num_images ?? item.statistics?.total_images ?? item.statistics?.image_count ?? 0,
             num_classes: item.statistics?.num_classes || 0,
             dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
+            preview_image_url: toAbsUrl(item.preview_image_url || ''),
         }));
     } catch (error) {
         console.error('获取标准数据集失败:', error);

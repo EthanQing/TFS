@@ -479,6 +479,35 @@ export default {
       this.exportForm = { ...this.exportForm, format: 'pt', weights: 'best' };
       this.exportDialogVisible = true;
     },
+    exportFilename(res, fallbackJobId) {
+      const artifactName = res?.artifact?.name || res?.output_filename || res?.filename;
+      if (artifactName) return String(artifactName);
+      const format = String(res?.format || this.exportForm.format || 'pt').toLowerCase();
+      const weights = String(res?.weights || this.exportForm.weights || 'best').toLowerCase();
+      return `${fallbackJobId || 'model'}_${weights}.${format}`;
+    },
+    async downloadExportFile(rawUrl, filename) {
+      const raw = String(rawUrl || '').trim();
+      const path = raw.startsWith('/') ? raw : `/${raw}`;
+      const href = raw.startsWith('http') ? raw : `${API_BASE}${path}`;
+      const response = await fetch(href);
+      if (!response.ok) {
+        throw new Error(`下载文件失败: HTTP ${response.status}`);
+      }
+      const blob = await response.blob();
+      if (!blob || blob.size <= 0) {
+        throw new Error('下载文件为空，请检查后端静态文件目录是否可访问');
+      }
+      const objectUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = objectUrl;
+      a.download = filename || '';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    },
     async confirmExport() {
       const jobId = this.exportTargetJobId;
       if (!jobId) return;
@@ -493,14 +522,7 @@ export default {
         const raw = res && (res.download_url || res.url || res.file_url || res.path || res.link);
         if (!raw) throw new Error('No download URL returned');
 
-        const href = String(raw).startsWith('http') ? raw : `${API_BASE}${raw}`;
-        const a = document.createElement('a');
-        a.href = href;
-        a.download = '';
-        a.style.display = 'none';
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
+        await this.downloadExportFile(raw, this.exportFilename(res, jobId));
         this.$message.success('下载已开始。');
         this.exportDialogVisible = false;
       } catch (error) {

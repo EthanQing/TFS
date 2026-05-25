@@ -4,16 +4,19 @@ import axios from 'axios';
 // By default, use the same origin as the frontend and let nginx proxy /api/*
 // to the backend container. Deployments can still override these at runtime by
 // setting window.__API_BASE__ / window.__WS_BASE__ before this bundle loads.
-export const API_BASE = window.__API_BASE__ || '';
-export const WS_BASE = window.__WS_BASE__ || (() => {
-  if (API_BASE) {
+const trimTrailingSlash = (value) => String(value || '').trim().replace(/\/+$/, '');
+const isAbsoluteHttpUrl = (value) => /^https?:\/\//i.test(String(value || '').trim());
+
+export const API_BASE = trimTrailingSlash(window.__API_BASE__ || process.env.VUE_APP_API_BASE || '');
+export const WS_BASE = trimTrailingSlash(window.__WS_BASE__ || process.env.VUE_APP_WS_BASE || (() => {
+  if (isAbsoluteHttpUrl(API_BASE)) {
     return API_BASE.startsWith('https://')
-      ? API_BASE.replace('https://', 'wss://')
-      : API_BASE.replace('http://', 'ws://');
+      ? API_BASE.replace(/^https:\/\//i, 'wss://')
+      : API_BASE.replace(/^http:\/\//i, 'ws://');
   }
   const wsScheme = window.location.protocol === 'https:' ? 'wss' : 'ws';
   return `${wsScheme}://${window.location.host}`;
-})();
+})());
 
 // Create axios instance.
 const service = axios.create({

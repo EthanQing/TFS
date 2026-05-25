@@ -279,6 +279,17 @@ export default {
         },
         handleFileChange(file) { this.uploadFile = file.raw || file; },
         removeFile() { if(!this.converting) this.uploadFile = null; },
+        resolveErrorMessage(st, fallback = '转换失败') {
+            const msg = String(st?.error_message || '').trim();
+            if (msg) return msg;
+            const logs = Array.isArray(st?.logs) ? st.logs : [];
+            for (let i = logs.length - 1; i >= 0; i -= 1) {
+                const line = String(logs[i] || '').trim();
+                if (!line) continue;
+                if (/error|failed|exception|not found|unauthorized|export/i.test(line)) return line;
+            }
+            return fallback;
+        },
         handleReset() {
              this.stopPolling();
              this.form = { ...this.form, sourceFormat: 'pt', targetFormat: 'onnx' };
@@ -308,6 +319,18 @@ export default {
                 console.log('Job created:', job);
                 
                 this.jobId = job?.job_id;
+                this.progress = Number(job?.progress) || 0;
+                this.logs = Array.isArray(job?.logs) && job.logs.length
+                    ? job.logs.slice()
+                    : this.logs;
+                this.updatePerformanceFromStatus(job);
+                if (job?.status === 'failed') {
+                    this.converting = false;
+                    const msg = this.resolveErrorMessage(job, '启动转换失败');
+                    this.logs = [...this.logs, msg];
+                    this.$message.error(msg);
+                    return;
+                }
                 this.logs.push(`任务 ID: ${this.jobId}`, '等待服务器...');
                 this.pollTimer = setInterval(this.pollStatus, 1000);
              } catch (e) {
@@ -327,16 +350,27 @@ export default {
                 if (st.status === 'completed') {
                     this.finish(st);
                 } else if (st.status === 'failed') {
-                    this.stopPolling(); this.converting = false; this.$message.error('转换失败');
+                    this.stopPolling();
+                    this.converting = false;
+                    this.$message.error(this.resolveErrorMessage(st, '转换失败'));
                 }
-            } catch(e) {}
+            } catch(e) {
+                this.stopPolling();
+                this.converting = false;
+                const msg = e && e.message ? e.message : '获取转换状态失败';
+                this.logs = [...(Array.isArray(this.logs) ? this.logs : []), '状态查询失败: ' + msg];
+                this.$message.error('状态查询失败: ' + msg);
+            }
         },
         finish(st) {
              this.stopPolling(); this.converting = false;
              this.result = { filename: st.output_filename || 'opt.onnx', download_url: st.output_url };
              this.updatePerformanceFromStatus(st);
         },
-        stopPolling() { if(this.pollTimer) clearInterval(this.pollTimer); },
+        stopPolling() {
+            if (this.pollTimer) clearInterval(this.pollTimer);
+            this.pollTimer = null;
+        },
         downloadResult() {
             const url = this.result?.download_url;
             if(!url) return;

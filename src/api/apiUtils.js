@@ -78,7 +78,12 @@ export async function putJson(url, payload) {
 export async function putForm(url, formData) {
     const res = await fetch(url, { method: 'PUT', body: formData });
     const data = await safeJson(res);
-    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    if (!res.ok) {
+        const err = new Error(pickErrorMessage(data, res));
+        err.status = res.status;
+        err.data = data;
+        throw err;
+    }
     return data || {};
 }
 
@@ -212,7 +217,12 @@ export function chunkedUpload(
                 );
                 return;
             } catch (e) {
+                if (cancelled || (signal && signal.aborted)) {
+                    throw new Error('用户取消上传');
+                }
                 lastErr = e;
+                const status = Number(e && e.status) || 0;
+                if (status === 409) break;
                 attempt += 1;
                 if (attempt > maxRetries) break;
                 const delay = Math.min(15000, 1000 * Math.pow(2, attempt - 1));
@@ -655,7 +665,7 @@ export function createReconnectingWs(urlBuilder, { onOpen, onClose, onError, onR
         ws.onmessage = (evt) => {
             let payload = null;
             try { payload = JSON.parse(evt.data || '{}'); } catch (_) { return; }
-            _onMessage(payload, { close: () => { closedManually = true; clearReconnectTimer(); try { if (ws) ws.close(); } catch (_) {} } });
+            _onMessage(payload, { close: () => { closedManually = true; clearReconnectTimer(); try { if (ws) ws.close(); } catch (_) { void 0; } } });
         };
         ws.onerror = (err) => { _onError(err); };
         ws.onclose = (evt) => { _onClose(evt); if (!closedManually) scheduleReconnect(); };
@@ -667,11 +677,11 @@ export function createReconnectingWs(urlBuilder, { onOpen, onClose, onError, onR
         close() {
             closedManually = true;
             clearReconnectTimer();
-            if (ws) { try { ws.close(); } catch (_) {} ws = null; }
+            if (ws) { try { ws.close(); } catch (_) { void 0; } ws = null; }
         },
         reconnect() {
             if (closedManually) return;
-            if (ws) { try { ws.close(); } catch (_) {} } else { scheduleReconnect(); }
+            if (ws) { try { ws.close(); } catch (_) { void 0; } } else { scheduleReconnect(); }
         },
     };
 }
