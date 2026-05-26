@@ -48,6 +48,8 @@
             <el-button @click="refreshAll">刷新</el-button>
             <el-button type="primary" plain @click="uploadDialogVisible = true">首次上传 ZIP</el-button>
             <el-button type="primary" @click="appendDialogVisible = true">追加上传新版本</el-button>
+            <el-button type="success" plain @click="openMountedImport('upload')">从挂载目录导入</el-button>
+            <el-button type="success" @click="openMountedImport('append')">从挂载目录追加版本</el-button>
           </div>
 
           <template v-if="!isEmpty">
@@ -297,12 +299,20 @@
         @upload-success="handleAppendSuccess" @upload-fail="handleUploadFail"
         @upload-cancel="handleUploadCancel" />
     </el-dialog>
+    <MountedImportDialog
+      :visible.sync="mountedImportVisible"
+      :dataset-id="datasetId"
+      dataset-kind="illegal"
+      :mode="mountedImportMode"
+      @imported="handleMountedImportSuccess"
+    />
   </div>
 </template>
 
 <script>
 import UploadZip from '@/components/Upload/index.vue';
 import LabelMappingPanel from '@/components/LabelMappingPanel.vue';
+import MountedImportDialog from '@/views/Datasets/components/MountedImportDialog.vue';
 import {
   fetchIllegalDatasetDetail,
   fetchIllegalDatasetFiles,
@@ -317,7 +327,7 @@ import {
 
 export default {
   name: 'IllegalDatasetDetail',
-  components: { UploadZip, LabelMappingPanel },
+  components: { UploadZip, LabelMappingPanel, MountedImportDialog },
   data() {
     return {
       datasetId: this.$route.query.id || '',
@@ -361,6 +371,8 @@ export default {
       appendFile: null,
       appending: false,
       appendProgress: 0,
+      mountedImportVisible: false,
+      mountedImportMode: 'upload',
       selectedVersionId: null, // 用于版本选择器
       publishJobId: '',
       publishJobPhase: '',
@@ -1192,6 +1204,14 @@ export default {
       this.$message.success('追加上传成功，已生成新版本');
       this.loadAll();
     },
+    openMountedImport(mode) {
+      this.mountedImportMode = mode || 'upload';
+      this.mountedImportVisible = true;
+    },
+    handleMountedImportSuccess() {
+      this.mountedImportVisible = false;
+      this.loadAll();
+    },
     handleUploadFail(error) {
       const title = error && error.title ? error.title : '上传失败';
       const detail = error && error.detail ? error.detail : (error && error.message ? error.message : error || '未知错误');
@@ -1210,6 +1230,12 @@ export default {
   display: flex;
   flex-direction: column;
   gap: 24px;
+}
+
+.import-actions {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
 }
 
 .glass-panel,

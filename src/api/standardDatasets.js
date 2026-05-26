@@ -113,6 +113,22 @@ export function uploadStandardDatasetChunked(datasetId, file, options = {}) {
     });
 }
 
+export async function importStandardDatasetFromPath(
+    datasetId,
+    { root_id = 'default', path, storage_strategy = 'link', created_by = null, message = null } = {}
+) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    if (path == null) throw new Error('请选择导入目录');
+    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/import-from-path`, {
+        root_id,
+        path: path || '',
+        mode: 'upload',
+        storage_strategy,
+        created_by: created_by || undefined,
+        message: message || undefined,
+    });
+}
+
 /**
  * 【已废弃】单次整包上传，仅保留作为后端未实现分片接口时的兼容降级。
  * 新代码请使用 uploadStandardDatasetChunked。

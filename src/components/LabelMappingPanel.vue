@@ -950,10 +950,9 @@ export default {
 .panel-footer {
   padding: 12px 20px;
   border-top: 1px solid #f1f5f9;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
   gap: 10px;
   flex-shrink: 0;
 }
@@ -963,6 +962,7 @@ export default {
   align-items: center;
   gap: 6px;
   flex-wrap: wrap;
+  min-width: 0;
 }
 
 .stat {
@@ -1002,6 +1002,20 @@ export default {
 .action-row {
   display: flex;
   gap: 8px;
+  justify-self: end;
+  align-self: end;
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+
+@media (max-width: 760px) {
+  .panel-footer {
+    grid-template-columns: 1fr;
+  }
+
+  .action-row {
+    justify-self: end;
+  }
 }
 
 .slice-dialog-hint {

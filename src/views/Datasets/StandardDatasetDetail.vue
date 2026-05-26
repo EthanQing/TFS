@@ -54,6 +54,9 @@
             </div>
           </div>
           <div class="empty-action">
+            <div class="import-actions">
+              <el-button type="primary" plain @click="mountedImportVisible = true">从挂载目录导入</el-button>
+            </div>
             <UploadZip :dataset-id="datasetId" dataset-kind="standard" mode="upload" :external-file.sync="uploadFile"
               :external-uploading.sync="uploading" :external-progress.sync="uploadProgress"
               @upload-success="handleUploadSuccess" @upload-fail="handleUploadFail"
@@ -221,12 +224,20 @@
       class="augmentation-dialog preview-enabled">
       <ManualAugmentationPanel v-if="showAugmentationDialog" :dataset-id="datasetId" @published="handlePublished" />
     </el-dialog>
+    <MountedImportDialog
+      :visible.sync="mountedImportVisible"
+      :dataset-id="datasetId"
+      dataset-kind="standard"
+      mode="upload"
+      @imported="handleMountedImportSuccess"
+    />
   </div>
 </template>
 
 <script>
 import UploadZip from '@/components/Upload/index.vue';
 import ManualAugmentationPanel from '@/views/Datasets/components/ManualAugmentationPanel.vue';
+import MountedImportDialog from '@/views/Datasets/components/MountedImportDialog.vue';
 import {
   fetchStandardDatasetAnnotations,
   fetchStandardDatasetDetail,
@@ -237,7 +248,7 @@ import {
 
 export default {
   name: 'StandardDatasetDetail',
-  components: { UploadZip, ManualAugmentationPanel },
+  components: { UploadZip, ManualAugmentationPanel, MountedImportDialog },
   data() {
     return {
       datasetId: this.$route.query.id || '',
@@ -250,6 +261,7 @@ export default {
       uploadFile: null,
       uploading: false,
       uploadProgress: 0,
+      mountedImportVisible: false,
       // 分页加载
       loadingMore: false,
       viewTotalCount: 0,
@@ -773,6 +785,10 @@ export default {
       this.$message.success('标准数据集上传成功');
       this.loadAll();
     },
+    handleMountedImportSuccess() {
+      this.mountedImportVisible = false;
+      this.loadAll();
+    },
     handleUploadFail(error) {
       const title = error && error.title ? error.title : '上传失败';
       const detail = error && error.detail ? error.detail : (error && error.message ? error.message : error || '未知错误');
@@ -801,6 +817,12 @@ export default {
   gap: 24px;
   height: 100%;
   overflow: hidden;
+}
+
+.import-actions {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 12px;
 }
 
 .glass-panel,

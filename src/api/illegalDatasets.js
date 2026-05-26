@@ -262,6 +262,22 @@ export async function publishIllegalDataset(
     });
 }
 
+export async function importIllegalDatasetFromPath(
+    datasetId,
+    { root_id = 'default', path, mode = 'upload', storage_strategy = 'link', created_by = null, message = null } = {}
+) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    if (path == null) throw new Error('请选择导入目录');
+    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/import-from-path`, {
+        root_id,
+        path: path || '',
+        mode: mode || 'upload',
+        storage_strategy,
+        created_by: created_by || undefined,
+        message: message || undefined,
+    });
+}
+
 export async function createIllegalDatasetPublishJob(
     datasetId,
     {
