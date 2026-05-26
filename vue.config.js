@@ -67,6 +67,7 @@ console.log(`[TFS] dev proxy /api -> ${DEV_API_TARGET}`);
 module.exports = defineConfig({
   transpileDependencies: true,
   lintOnSave: false,
+  productionSourceMap: false,
 
   // 设置页面标题
   chainWebpack: config => {
