@@ -82,6 +82,40 @@
               <i class="el-icon-document-remove"></i>
               <span>当前版本尚未识别到可映射的原始标签，请先上传并确认数据内容。</span>
             </div>
+
+            <div v-if="publishJobVisible" class="publish-progress-panel" :class="`status-${publishJobStatus}`">
+              <div class="publish-progress-head">
+                <div class="publish-progress-title-wrap">
+                  <div class="publish-progress-title">转换进度</div>
+                  <div class="publish-progress-sub">
+                    <span>{{ publishPhaseLabel(publishJobPhase, publishJobStatus) }}</span>
+                    <span v-if="publishJobId">任务 {{ shortPublishJobId }}</span>
+                  </div>
+                </div>
+                <el-tag size="small" :type="publishStatusTagType">{{ publishStatusLabel(publishJobStatus) }}</el-tag>
+              </div>
+              <el-progress
+                :percentage="publishJobPercent"
+                :status="publishProgressBarStatus"
+                :stroke-width="12"
+              />
+              <div class="publish-progress-meta">
+                <span v-if="publishJobProcessedText">{{ publishJobProcessedText }}</span>
+                <span v-if="publishJobUpdatedAtText">更新于 {{ publishJobUpdatedAtText }}</span>
+              </div>
+              <div v-if="publishJobError" class="publish-progress-error">
+                {{ publishJobError }}
+              </div>
+              <div v-if="publishJobLogs.length" class="publish-progress-logs">
+                <div
+                  v-for="(item, index) in publishJobLogs"
+                  :key="`${index}-${item}`"
+                  class="publish-progress-log"
+                >
+                  {{ item }}
+                </div>
+              </div>
+            </div>
           </template>
         </div>
 
@@ -377,6 +411,12 @@ export default {
       publishJobId: '',
       publishJobPhase: '',
       publishJobProgress: 0,
+      publishJobStatus: '',
+      publishJobProcessed: 0,
+      publishJobTotal: 0,
+      publishJobLogs: [],
+      publishJobError: '',
+      publishJobUpdatedAt: '',
       publishJobPollToken: 0,
     };
   },
@@ -483,6 +523,45 @@ export default {
       if (Number.isNaN(date.getTime())) return String(raw);
       return date.toLocaleString();
     },
+    publishJobVisible() {
+      return Boolean(this.publishJobId || this.publishJobStatus || this.publishing);
+    },
+    publishJobPercent() {
+      const value = Number(this.publishJobProgress);
+      if (!Number.isFinite(value)) return 0;
+      return Math.max(0, Math.min(100, Math.round(value)));
+    },
+    publishStatusTagType() {
+      const status = String(this.publishJobStatus || '').toLowerCase();
+      if (status === 'completed') return 'success';
+      if (status === 'failed') return 'danger';
+      if (status === 'cancelled') return 'info';
+      return 'warning';
+    },
+    publishProgressBarStatus() {
+      const status = String(this.publishJobStatus || '').toLowerCase();
+      if (status === 'completed') return 'success';
+      if (status === 'failed') return 'exception';
+      return undefined;
+    },
+    shortPublishJobId() {
+      const raw = String(this.publishJobId || '');
+      if (raw.length <= 12) return raw;
+      return `${raw.slice(0, 8)}...${raw.slice(-4)}`;
+    },
+    publishJobProcessedText() {
+      const total = Number(this.publishJobTotal) || 0;
+      const processed = Number(this.publishJobProcessed) || 0;
+      if (total > 0) return `已处理 ${processed}/${total} 个样本`;
+      if (processed > 0) return `已处理 ${processed} 个样本`;
+      return '';
+    },
+    publishJobUpdatedAtText() {
+      if (!this.publishJobUpdatedAt) return '';
+      const date = new Date(this.publishJobUpdatedAt);
+      if (Number.isNaN(date.getTime())) return String(this.publishJobUpdatedAt);
+      return date.toLocaleTimeString();
+    },
   },
   watch: {
     '$route.query.id'(nextId) {
@@ -553,6 +632,43 @@ export default {
     stopPublishJobPolling() {
       this.publishJobPollToken += 1;
     },
+    publishStatusLabel(status) {
+      const key = String(status || '').trim().toLowerCase();
+      const map = {
+        queued: '排队中',
+        running: '进行中',
+        completed: '已完成',
+        failed: '失败',
+        cancelled: '已取消',
+      };
+      return map[key] || '等待中';
+    },
+    updatePublishJobState(job) {
+      const payload = job && typeof job === 'object' ? job : {};
+      this.publishJobId = String(payload.job_id || this.publishJobId || '');
+      this.publishJobStatus = String(payload.status || this.publishJobStatus || '');
+      this.publishJobPhase = String(payload.phase || payload.status || this.publishJobPhase || '');
+      this.publishJobProgress = Number(payload.progress) || 0;
+      this.publishJobProcessed = Number(payload.processed) || 0;
+      this.publishJobTotal = Number(payload.total) || 0;
+      this.publishJobError = String(payload.error_message || '');
+      this.publishJobUpdatedAt = String(payload.updated_at || '');
+      const logs = Array.isArray(payload.logs) ? payload.logs : [];
+      this.publishJobLogs = logs.map((item) => String(item || '').trim()).filter(Boolean).slice(-6);
+    },
+    resetPublishJobState({ keepLast = false } = {}) {
+      this.publishJobPollToken += 1;
+      if (keepLast) return;
+      this.publishJobId = '';
+      this.publishJobPhase = '';
+      this.publishJobProgress = 0;
+      this.publishJobStatus = '';
+      this.publishJobProcessed = 0;
+      this.publishJobTotal = 0;
+      this.publishJobLogs = [];
+      this.publishJobError = '';
+      this.publishJobUpdatedAt = '';
+    },
     publishPhaseLabel(phase, status = '') {
       const key = String(phase || status || '').trim().toLowerCase();
       const map = {
@@ -567,14 +683,107 @@ export default {
       };
       return map[key] || '执行中';
     },
+    normalizePublishNoticeItems(value) {
+      const rawList = Array.isArray(value)
+        ? value
+        : (typeof value === 'string' ? value.split(/\r?\n/) : []);
+      const seen = new Set();
+      const out = [];
+      rawList.forEach((item) => {
+        let text = '';
+        if (item && typeof item === 'object') {
+          const path = String(item.path || item.file || item.name || '').trim();
+          const reason = String(item.reason || item.message || item.detail || '').trim();
+          text = path && reason ? `${path}: ${reason}` : (path || reason || JSON.stringify(item));
+        } else {
+          text = String(item || '').trim();
+        }
+        if (!text || seen.has(text)) return;
+        seen.add(text);
+        out.push(text);
+      });
+      return out;
+    },
+    collectPublishResultNotice(result) {
+      const payload = result && typeof result === 'object' ? result : {};
+      const publishConfig = payload.publish_config && typeof payload.publish_config === 'object'
+        ? payload.publish_config
+        : {};
+      const conversionResult = payload.conversion_result && typeof payload.conversion_result === 'object'
+        ? payload.conversion_result
+        : (publishConfig.conversion_result && typeof publishConfig.conversion_result === 'object'
+          ? publishConfig.conversion_result
+          : {});
+      const warnings = this.normalizePublishNoticeItems([
+        ...this.normalizePublishNoticeItems(conversionResult.warnings),
+        ...this.normalizePublishNoticeItems(payload.warnings),
+        ...this.normalizePublishNoticeItems(publishConfig.warnings),
+      ]);
+      const skippedDetails = this.normalizePublishNoticeItems([
+        ...this.normalizePublishNoticeItems(conversionResult.skipped_details),
+        ...this.normalizePublishNoticeItems(payload.skipped_details),
+        ...this.normalizePublishNoticeItems(publishConfig.skipped_details),
+      ]);
+      const skippedCount = Number(conversionResult.pairs_skipped ?? conversionResult.skipped ?? skippedDetails.length) || skippedDetails.length;
+      if (!warnings.length && !skippedDetails.length && skippedCount <= 0) return null;
+      return {
+        warnings,
+        skippedDetails,
+        skippedCount,
+        processed: Number(conversionResult.pairs_processed) || 0,
+        total: Number(conversionResult.pairs_total) || 0,
+      };
+    },
+    showPublishResultNotice(result) {
+      const notice = this.collectPublishResultNotice(result);
+      if (!notice) return;
+
+      const h = this.$createElement;
+      const warningLimit = 5;
+      const skippedLimit = 8;
+      const summary = [];
+      if (notice.total > 0) summary.push(`已处理 ${notice.processed}/${notice.total} 个成对样本`);
+      if (notice.skippedCount > 0) summary.push(`跳过 ${notice.skippedCount} 项未成对或异常数据`);
+      if (notice.warnings.length > 0) summary.push(`${notice.warnings.length} 条转换提醒`);
+
+      const children = [
+        h('div', { style: { marginBottom: '6px' } }, `${summary.join('，') || '转换过程中有数据被跳过'}；标准数据集已正常生成。`),
+      ];
+      if (notice.warnings.length) {
+        children.push(h('div', { style: { fontWeight: 600, marginTop: '6px' } }, '告警'));
+        children.push(h(
+          'ul',
+          { style: { margin: '2px 0 0 18px', padding: 0 } },
+          notice.warnings.slice(0, warningLimit).map((item) => h('li', item))
+        ));
+      }
+      if (notice.skippedDetails.length) {
+        children.push(h('div', { style: { fontWeight: 600, marginTop: '6px' } }, '跳过明细'));
+        children.push(h(
+          'ul',
+          { style: { margin: '2px 0 0 18px', padding: 0 } },
+          notice.skippedDetails.slice(0, skippedLimit).map((item) => h('li', item))
+        ));
+      }
+      const hiddenCount = Math.max(0, notice.warnings.length - warningLimit)
+        + Math.max(0, notice.skippedDetails.length - skippedLimit);
+      if (hiddenCount > 0) {
+        children.push(h('div', { style: { color: '#909399', marginTop: '6px' } }, `还有 ${hiddenCount} 条明细未展示。`));
+      }
+
+      this.$notify({
+        title: '转换完成，存在兼容提醒',
+        type: 'warning',
+        message: h('div', { style: { lineHeight: '1.55' } }, children),
+        duration: 16000,
+      });
+    },
     async waitForPublishJob(jobId) {
       const token = Date.now();
       this.publishJobPollToken = token;
       while (this.publishJobPollToken === token) {
         const job = await fetchIllegalDatasetPublishJob(this.datasetId, jobId);
-        this.publishJobId = String(job && job.job_id || '');
-        this.publishJobPhase = String(job && (job.phase || job.status) || '');
-        this.publishJobProgress = Number(job && job.progress) || 0;
+        this.updatePublishJobState(job);
 
         const status = String(job && job.status || '').trim().toLowerCase();
         if (status === 'completed') {
@@ -1140,7 +1349,7 @@ export default {
       }
 
       this.publishing = true;
-      this.stopPublishJobPolling();
+      this.resetPublishJobState();
       try {
         const job = await createIllegalDatasetPublishJob(this.datasetId, {
           name,
@@ -1153,9 +1362,7 @@ export default {
         if (!jobId) {
           throw new Error('服务端未返回转换任务 ID');
         }
-        this.publishJobId = jobId;
-        this.publishJobPhase = String(job.phase || job.status || '');
-        this.publishJobProgress = Number(job.progress) || 0;
+        this.updatePublishJobState({ ...job, job_id: jobId });
         this.$message.info(`转换任务已提交：${this.publishPhaseLabel(this.publishJobPhase, job.status)}`);
 
         const finalJob = await this.waitForPublishJob(jobId);
@@ -1165,6 +1372,7 @@ export default {
           throw new Error('转换任务已完成，但未返回标准数据集 ID');
         }
         this.$message.success(`标准数据集已转换完成：#${standardDatasetId}`);
+        this.showPublishResultNotice(result);
         if (standardDatasetId) {
           this.$confirm('标准数据集已生成，是否立即前往详情页查看？', '转换成功', {
             type: 'success',
@@ -1181,10 +1389,7 @@ export default {
           this.$message.error(`转换失败：${error.message || error}`);
         }
       } finally {
-        this.stopPublishJobPolling();
-        this.publishJobId = '';
-        this.publishJobPhase = '';
-        this.publishJobProgress = 0;
+        this.resetPublishJobState({ keepLast: true });
         this.publishing = false;
       }
     },
@@ -1534,6 +1739,87 @@ export default {
 
 .legacy-mapping-wrap {
   margin-bottom: 4px;
+}
+
+.publish-progress-panel {
+  padding: 14px 16px;
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px;
+  background: #f8fafc;
+}
+
+.publish-progress-panel.status-running,
+.publish-progress-panel.status-queued {
+  border-color: rgba(37, 99, 235, 0.24);
+  background: #eff6ff;
+}
+
+.publish-progress-panel.status-completed {
+  border-color: rgba(22, 163, 74, 0.24);
+  background: #f0fdf4;
+}
+
+.publish-progress-panel.status-failed {
+  border-color: rgba(220, 38, 38, 0.24);
+  background: #fef2f2;
+}
+
+.publish-progress-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.publish-progress-title-wrap {
+  min-width: 0;
+}
+
+.publish-progress-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.publish-progress-sub {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.publish-progress-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.publish-progress-error {
+  margin-top: 10px;
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.6;
+  word-break: break-word;
+}
+
+.publish-progress-logs {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  color: #475569;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.publish-progress-log {
+  padding-left: 10px;
+  border-left: 2px solid rgba(148, 163, 184, 0.55);
 }
 
 .publish-tip {

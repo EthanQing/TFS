@@ -71,14 +71,14 @@
           <div v-if="isUploading" class="uploading-state">
             <div class="upload-status-header">
               <span class="status-text">{{ stageDisplayLabel }}</span>
-              <span class="status-percent">{{ progress }}%</span>
+              <span class="status-percent">{{ displayProgress }}%</span>
             </div>
 
             <div class="progress-track">
               <div
                 class="progress-fill"
-                :class="{ 'processing': progress === 100 && isProcessing }"
-                :style="{ width: progress + '%' }"
+                :class="{ 'processing': displayProgress === 100 && isProcessing }"
+                :style="{ width: displayProgress + '%' }"
               ></div>
             </div>
 
@@ -217,6 +217,7 @@ export default {
       // 分片上传扩展状态
       serverStage: '',
       serverStageMessage: '',
+      serverProgress: 0,
       uploadAbortController: null,
       pollAbortController: null,
       taskId: null,
@@ -270,6 +271,14 @@ export default {
     },
     isProcessing() {
       return this.serverStage && !TERMINAL_STAGES.includes(this.serverStage);
+    },
+    isServerTaskActive() {
+      return !!this.taskId;
+    },
+    displayProgress() {
+      const raw = this.isServerTaskActive ? this.serverProgress : this.progress;
+      const value = Math.round(Number(raw) || 0);
+      return Math.max(0, Math.min(100, value));
     },
     stageDisplayLabel() {
       return STAGE_LABELS[this.serverStage] || this.serverStageMessage || '处理中...';
@@ -343,6 +352,7 @@ export default {
       this.errorMessage = '';
       this.serverStage = '';
       this.serverStageMessage = '';
+      this.serverProgress = 0;
       this.taskId = null;
       this.currentSessionId = null;
       this.cancelRequested = false;
@@ -471,6 +481,7 @@ export default {
       this.errorMessage = '';
       this.serverStage = '';
       this.serverStageMessage = '';
+      this.serverProgress = 0;
       this.taskId = null;
       this.cancelRequested = false;
       this.cancelEventSent = false;
@@ -526,6 +537,9 @@ export default {
           },
           onTaskReady: (taskId) => {
             this.taskId = taskId;
+            this.serverStage = 'queued';
+            this.serverStageMessage = STAGE_LABELS.queued;
+            this.serverProgress = 0;
             // 持久化任务信息，页面刷新后可恢复轮询
             saveUploadTask(this.datasetId, this.resolvedDatasetKind, taskId, {
               sessionId: this.currentSessionId,
@@ -577,7 +591,7 @@ export default {
           onStageChange: (stage, info) => {
             this.serverStage = stage;
             this.serverStageMessage = STAGE_LABELS[stage] || String(info && info.message || '处理中...');
-            this.progress = Math.max(this.progress, Number(info && info.progress) || 0);
+            this.serverProgress = Math.max(0, Math.min(100, Number(info && info.progress) || 0));
           },
         });
         // 任务成功完成
@@ -614,6 +628,7 @@ export default {
       // 有活跃任务，尝试恢复轮询
       this.isUploading = true;
       this.progress = 100;
+      this.serverProgress = 0;
       this.uploadStage = 'processing';
       this.serverStage = 'queued';
       this.serverStageMessage = '正在恢复任务状态...';
@@ -629,6 +644,7 @@ export default {
     handleFinalSuccess() {
       this.isUploading = false;
       this.progress = 100;
+      this.serverProgress = 100;
       this.uploadSuccess = true;
       this.serverStage = 'done';
 

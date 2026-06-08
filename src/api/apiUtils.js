@@ -392,6 +392,7 @@ export async function pollUploadTask(taskId, {
     const terminalStates = ['done', 'failed', 'cancelled'];
 
     let lastStage = '';
+    let lastProgress = -1;
 
     const wait = (ms) => new Promise((resolve) => {
         const timer = setTimeout(resolve, ms);
@@ -419,15 +420,18 @@ export async function pollUploadTask(taskId, {
         const status = String(data && data.status || '');
         const progress = Number(data && data.progress) || 0;
         const errorMessage = String(data && data.error_message || '').trim();
+        const message = String(data && data.message || '').trim();
 
-        // 通知阶段变化
-        if (stage && stage !== lastStage && typeof onStageChange === 'function') {
+        // 通知阶段或进度变化
+        if (stage && typeof onStageChange === 'function' && (stage !== lastStage || progress !== lastProgress || errorMessage)) {
             lastStage = stage;
+            lastProgress = progress;
             onStageChange(stage, {
                 status,
                 stage,
                 progress,
                 errorMessage: errorMessage || null,
+                message: message || null,
             });
         }
 
