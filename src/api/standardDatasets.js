@@ -5,7 +5,7 @@
 import {
     API_BASE, WS_BASE,
     safeJson, postJson, deleteJson, getJson,
-    xhrUploadJson, chunkedUpload,
+    chunkedUpload,
     toAbsUrl, encodePathSegments, formatMb,
     pickErrorMessage, createReconnectingWs,
 } from './apiUtils';
@@ -127,28 +127,6 @@ export async function importStandardDatasetFromPath(
         created_by: created_by || undefined,
         message: message || undefined,
     });
-}
-
-/**
- * 【已废弃】单次整包上传，仅保留作为后端未实现分片接口时的兼容降级。
- * 新代码请使用 uploadStandardDatasetChunked。
- * TODO: 后端分片接口稳定后删除此函数及其调用路径。
- */
-export function uploadStandardDatasetArchive(
-    datasetId,
-    file,
-    { created_by = null, onProgress = null, onUploadDone = null } = {}
-) {
-    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
-    const formData = new FormData();
-    formData.append('file', file);
-    if (created_by) formData.append('created_by', created_by);
-
-    return xhrUploadJson(
-        `${PREFIX}/${encodeURIComponent(datasetId)}/upload`,
-        formData,
-        { onProgress, onUploadDone }
-    );
 }
 
 // ── Events ────────────────────────────────────────────────────────────────

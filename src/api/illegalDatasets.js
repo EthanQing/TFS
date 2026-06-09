@@ -5,7 +5,8 @@
 import {
     API_BASE,
     safeJson, postJson, putJson, deleteJson, getJson,
-    xhrUploadJson, chunkedUpload,
+    xhrUploadJson,
+    chunkedUpload,
     toAbsUrl, encodePathSegments, formatMb, normalizeFileArray,
     pickErrorMessage,
 } from './apiUtils';
@@ -125,52 +126,6 @@ export function uploadIllegalDatasetChunked(datasetId, file, options = {}) {
     });
 }
 
-/**
- * 【已废弃】单次整包上传，仅保留作为后端未实现分片接口时的兼容降级。
- * 新代码请使用 uploadIllegalDatasetChunked({ mode: 'upload' })。
- * TODO: 后端分片接口稳定后删除此函数及其调用路径。
- */
-export function uploadIllegalDatasetArchive(
-    datasetId,
-    file,
-    { message = null, created_by = null, onProgress = null, onUploadDone = null } = {}
-) {
-    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
-    const formData = new FormData();
-    formData.append('file', file);
-    if (message) formData.append('message', message);
-    if (created_by) formData.append('created_by', created_by);
-
-    return xhrUploadJson(
-        `${PREFIX}/${encodeURIComponent(datasetId)}/upload`,
-        formData,
-        { onProgress, onUploadDone }
-    );
-}
-
-/**
- * 【已废弃】单次追加整包上传，仅保留作为后端未实现分片接口时的兼容降级。
- * 新代码请使用 uploadIllegalDatasetChunked({ mode: 'append' })。
- * TODO: 后端分片接口稳定后删除此函数及其调用路径。
- */
-export function appendIllegalDatasetArchive(
-    datasetId,
-    file,
-    { message = null, created_by = null, onProgress = null, onUploadDone = null } = {}
-) {
-    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
-    const formData = new FormData();
-    formData.append('file', file);
-    if (message) formData.append('message', message);
-    if (created_by) formData.append('created_by', created_by);
-
-    return xhrUploadJson(
-        `${PREFIX}/${encodeURIComponent(datasetId)}/append`,
-        formData,
-        { onProgress, onUploadDone }
-    );
-}
-
 export function uploadIllegalDatasetImages(datasetId, files, {
     relativeDir = 'images',
     labels = [],
@@ -238,29 +193,6 @@ export async function updateIllegalDatasetLabelMappings(datasetId, items) {
 }
 
 // ── Publish (illegal → standard) ──────────────────────────────────────────
-
-export async function publishIllegalDataset(
-    datasetId,
-    {
-        name,
-        description = null,
-        version_id = null,
-        label_filters = [],
-        label_mapping_overrides = null,
-        split = null,
-        publish_config = null,
-    } = {}
-) {
-    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/publish`, {
-        name,
-        description: description || undefined,
-        version_id: version_id != null && version_id !== '' ? Number(version_id) : undefined,
-        label_filters: Array.isArray(label_filters) ? label_filters : [],
-        label_mapping_overrides: label_mapping_overrides && typeof label_mapping_overrides === 'object' ? label_mapping_overrides : {},
-        split: split && typeof split === 'object' ? split : {},
-        publish_config: publish_config && typeof publish_config === 'object' ? publish_config : {},
-    });
-}
 
 export async function importIllegalDatasetFromPath(
     datasetId,
