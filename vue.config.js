@@ -65,9 +65,15 @@ const DEV_API_TARGET = resolveDevApiTarget();
 console.log(`[TFS] dev proxy /api -> ${DEV_API_TARGET}`);
 
 module.exports = defineConfig({
-  transpileDependencies: true,
+  transpileDependencies: false,
   lintOnSave: false,
   productionSourceMap: false,
+  configureWebpack: {
+    performance: {
+      maxAssetSize: 3 * 1024 * 1024,
+      maxEntrypointSize: 3 * 1024 * 1024,
+    },
+  },
 
   // 设置页面标题
   chainWebpack: config => {
