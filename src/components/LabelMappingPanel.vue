@@ -137,7 +137,7 @@
           保存映射
         </el-button>
         <el-button type="primary" size="small" :loading="converting" @click="handleSaveAndConvert"
-          :disabled="!hasValidMapping">
+          :disabled="!hasValidMapping || converting || saving">
           保存并转换
         </el-button>
       </div>

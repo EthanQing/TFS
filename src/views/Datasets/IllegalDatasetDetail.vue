@@ -1391,6 +1391,10 @@ export default {
       }
     },
     async publishToStandard({ mappingOverride = null, sliceParams = null, skipSaveMappings = false } = {}) {
+      if (this.publishing) {
+        this.$message.info('转换任务已提交，请等待当前任务完成');
+        return;
+      }
       const effectiveSliceParams = sliceParams || this.getPanelSliceParams();
       this.applySliceParamsToPublishForm(effectiveSliceParams);
       const effectiveMapping = mappingOverride || this.getPanelMappingObject();
