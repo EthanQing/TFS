@@ -98,7 +98,7 @@ const FRAMEWORK_FILTERS = [
 ];
 
 export default {
-  name: "Architecture",
+  name: "ModelArchitecture",
   data() {
     return {
       architectures: null,

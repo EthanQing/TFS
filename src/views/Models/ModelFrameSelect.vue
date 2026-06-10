@@ -364,11 +364,7 @@ export default {
                 openvino: ['FP32', 'FP16', 'INT8'],
                 paddlepaddle: ['FP32', 'FP16', 'INT8']
             };
-            const list = map[this.selectedFrame.id] || ['FP32'];
-            if (!list.includes(this.form.precision)) {
-                this.form.precision = list[0];
-            }
-            return list;
+            return map[this.selectedFrame.id] || ['FP32'];
         },
         recommendations() {
             const tips = {
@@ -405,9 +401,20 @@ export default {
             );
         }
     },
+    watch: {
+        selectedFrameworkId() {
+            this.ensurePrecisionAvailable();
+        }
+    },
     methods: {
         selectFrame(id) {
             this.selectedFrameworkId = id;
+        },
+        ensurePrecisionAvailable() {
+            const list = this.availablePrecisions;
+            if (!list.includes(this.form.precision)) {
+                this.form.precision = list[0];
+            }
         },
         resetConfig() {
             this.selectedFrameworkId = 'pytorch';

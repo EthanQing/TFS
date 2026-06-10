@@ -320,7 +320,7 @@
 
 <script>
 export default {
-    name: 'Hyperparameter',
+    name: 'TrainingHyperparameter',
     data() {
         return {
             isSearching: false,

@@ -139,10 +139,10 @@ export default {
         this.error = "无法创建日志 WebSocket 连接";
       }
     },
-    lineClass(_line) {
+    lineClass() {
       return "";
     },
-    prefixFor(_which) {
+    prefixFor() {
       return "";
     },
     appendLines(which, newLines, mode) {

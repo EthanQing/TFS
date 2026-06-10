@@ -77,7 +77,7 @@
           </thead>
           <tbody>
             <tr
-              v-for="(row, idx) in filteredRows"
+              v-for="row in filteredRows"
               :key="row.sourceLabel"
               :class="{ 'is-discarded': row.discarded, 'is-edited': row.manuallyEdited }"
             >

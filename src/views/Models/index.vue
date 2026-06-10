@@ -160,7 +160,7 @@ const FRAMEWORK_TABS = [
 ];
 
 export default {
-  name: "Models",
+  name: "ModelsIndex",
   data() {
     return {
       searchQuery: "",
@@ -184,7 +184,9 @@ export default {
             const p = JSON.parse(stored)
             if (p && (p.project_id === pid || p.project_id === Number(pid))) return p
           }
-        } catch (e) {}
+        } catch (e) {
+          0;
+        }
       }
       return this.selectedProject
     },

@@ -152,10 +152,10 @@
 
 <script>
 // Keep logic intact, update styling structures
-import { fetchProjects, createProject, deleteProject, FetchProjectModelsSize, FetchProjectsModelsSize } from "@/api/projects";
+import { fetchProjects, createProject, deleteProject, FetchProjectsModelsSize } from "@/api/projects";
 import { fetchStandardDatasets } from "@/api/standardDatasets";
 export default {
-  name: "Projects",
+  name: "ProjectsIndex",
   data() {
     return {
       searchQuery: "",
@@ -318,7 +318,9 @@ export default {
              this.$set(project, 'completed_models_count', (s?.completed_models_count) || 0);
              this.$set(project, 'total_size_mb', (s?.total_size_mb) || '0MB');
           });
-        } catch (_) {}
+        } catch (_) {
+          0;
+        }
       } catch (e) {
         console.error(e);
       }
@@ -328,7 +330,9 @@ export default {
         const list = await fetchStandardDatasets();
         this.datasetList = Array.isArray(list) ? list : [];
         this.hydrateProjectsWithDatasets();
-      } catch (e) {}
+      } catch (e) {
+        0;
+      }
     },
     formatDate(dateStr) {
       if (!dateStr) return '';
