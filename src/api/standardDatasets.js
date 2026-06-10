@@ -27,11 +27,12 @@ export function buildStandardThumbnailUrl(datasetId, relPath, { size = null } = 
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
 
-export async function fetchStandardDatasets({ page = 1, pageSize = 50 } = {}) {
+export async function fetchStandardDatasets({ page = 1, pageSize = 50, includeStatistics = true } = {}) {
     try {
         const params = new URLSearchParams();
         params.set('page', String(page));
         params.set('page_size', String(pageSize));
+        if (includeStatistics === false) params.set('include_statistics', 'false');
 
         const url = `${PREFIX}?${params.toString()}`;
         const data = await getJson(url);
@@ -41,7 +42,7 @@ export async function fetchStandardDatasets({ page = 1, pageSize = 50 } = {}) {
             dataset_name: item.name,
             dataset_type: item.dataset_type || item.type || 'detection',
             dataset_id: item.standard_dataset_id,
-            format: 'yolo',
+            format: item.format || 'yolo',
             num_images: item.statistics?.num_images ?? item.statistics?.total_images ?? item.statistics?.image_count ?? 0,
             num_classes: item.statistics?.num_classes || 0,
             dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
@@ -51,6 +52,22 @@ export async function fetchStandardDatasets({ page = 1, pageSize = 50 } = {}) {
         console.error('获取标准数据集失败:', error);
         return [];
     }
+}
+
+export async function fetchStandardDatasetOptions({ page = 1, pageSize = 500 } = {}) {
+    const list = await fetchStandardDatasets({
+        page,
+        pageSize,
+        includeStatistics: false,
+    });
+    return list.map(item => ({
+        standard_dataset_id: item.standard_dataset_id ?? item.dataset_id,
+        dataset_id: item.dataset_id ?? item.standard_dataset_id,
+        name: item.name || item.dataset_name,
+        dataset_name: item.dataset_name || item.name,
+        dataset_type: item.dataset_type || item.type || 'detection',
+        format: item.format || 'yolo',
+    }));
 }
 
 export async function createStandardDataset({ name, dataset_type, description = null } = {}) {

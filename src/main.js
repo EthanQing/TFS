@@ -13,8 +13,6 @@ import "@/styles/reset.css";
 import "@/styles/global.css";
 import "@/styles/element-overrides.css";
 
-import { preloadReferenceData } from "@/store/referenceStore";
-
 // 解决 ResizeObserver loop limit exceeded 报错 (ElTable 常规报错)
 const debounce = (fn, delay) => {
   let timer = null;
@@ -48,9 +46,6 @@ Vue.use(ElementUI);
 
 // 设置浏览器标题
 document.title = appConfig.appTitle;
-
-// Preload small reference lists so pages/components don't depend on visit order.
-preloadReferenceData();
 
 new Vue({
   render: h => h(App),

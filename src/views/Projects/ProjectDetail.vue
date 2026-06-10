@@ -209,6 +209,7 @@
 
 <script>
 import { FetchProjectsDetail } from '@/api/projects';
+import { fetchStandardDataset } from '@/api/standardDatasets';
 import {
   fetchTrainingJobs,
   startTrainingJob,
@@ -220,7 +221,6 @@ import {
 } from '@/api/training';
 import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
-import { referenceStore, loadDatasets } from '@/store/referenceStore';
 import { resolveFramework } from '@/utils/trainingFramework';
 import multiselectIcon from '@/assets/icon/Multiselect.svg';
 import selectAllOffIcon from '@/assets/icon/Select All Off.svg';
@@ -673,21 +673,23 @@ export default {
         const detail = await FetchProjectsDetail(projectId);
         this.projectInfo = detail;
 
-        // Enhance dataset info - use multiple fallback sources
+        // Enhance dataset info without loading the full standard dataset list.
         try {
-          // First, preserve any dataset info that might already be in the API response
+          const standardDatasetId = this.projectInfo.standard_dataset_id ?? this.projectInfo.dataset_id;
           if (!this.projectInfo.dataset && this.projectInfo.dataset_name) {
-            this.projectInfo.dataset = { dataset_name: this.projectInfo.dataset_name };
+            this.projectInfo.dataset = {
+              dataset_id: standardDatasetId,
+              dataset_name: this.projectInfo.dataset_name,
+              dataset_type: this.projectInfo.dataset_type,
+            };
           }
 
-          // Try to enhance with full dataset info from referenceStore
-          await loadDatasets();
-          const standardDatasetId = this.projectInfo.standard_dataset_id ?? this.projectInfo.dataset_id;
-          const ds = referenceStore.datasets.find(d => d.dataset_id === standardDatasetId);
-          if (ds) {
+          if (standardDatasetId && (!this.projectInfo.dataset || !this.projectInfo.dataset.dataset_name)) {
+            const ds = await fetchStandardDataset(standardDatasetId);
             this.projectInfo.dataset = {
-              dataset_id: ds.dataset_id,
-              dataset_name: ds.dataset_name
+              dataset_id: ds.standard_dataset_id ?? standardDatasetId,
+              dataset_name: ds.name || ds.dataset_name || `Standard Dataset #${standardDatasetId}`,
+              dataset_type: ds.dataset_type || this.projectInfo.dataset?.dataset_type,
             };
           }
         } catch (e) {

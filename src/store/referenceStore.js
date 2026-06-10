@@ -1,6 +1,6 @@
 import Vue from 'vue';
 
-import { fetchStandardDatasets } from '@/api/standardDatasets';
+import { fetchStandardDatasetOptions } from '@/api/standardDatasets';
 import { fetchProjects } from '@/api/projects';
 import { FetchArchitectureDetail } from '@/api/models';
 
@@ -31,6 +31,8 @@ export const referenceStore = Vue.observable({
   },
 });
 
+let datasetLoadPromise = null;
+
 function hydrateProjectsWithDatasets() {
   if (!Array.isArray(referenceStore.projects) || !Array.isArray(referenceStore.datasets)) return;
   const dsMap = new Map(referenceStore.datasets.map((d) => [Number(d.dataset_id), d]));
@@ -52,21 +54,28 @@ function hydrateProjectsWithDatasets() {
 }
 
 export async function loadDatasets({ force = false } = {}) {
-  if (referenceStore.loading.datasets) return;
-  if (referenceStore.loaded.datasets && !force) return;
+  if (referenceStore.loaded.datasets && !force) return referenceStore.datasets;
+  if (referenceStore.loading.datasets && datasetLoadPromise) return datasetLoadPromise;
+
   referenceStore.loading.datasets = true;
   referenceStore.error.datasets = '';
-  try {
-    const list = await fetchStandardDatasets({ page: 1, pageSize: 100 });
-    referenceStore.datasets = Array.isArray(list) ? list : [];
-    referenceStore.loaded.datasets = true;
-  } catch (e) {
-    referenceStore.datasets = [];
-    referenceStore.error.datasets = toErrorMessage(e);
-  } finally {
-    referenceStore.loading.datasets = false;
-  }
-  hydrateProjectsWithDatasets();
+  datasetLoadPromise = (async () => {
+    try {
+      const list = await fetchStandardDatasetOptions({ page: 1, pageSize: 500 });
+      referenceStore.datasets = Array.isArray(list) ? list : [];
+      referenceStore.loaded.datasets = true;
+    } catch (e) {
+      referenceStore.datasets = [];
+      referenceStore.error.datasets = toErrorMessage(e);
+    } finally {
+      referenceStore.loading.datasets = false;
+      datasetLoadPromise = null;
+      hydrateProjectsWithDatasets();
+    }
+    return referenceStore.datasets;
+  })();
+
+  return datasetLoadPromise;
 }
 
 export async function loadArchitectures({ force = false } = {}) {
@@ -104,5 +113,5 @@ export async function loadProjects({ force = false } = {}) {
 }
 
 export function preloadReferenceData() {
-  Promise.allSettled([loadDatasets(), loadProjects(), loadArchitectures()]).catch(() => {});
+  Promise.allSettled([loadProjects(), loadArchitectures()]).catch(() => {});
 }
