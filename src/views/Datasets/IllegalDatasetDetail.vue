@@ -358,6 +358,7 @@ import {
   createIllegalDatasetPublishJob,
   fetchIllegalDatasetPublishJob,
 } from '@/api/illegalDatasets';
+import { loadUploadTask } from '@/api/apiUtils';
 
 export default {
   name: 'IllegalDatasetDetail',
@@ -577,7 +578,9 @@ export default {
       this.datasetId = nextId;
       this.previewClassId = null;
       this.resetFilesState();
-      this.loadAll();
+      this.loadAll().finally(() => {
+        this.$nextTick(() => this.restoreActiveUploadTask());
+      });
     },
     // 监听 activeVersionId 变化，同步到 selectedVersionId
     activeVersionId: {
@@ -591,7 +594,9 @@ export default {
   },
   mounted() {
     this.loadIllegalLabelPresets({ silent: true });
-    this.loadAll();
+    this.loadAll().finally(() => {
+      this.$nextTick(() => this.restoreActiveUploadTask());
+    });
   },
   beforeDestroy() {
     this.stopPublishJobPolling();
@@ -1291,6 +1296,21 @@ export default {
         this.$message.error(`加载原始数据集失败：${error.message || error}`);
       } finally {
         this.loading = false;
+      }
+    },
+    restoreActiveUploadTask() {
+      if (!this.datasetId) return;
+      const saved = loadUploadTask(this.datasetId, 'illegal');
+      if (!saved || !saved.taskId) return;
+      const mode = String(saved.mode || '').trim().toLowerCase();
+      if (mode === 'append') {
+        if (!this.appendDialogVisible) {
+          this.appendDialogVisible = true;
+        }
+        return;
+      }
+      if (!this.isEmpty && !this.uploadDialogVisible) {
+        this.uploadDialogVisible = true;
       }
     },
     async loadFiles() {
