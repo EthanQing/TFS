@@ -85,13 +85,14 @@
           </div>
           <div class="card-actions">
             <el-tooltip content="修改名称" placement="top">
-              <button class="card-icon-btn" type="button" @click.stop="renameDataset(d)">
+              <button class="card-icon-btn" type="button" :disabled="isDeletingDataset(d.dataset_id)" @click.stop="renameDataset(d)">
                 <i class="el-icon-edit"></i>
               </button>
             </el-tooltip>
             <el-tooltip content="删除数据集" placement="top">
-              <button class="card-icon-btn danger" type="button" @click.stop="handleShowDeletePopup(d.dataset_id)">
-                <i class="el-icon-delete"></i>
+              <button class="card-icon-btn danger" type="button" :disabled="isDeletingDataset(d.dataset_id)"
+                @click.stop="handleShowDeletePopup(d.dataset_id)">
+                <i :class="isDeletingDataset(d.dataset_id) ? 'el-icon-loading' : 'el-icon-delete'"></i>
               </button>
             </el-tooltip>
           </div>
@@ -116,16 +117,19 @@
     </section>
 
     <!-- Custom Popup -->
-    <div v-if="showPopup" class="mask" @click="showPopup = false">
+    <div v-if="showPopup" class="mask" @click="closeDeletePopup">
       <div class="popup" @click.stop>
         <div class="popup-header">
           <i class="el-icon-warning text-warning"></i>
           <span>确认删除</span>
         </div>
-        <p class="popup-body">确定要删除此数据集吗？此操作不可撤销。</p>
+        <p class="popup-body">
+          确定要删除此数据集吗？此操作不可撤销。删除过程可能需要一点时间，请不要重复点击。
+        </p>
         <div class="popup-actions">
-          <el-button @click="showPopup = false">取消</el-button>
-          <el-button type="danger" @click="handleDelete(currentDatasetId)">删除</el-button>
+          <el-button :disabled="deleteSubmitting" @click="closeDeletePopup">取消</el-button>
+          <el-button type="danger" :loading="deleteSubmitting" :disabled="deleteSubmitting"
+            @click="handleDelete(currentDatasetId)">删除</el-button>
         </div>
       </div>
     </div>
@@ -207,6 +211,8 @@ export default {
       },
       showPopup: false,
       currentDatasetId: null,
+      deleteSubmitting: false,
+      deletingDatasetKey: '',
       createdDatasetId: null,
       creatingDataset: false,
       defaultPreview: defaultDatasetImg,
@@ -362,16 +368,30 @@ export default {
       // we might not need separate requests if we don't have the file paths here.
       // This is a placeholder for custom preview loading logic.
     },
+    datasetDeleteKey(id, kind = this.activeTab) {
+      return `${kind}:${id}`;
+    },
+    isDeletingDataset(id) {
+      return !!id && this.deletingDatasetKey === this.datasetDeleteKey(id);
+    },
+    closeDeletePopup() {
+      if (this.deleteSubmitting) return;
+      this.showPopup = false;
+    },
     async handleDelete(id) {
+      if (!id || this.deleteSubmitting) return;
+      const kind = this.activeTab;
+      this.deleteSubmitting = true;
+      this.deletingDatasetKey = this.datasetDeleteKey(id, kind);
       try {
-        if (this.activeTab === 'illegal') {
+        if (kind === 'illegal') {
           await deleteIllegalDataset(id, { force: false, deleteFiles: true });
         } else {
           await deleteStandardDataset(id, { force: false, deleteFiles: true });
         }
         this.showPopup = false;
-        this.fetchDatasetsList();
-        this.$message.success('Dataset deleted');
+        await this.fetchDatasetsList();
+        this.$message.success('数据集删除完成');
       } catch (error) {
         if (this.isDeleteConflict(error)) {
           this.showPopup = false;
@@ -381,13 +401,13 @@ export default {
               '确认强制删除',
               { type: 'warning', confirmButtonText: '强制删除', cancelButtonText: '取消' }
             );
-            if (this.activeTab === 'illegal') {
+            if (kind === 'illegal') {
               await deleteIllegalDataset(id, { force: true, deleteFiles: true });
             } else {
               await deleteStandardDataset(id, { force: true, deleteFiles: true });
             }
-            this.fetchDatasetsList();
-            this.$message.success('Dataset deleted');
+            await this.fetchDatasetsList();
+            this.$message.success('数据集删除完成');
           } catch (forceError) {
             if (forceError !== 'cancel' && forceError !== 'close') {
               this.$message.error(`Delete failed: ${forceError.message || forceError}`);
@@ -396,6 +416,9 @@ export default {
           return;
         }
         this.$message.error(`Delete failed: ${error.message}`);
+      } finally {
+        this.deleteSubmitting = false;
+        this.deletingDatasetKey = '';
       }
     },
     isDeleteConflict(error) {
@@ -404,6 +427,7 @@ export default {
       return msg.includes('cannot delete') || msg.includes('still reference');
     },
     handleShowDeletePopup(datasetId) {
+      if (this.isDeletingDataset(datasetId) || this.deleteSubmitting) return;
       this.currentDatasetId = datasetId;
       this.showPopup = true;
     },
@@ -725,6 +749,12 @@ export default {
   background: white;
   color: var(--color-primary);
   transform: scale(1.1);
+}
+
+.card-icon-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  transform: none;
 }
 
 .card-icon-btn.danger:hover {
