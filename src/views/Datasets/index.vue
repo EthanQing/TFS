@@ -325,6 +325,11 @@ export default {
     },
     seedPreviewFromCache() {
       this.datasets.forEach(d => {
+        if (this.activeTab === 'illegal') {
+          localStorage.removeItem(`ds_preview_illegal_${d.dataset_id}`);
+          this.$set(d, 'preview_image_url', '');
+          return;
+        }
         const key = `ds_preview_${this.activeTab}_${d.dataset_id}`;
         const cached = localStorage.getItem(key) || '';
         const backendPreview = d.preview_image_url || '';

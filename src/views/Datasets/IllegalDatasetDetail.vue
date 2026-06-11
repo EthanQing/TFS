@@ -145,30 +145,11 @@
               <div class="section-head">
                 <div>
                   <div class="section-title">数据内容</div>
-                  <div class="section-sub">保留当前原始数据集预览、文件与事件记录</div>
+                  <div class="section-sub">保留当前原始数据集文件与事件记录</div>
                 </div>
-                <el-select v-model="previewClassId" size="small" clearable placeholder="全部类别" @change="loadPreview">
-                  <el-option v-for="item in previewCategories" :key="item.class_id"
-                    :label="`${item.name} (${item.count})`" :value="item.class_id" />
-                </el-select>
               </div>
 
               <el-tabs v-model="activeTab" @tab-click="handleContentTabClick">
-                <el-tab-pane label="样本预览" name="preview">
-                  <div v-loading="loadingPreview" style="max-height: 400px; overflow-y: auto;">
-                    <div v-if="!previewItems.length" class="panel-empty">当前版本暂无可预览的图片。</div>
-                    <div v-else class="image-grid">
-                      <div v-for="item in previewItems" :key="item.id" class="image-card">
-                        <el-image :src="item.thumbnail_url || item.image_url" :preview-src-list="previewUrls"
-                          fit="cover" class="preview-image" />
-                        <div class="image-meta">
-                          <div class="image-name">{{ item.image_name }}</div>
-                          <div class="image-desc">{{ item.objects_count }} 个标注对象</div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </el-tab-pane>
                 <el-tab-pane label="文件列表" name="files">
                   <el-table v-loading="loadingFiles" :data="files" size="small" border :empty-text="filesEmptyText"
                     style="max-height: 400px; overflow-y: auto;">
@@ -350,7 +331,6 @@ import MountedImportDialog from '@/views/Datasets/components/MountedImportDialog
 import {
   fetchIllegalDatasetDetail,
   fetchIllegalDatasetFiles,
-  fetchIllegalDatasetView,
   fetchIllegalDatasetRawLabels,
   fetchIllegalDatasetLabelMappings,
   updateIllegalDatasetLabelMappings,
@@ -368,17 +348,14 @@ export default {
       datasetId: this.$route.query.id || '',
       loading: false,
       loadingMappings: false,
-      loadingPreview: false,
       loadingFiles: false,
       savingMappings: false,
       publishing: false,
-      activeTab: 'preview',
+      activeTab: 'events',
       detail: null,
       files: [],
       filesLoaded: false,
       filesLoadVersionId: null,
-      preview: { categories: [], items: [], meta: {} },
-      previewClassId: null,
       rawLabels: [],
       mappingRows: [],
       mappingPresetsLoading: false,
@@ -462,8 +439,6 @@ export default {
       return Number(this.statistics && this.statistics.total_images) || 0;
     },
     classCount() {
-      const previewCount = Array.isArray(this.preview && this.preview.categories) ? this.preview.categories.length : 0;
-      if (previewCount > 0) return previewCount;
       return this.publishTargetLabels.length;
     },
     datasetSizeText() {
@@ -473,15 +448,6 @@ export default {
     },
     isEmpty() {
       return !this.activeVersion || this.totalImages <= 0;
-    },
-    previewItems() {
-      return Array.isArray(this.preview && this.preview.items) ? this.preview.items : [];
-    },
-    previewCategories() {
-      return Array.isArray(this.preview && this.preview.categories) ? this.preview.categories : [];
-    },
-    previewUrls() {
-      return this.previewItems.map((item) => item.image_url).filter(Boolean);
     },
     mappingPanelLabels() {
       const values = new Set();
@@ -576,7 +542,6 @@ export default {
     '$route.query.id'(nextId) {
       if (!nextId || String(nextId) === String(this.datasetId)) return;
       this.datasetId = nextId;
-      this.previewClassId = null;
       this.resetFilesState();
       this.loadAll().finally(() => {
         this.$nextTick(() => this.restoreActiveUploadTask());
@@ -1286,7 +1251,6 @@ export default {
 
         this.publishForm.version_id = this.activeVersionId || null;
 
-        await this.loadPreview();
         if (this.activeTab === 'files') {
           this.loadFiles();
         }
@@ -1342,26 +1306,6 @@ export default {
         if (Number(versionId) === Number(this.activeVersionId)) {
           this.loadingFiles = false;
         }
-      }
-    },
-    async loadPreview() {
-      if (!this.datasetId || !this.activeVersionId) {
-        this.preview = { categories: [], items: [], meta: {} };
-        return;
-      }
-      this.loadingPreview = true;
-      try {
-        this.preview = await fetchIllegalDatasetView(this.datasetId, {
-          versionId: this.activeVersionId,
-          classId: this.previewClassId,
-          page: 1,
-          pageSize: 24,
-        });
-      } catch (error) {
-        console.error(error);
-        this.preview = { categories: [], items: [], meta: {} };
-      } finally {
-        this.loadingPreview = false;
       }
     },
     async handleLabelMappingSave(mapping, { silent = false } = {}) {

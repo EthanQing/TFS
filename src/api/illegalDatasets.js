@@ -13,20 +13,6 @@ import {
 
 const PREFIX = `${API_BASE}/api/v3/illegal-datasets`;
 
-// ── Thumbnail helper ──────────────────────────────────────────────────────
-
-export function buildIllegalThumbnailUrl(datasetId, relPath, { versionId = null, size = null } = {}) {
-    if (!datasetId || !relPath) return '';
-    const cleanRelPath = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
-    if (!cleanRelPath) return '';
-    const params = new URLSearchParams();
-    if (versionId != null && versionId !== '') params.set('version_id', String(versionId));
-    if (size != null && size !== '') params.set('size', String(size));
-    const qs = params.toString();
-    const base = `/api/v3/thumbnails/illegal/${encodeURIComponent(datasetId)}/${encodePathSegments(cleanRelPath)}`;
-    return toAbsUrl(qs ? `${base}?${qs}` : base);
-}
-
 export function buildIllegalVersionFileUrl(datasetId, versionId, relPath) {
     if (!datasetId || !versionId || !relPath) return '';
     const cleanRelPath = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
@@ -53,7 +39,7 @@ export async function fetchIllegalDatasets(page = 1, pageSize = 50) {
             num_images: item.statistics?.num_images ?? item.statistics?.total_images ?? item.statistics?.image_count ?? 0,
             num_classes: item.statistics?.num_classes || 0,
             dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
-            preview_image_url: toAbsUrl(item.preview_image_url || ''),
+            preview_image_url: '',
         }));
     } catch (error) {
         console.error('获取原始数据集失败:', error);
@@ -257,18 +243,12 @@ export async function fetchIllegalDatasetView(datasetId, { versionId = null, cla
         items: (data.items || []).map(item => {
             const relPath = String(item.path || item.name || '').trim();
             const backendImageUrl = item.image_url || item.url || '';
-            const backendThumbnailUrl = item.thumbnail_url || '';
             return {
                 ...item,
                 image_name: item.name,
                 image_path: relPath || item.name,
-                image_url: toAbsUrl(backendImageUrl) || (relPath
-                    ? buildIllegalThumbnailUrl(datasetId, relPath, { versionId })
-                    : ''),
-                thumbnail_url: toAbsUrl(
-                    backendThumbnailUrl ||
-                    (relPath ? buildIllegalThumbnailUrl(datasetId, relPath, { versionId, size: 320 }) : backendImageUrl)
-                ),
+                image_url: toAbsUrl(backendImageUrl),
+                thumbnail_url: '',
                 objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
                 classes_in_image: item.classes || [],
             };
