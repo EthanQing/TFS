@@ -7,7 +7,14 @@
         </button>
         <div class="hero-content">
           <div class="hero-kicker">标准数据集</div>
-          <h1 class="hero-title">{{ datasetName || '未命名标准数据集' }}</h1>
+          <div class="hero-title-row">
+            <h1 class="hero-title">{{ datasetName || '未命名标准数据集' }}</h1>
+            <el-tooltip content="修改名称" placement="top">
+              <button class="hero-edit-btn" type="button" @click="renameDataset">
+                <i class="el-icon-edit"></i>
+              </button>
+            </el-tooltip>
+          </div>
           <div class="hero-meta">
             <span class="meta-pill success">{{ datasetTypeLabel }}</span>
             <span class="meta-pill info">{{ datasetFormat }}</span>
@@ -244,6 +251,7 @@ import {
   fetchStandardDatasetSplitSummary,
   fetchStandardDatasetView,
   splitStandardDataset,
+  updateStandardDataset,
 } from '@/api/standardDatasets';
 
 export default {
@@ -432,6 +440,31 @@ export default {
     },
     async refreshAll() {
       await this.loadAll();
+    },
+    async renameDataset() {
+      const oldName = String(this.datasetName || '').trim();
+      try {
+        const { value } = await this.$prompt('请输入新的数据集名称', '修改标准数据集名称', {
+          confirmButtonText: '保存',
+          cancelButtonText: '取消',
+          inputValue: oldName,
+          inputPlaceholder: '数据集名称',
+          inputPattern: /\S+/,
+          inputErrorMessage: '数据集名称不能为空',
+          closeOnClickModal: false,
+        });
+        const newName = String(value || '').trim();
+        if (!newName || newName === oldName) return;
+        const updated = await updateStandardDataset(this.datasetId, { name: newName });
+        if (this.detail && this.detail.dataset) {
+          this.$set(this.detail.dataset, 'name', updated && updated.name ? updated.name : newName);
+          this.$set(this.detail.dataset, 'dataset_name', updated && updated.name ? updated.name : newName);
+        }
+        this.$message.success('数据集名称已更新');
+      } catch (error) {
+        if (error === 'cancel' || error === 'close') return;
+        this.$message.error(`修改失败：${error.message || error}`);
+      }
     },
     async loadAll() {
       if (!this.datasetId) {
@@ -871,6 +904,35 @@ export default {
   font-size: 32px;
   line-height: 1.2;
   color: #111827;
+  word-break: break-word;
+}
+
+.hero-title-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.hero-edit-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 1px solid #dbe4ee;
+  background: #fff;
+  color: #64748b;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  transition: all 0.2s ease;
+}
+
+.hero-edit-btn:hover {
+  color: #2563eb;
+  border-color: #93c5fd;
+  background: #eff6ff;
 }
 
 .hero-meta {

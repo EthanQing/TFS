@@ -83,9 +83,18 @@
               </div>
             </div>
           </div>
-          <button class="card-more" type="button" @click.stop="handleShowDeletePopup(d.dataset_id)">
-            <i class="el-icon-delete"></i>
-          </button>
+          <div class="card-actions">
+            <el-tooltip content="修改名称" placement="top">
+              <button class="card-icon-btn" type="button" @click.stop="renameDataset(d)">
+                <i class="el-icon-edit"></i>
+              </button>
+            </el-tooltip>
+            <el-tooltip content="删除数据集" placement="top">
+              <button class="card-icon-btn danger" type="button" @click.stop="handleShowDeletePopup(d.dataset_id)">
+                <i class="el-icon-delete"></i>
+              </button>
+            </el-tooltip>
+          </div>
         </div>
       </section>
 
@@ -158,8 +167,8 @@
 </template>
 
 <script>
-import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset } from "@/api/illegalDatasets";
-import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset } from "@/api/standardDatasets";
+import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset, updateIllegalDataset } from "@/api/illegalDatasets";
+import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset, updateStandardDataset } from "@/api/standardDatasets";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
@@ -397,6 +406,34 @@ export default {
     handleShowDeletePopup(datasetId) {
       this.currentDatasetId = datasetId;
       this.showPopup = true;
+    },
+    async renameDataset(dataset) {
+      if (!dataset || !dataset.dataset_id) return;
+      const oldName = String(dataset.dataset_name || dataset.name || '').trim();
+      try {
+        const { value } = await this.$prompt('请输入新的数据集名称', '修改数据集名称', {
+          confirmButtonText: '保存',
+          cancelButtonText: '取消',
+          inputValue: oldName,
+          inputPlaceholder: '数据集名称',
+          inputPattern: /\S+/,
+          inputErrorMessage: '数据集名称不能为空',
+          closeOnClickModal: false,
+        });
+        const newName = String(value || '').trim();
+        if (!newName || newName === oldName) return;
+        if (this.activeTab === 'illegal') {
+          await updateIllegalDataset(dataset.dataset_id, { name: newName });
+        } else {
+          await updateStandardDataset(dataset.dataset_id, { name: newName });
+        }
+        this.$set(dataset, 'name', newName);
+        this.$set(dataset, 'dataset_name', newName);
+        this.$message.success('数据集名称已更新');
+      } catch (error) {
+        if (error === 'cancel' || error === 'close') return;
+        this.$message.error(`修改失败：${error.message || error}`);
+      }
     },
     formatImageCount(count) {
       if (!count) return '0';
@@ -653,10 +690,19 @@ export default {
   color: #175cd3;
 }
 
-.card-more {
+.card-actions {
   position: absolute;
   top: 12px;
   right: 12px;
+  display: flex;
+  gap: 8px;
+  z-index: 2;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.2s;
+}
+
+.card-icon-btn {
   width: 32px;
   height: 32px;
   border-radius: 50%;
@@ -667,22 +713,22 @@ export default {
   justify-content: center;
   cursor: pointer;
   color: var(--text-secondary);
-  z-index: 2;
   transition: all 0.2s;
-  /* 默认隐藏 */
-  opacity: 0;
-  visibility: hidden;
 }
 
-.dataset-card:hover .card-more {
+.dataset-card:hover .card-actions {
   opacity: 1;
   visibility: visible;
 }
 
-.card-more:hover {
+.card-icon-btn:hover {
   background: white;
   color: var(--color-primary);
   transform: scale(1.1);
+}
+
+.card-icon-btn.danger:hover {
+  color: var(--color-danger);
 }
 
 .card-body {
