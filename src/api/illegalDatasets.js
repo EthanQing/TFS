@@ -7,22 +7,11 @@ import {
     safeJson, postJson, putJson, deleteJson, getJson,
     xhrUploadJson,
     chunkedUpload,
-    toAbsUrl, encodePathSegments, formatMb, normalizeFileArray,
+    toAbsUrl, formatMb, normalizeFileArray,
     pickErrorMessage,
 } from './apiUtils';
 
 const PREFIX = `${API_BASE}/api/v3/illegal-datasets`;
-
-export function buildIllegalVersionFileUrl(datasetId, versionId, relPath) {
-    if (!datasetId || !versionId || !relPath) return '';
-    const cleanRelPath = String(relPath || '').replace(/\\/g, '/').replace(/^\/+/, '');
-    if (!cleanRelPath) return '';
-    return toAbsUrl(
-        `/api/v3/illegal-datasets/${encodeURIComponent(datasetId)}` +
-        `/versions/${encodeURIComponent(versionId)}` +
-        `/files/${encodePathSegments(cleanRelPath)}`
-    );
-}
 
 // ── CRUD ──────────────────────────────────────────────────────────────────
 
@@ -265,25 +254,6 @@ export async function fetchIllegalDatasetView(datasetId, { versionId = null, cla
     };
 }
 
-export async function fetchIllegalDatasetAnnotations(datasetId, imagePath, { versionId = null } = {}) {
-    if (!datasetId) throw new Error('缺少 datasetId');
-    if (!imagePath) throw new Error('缺少 imagePath');
-    const params = new URLSearchParams();
-    params.set('image_path', String(imagePath));
-    if (versionId != null && versionId !== '') params.set('version_id', String(versionId));
-
-    const url = `${PREFIX}/${encodeURIComponent(datasetId)}/image-annotations?${params.toString()}`;
-    const data = await getJson(url);
-    return {
-        ...data,
-        image_url: toAbsUrl(data?.image_url || ''),
-        boxes: Array.isArray(data?.boxes) ? data.boxes : [],
-        object_count: Number(data?.object_count || 0) || 0,
-        width: Number(data?.width || 0) || 0,
-        height: Number(data?.height || 0) || 0,
-    };
-}
-
 export async function fetchIllegalDatasetStatistics(datasetId, { versionId = null } = {}) {
     const params = new URLSearchParams();
     if (versionId != null && versionId !== '') params.set('version_id', String(versionId));
@@ -297,22 +267,5 @@ export async function fetchIllegalDatasetStatistics(datasetId, { versionId = nul
         num_images: totalImages,
         dataset_size_mb: formatMb(totalSizeMb),
         num_classes: Number(stats?.num_classes ?? 0) || 0,
-    };
-}
-
-export async function fetchIllegalDatasetFiles(datasetId, { page = 1, pageSize = 100, versionId = null } = {}) {
-    const params = new URLSearchParams();
-    params.set('page', String(page));
-    params.set('page_size', String(pageSize));
-    if (versionId != null && versionId !== '') params.set('version_id', String(versionId));
-
-    const url = `${PREFIX}/${encodeURIComponent(datasetId)}/files?${params.toString()}`;
-    const data = await getJson(url);
-    return {
-        ...data,
-        items: (data.items || []).map(file => ({
-            ...file,
-            url: file.url ? toAbsUrl(file.url) : '',
-        })),
     };
 }

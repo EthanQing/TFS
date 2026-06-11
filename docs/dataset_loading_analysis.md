@@ -88,7 +88,7 @@
 | 2 | `fetchIllegalDatasetRawLabels()` | `GET /api/v3/illegal-datasets/{id}/raw-labels` | - | 所有不重复原始标签 |
 | 3 | `fetchIllegalDatasetLabelMappings()` | `GET /api/v3/illegal-datasets/{id}/label-mappings` | - | 已保存映射关系 |
 
-文件列表仅在用户切换到“文件列表”tab 后调用 `GET /api/v3/illegal-datasets/{id}/files`。非法数据集已取消样本预览，详情页不再调用 `/view` 或非法缩略图接口。
+非法数据集已取消样本预览、缩略图、文件列表、原图打开和图片标注查看。详情页不再调用 `/view`、`/files`、`/versions/{version_id}/files/{file_path}`、`/image-annotations` 或非法缩略图接口。
 
 **首屏总计: 3 个 HTTP 请求**。
 
@@ -155,16 +155,15 @@
 | # | 接口 | 现象 | 排查方向 |
 |---|------|------|----------|
 | 5 | `GET /api/v3/illegal-datasets/{id}/raw-labels` | 大 ZIP 可能上万个标签，返回全量 | 检查是否全量返回；建议加分页或限制 |
-| 6 | `GET /api/v3/illegal-datasets/{id}/files?page_size=100` | 文件树遍历 | 检查是否递归扫描整个数据集目录 |
-| 7 | `GET /api/v3/standard-datasets/{id}/view?class_id={N}` | class_id 过滤可能未生效 | 验证带 class_id 参数的响应体 items 是否确实被过滤 |
+| 6 | `GET /api/v3/standard-datasets/{id}/view?class_id={N}` | class_id 过滤可能未生效 | 验证带 class_id 参数的响应体 items 是否确实被过滤 |
 
 ### 低优先级
 
 | # | 接口 | 说明 |
 |---|------|------|
-| 8 | `GET .../split?page_size=1` | 轻量，仅 1 条记录 |
-| 9 | `GET .../label-mappings` | 仅返回已保存映射，通常量不大 |
-| 10 | `GET .../image-annotations?image_path=...` | 单张图片标注，按需触发 |
+| 7 | `GET .../split?page_size=1` | 轻量，仅 1 条记录 |
+| 8 | `GET .../label-mappings` | 仅返回已保存映射，通常量不大 |
+| 9 | `GET /api/v3/standard-datasets/{id}/image-annotations?image_path=...` | 标准数据集单张图片标注，按需触发 |
 
 ---
 
@@ -215,9 +214,7 @@
 - `fetchIllegalDatasetStatistics` (单独统计)
 - `fetchIllegalDatasetVersions` (版本分页)
 - `fetchIllegalDatasetEvents` (事件分页)
-- `fetchIllegalDatasetAnnotations` (标注查询)
-
-这些目前属于死代码，如果后端对应接口也不存在或未优化，无需关注。如果要后续使用，届时再接入。
+非法数据集文件浏览和图片标注封装已删除，不再作为待启用死代码保留。以上函数目前属于死代码，如果后端对应接口也不存在或未优化，无需关注。如果要后续使用，届时再接入。
 
 ---
 

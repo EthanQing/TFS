@@ -145,40 +145,18 @@
               <div class="section-head">
                 <div>
                   <div class="section-title">数据内容</div>
-                  <div class="section-sub">保留当前原始数据集文件与事件记录</div>
+                  <div class="section-sub">保留当前原始数据集事件记录</div>
                 </div>
               </div>
 
-              <el-tabs v-model="activeTab" @tab-click="handleContentTabClick">
-                <el-tab-pane label="文件列表" name="files">
-                  <el-table v-loading="loadingFiles" :data="files" size="small" border :empty-text="filesEmptyText"
-                    style="max-height: 400px; overflow-y: auto;">
-                    <el-table-column prop="path" label="路径" min-width="360" show-overflow-tooltip />
-                    <el-table-column label="大小" width="140">
-                      <template slot-scope="scope">{{ formatBytes(scope.row.size_bytes) }}</template>
-                    </el-table-column>
-                    <el-table-column label="修改时间" width="180">
-                      <template slot-scope="scope">{{ formatTime(scope.row.mtime) }}</template>
-                    </el-table-column>
-                    <el-table-column label="下载" width="100" align="center">
-                      <template slot-scope="scope">
-                        <el-link v-if="scope.row.url" :href="scope.row.url" target="_blank" type="primary">打开</el-link>
-                        <span v-else>-</span>
-                      </template>
-                    </el-table-column>
-                  </el-table>
-                </el-tab-pane>
-                <el-tab-pane label="事件记录" name="events">
-                  <el-table :data="events" size="small" border empty-text="暂无事件"
-                    style="max-height: 400px; overflow-y: auto;">
-                    <el-table-column prop="event_type" label="事件类型" width="180" />
-                    <el-table-column prop="message" label="消息" min-width="280" show-overflow-tooltip />
-                    <el-table-column label="时间" width="180">
-                      <template slot-scope="scope">{{ formatDate(scope.row.created_at) }}</template>
-                    </el-table-column>
-                  </el-table>
-                </el-tab-pane>
-              </el-tabs>
+              <el-table :data="events" size="small" border empty-text="暂无事件"
+                style="max-height: 400px; overflow-y: auto;">
+                <el-table-column prop="event_type" label="事件类型" width="180" />
+                <el-table-column prop="message" label="消息" min-width="280" show-overflow-tooltip />
+                <el-table-column label="时间" width="180">
+                  <template slot-scope="scope">{{ formatDate(scope.row.created_at) }}</template>
+                </el-table-column>
+              </el-table>
             </section>
           </div>
 
@@ -330,7 +308,6 @@ import LabelMappingPanel from '@/components/LabelMappingPanel.vue';
 import MountedImportDialog from '@/views/Datasets/components/MountedImportDialog.vue';
 import {
   fetchIllegalDatasetDetail,
-  fetchIllegalDatasetFiles,
   fetchIllegalDatasetRawLabels,
   fetchIllegalDatasetLabelMappings,
   updateIllegalDatasetLabelMappings,
@@ -348,14 +325,9 @@ export default {
       datasetId: this.$route.query.id || '',
       loading: false,
       loadingMappings: false,
-      loadingFiles: false,
       savingMappings: false,
       publishing: false,
-      activeTab: 'events',
       detail: null,
-      files: [],
-      filesLoaded: false,
-      filesLoadVersionId: null,
       rawLabels: [],
       mappingRows: [],
       mappingPresetsLoading: false,
@@ -532,17 +504,11 @@ export default {
       if (Number.isNaN(date.getTime())) return String(this.publishJobUpdatedAt);
       return date.toLocaleTimeString();
     },
-    filesEmptyText() {
-      if (this.loadingFiles) return '正在加载文件列表...';
-      if (!this.filesLoaded) return '切换到文件列表后加载';
-      return '暂无文件';
-    },
   },
   watch: {
     '$route.query.id'(nextId) {
       if (!nextId || String(nextId) === String(this.datasetId)) return;
       this.datasetId = nextId;
-      this.resetFilesState();
       this.loadAll().finally(() => {
         this.$nextTick(() => this.restoreActiveUploadTask());
       });
@@ -1217,17 +1183,6 @@ export default {
     async refreshAll() {
       await this.loadAll();
     },
-    resetFilesState() {
-      this.files = [];
-      this.filesLoaded = false;
-      this.filesLoadVersionId = null;
-    },
-    handleContentTabClick(tab) {
-      const name = tab && tab.name ? tab.name : this.activeTab;
-      if (name === 'files') {
-        this.loadFiles();
-      }
-    },
     async loadAll() {
       if (!this.datasetId) {
         this.$message.error('未找到原始数据集 ID');
@@ -1238,7 +1193,6 @@ export default {
         const detail = await fetchIllegalDatasetDetail(this.datasetId, { versionsLimit: 50, eventsLimit: 50 });
         this.detail = detail;
         this.presetApplyMode = this.datasetTypeValue === 'classification' ? 'classification' : 'detection';
-        this.resetFilesState();
 
         const [rawPayload, mappingPayload] = await Promise.all([
           fetchIllegalDatasetRawLabels(this.datasetId).catch(() => ({ labels: [] })),
@@ -1251,9 +1205,6 @@ export default {
 
         this.publishForm.version_id = this.activeVersionId || null;
 
-        if (this.activeTab === 'files') {
-          this.loadFiles();
-        }
         this.syncPanelFromSavedMappings();
       } catch (error) {
         console.error(error);
@@ -1275,37 +1226,6 @@ export default {
       }
       if (!this.isEmpty && !this.uploadDialogVisible) {
         this.uploadDialogVisible = true;
-      }
-    },
-    async loadFiles() {
-      if (!this.datasetId || !this.activeVersionId) {
-        this.resetFilesState();
-        this.filesLoaded = true;
-        return;
-      }
-      if (this.loadingFiles) return;
-      if (this.filesLoaded && Number(this.filesLoadVersionId) === Number(this.activeVersionId)) return;
-      this.loadingFiles = true;
-      const versionId = this.activeVersionId;
-      try {
-        const filePage = await fetchIllegalDatasetFiles(this.datasetId, {
-          page: 1,
-          pageSize: 100,
-          versionId,
-        });
-        if (Number(versionId) !== Number(this.activeVersionId)) return;
-        this.files = Array.isArray(filePage && filePage.items) ? filePage.items : [];
-        this.filesLoaded = true;
-        this.filesLoadVersionId = versionId;
-      } catch (error) {
-        console.error(error);
-        if (Number(versionId) !== Number(this.activeVersionId)) return;
-        this.files = [];
-        this.filesLoaded = true;
-      } finally {
-        if (Number(versionId) === Number(this.activeVersionId)) {
-          this.loadingFiles = false;
-        }
       }
     },
     async handleLabelMappingSave(mapping, { silent = false } = {}) {
