@@ -149,6 +149,7 @@ import { fetchStandardDatasetOptions } from "@/api/standardDatasets";
 import {
   cancelModelEvaluation,
   createModelEvaluation,
+  fetchActiveModelEvaluation,
   fetchEvaluationModels,
   fetchModelEvaluation,
   openModelEvaluationStream,
@@ -163,6 +164,7 @@ export default {
       loadingOptions: false,
       modelsLoading: false,
       datasetsLoading: false,
+      recovering: false,
       starting: false,
       cancelLoading: false,
       models: [],
@@ -192,7 +194,7 @@ export default {
       return this.models.find((m) => m._key === this.form.modelKey) || null;
     },
     canStart() {
-      return !!this.selectedModel && !!this.form.datasetId && !this.isRunning;
+      return !!this.selectedModel && !!this.form.datasetId && !this.isRunning && !this.recovering;
     },
     isRunning() {
       return this.jobStatus === "queued" || this.jobStatus === "running";
@@ -234,7 +236,10 @@ export default {
     },
   },
   created() {
-    this.reloadOptions();
+    this.bootstrap();
+  },
+  activated() {
+    this.recoverActiveJob({ silent: true });
   },
   beforeDestroy() {
     this.stopStream();
@@ -244,6 +249,10 @@ export default {
     makeModelKey(row) {
       if (row.model_version_id != null) return `mv:${row.model_version_id}`;
       return `run:${row.run_id}`;
+    },
+    async bootstrap() {
+      await this.reloadOptions();
+      await this.recoverActiveJob({ silent: true });
     },
     async reloadOptions() {
       this.loadingOptions = true;
@@ -298,6 +307,34 @@ export default {
       this.total = Number(data.total || 0);
       this.errorMessage = data.error_message || "";
       if (data.result && typeof data.result === "object") this.result = data.result;
+    },
+    hydrateFormFromJob(data) {
+      if (!data || typeof data !== "object") return;
+      if (data.model_version_id != null) {
+        this.form.modelKey = `mv:${data.model_version_id}`;
+      } else if (data.run_id) {
+        this.form.modelKey = `run:${data.run_id}`;
+      }
+      if (data.standard_dataset_id != null) this.form.datasetId = Number(data.standard_dataset_id);
+      if (data.scope) this.form.scope = String(data.scope);
+      if (Number.isFinite(Number(data.conf))) this.form.conf = Number(data.conf);
+      if (Number.isFinite(Number(data.iou))) this.form.iou = Number(data.iou);
+    },
+    async recoverActiveJob({ silent = false } = {}) {
+      if (this.recovering || this.isRunning) return;
+      this.recovering = true;
+      try {
+        const job = await fetchActiveModelEvaluation({ includeItems: false });
+        if (!job || !job.job_id || TERMINAL.has(String(job.status || ""))) return;
+        this.hydrateFormFromJob(job);
+        this.applySnapshot(job);
+        this.connectStream(job);
+        if (!silent) this.$message.info("已恢复正在运行的评估任务");
+      } catch (e) {
+        if (!silent) this.$message.warning(`恢复评估任务失败: ${e.message || e}`);
+      } finally {
+        this.recovering = false;
+      }
     },
     async startEvaluation() {
       if (!this.canStart) return;

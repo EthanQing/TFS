@@ -27,6 +27,11 @@ export async function fetchModelEvaluation(jobId, { includeItems = true } = {}) 
   return getJson(`${PREFIX}/${encodeURIComponent(id)}?include_items=${qs}`);
 }
 
+export async function fetchActiveModelEvaluation({ includeItems = false } = {}) {
+  const qs = includeItems ? "1" : "0";
+  return getJson(`${PREFIX}/active?include_items=${qs}`);
+}
+
 export async function cancelModelEvaluation(jobId) {
   const id = normStr(jobId);
   if (!id) throw new Error("缺少评估任务 ID");
