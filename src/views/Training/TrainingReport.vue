@@ -222,6 +222,12 @@ const CORE_METRIC_CANDIDATES = {
   ],
 };
 
+const PARAM_LABELS = {
+  torch_version: "Torch 版本",
+  paddle_version: "Paddle 版本",
+  ultralytics_version: "Ultralytics 版本",
+};
+
 function normalizeStatus(status) {
   return String(status || "").trim().toLowerCase();
 }
@@ -422,7 +428,7 @@ export default {
         .map((key) => {
           const raw = obj[key];
           return {
-            key,
+            key: PARAM_LABELS[key] || key,
             raw: this.formatRaw(raw),
             value: this.formatValue(raw),
           };

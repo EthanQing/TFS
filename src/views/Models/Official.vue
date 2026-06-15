@@ -118,6 +118,13 @@
                 :value="item.value"></el-option>
             </el-select>
           </div>
+          <div class="field-row" v-if="isPaddleEngine">
+            <div class="field-label">Paddle 版本</div>
+            <el-select v-model="paddleVersion" size="small" placeholder="请选择 Paddle 版本">
+              <el-option v-for="item in paddleVersionOptions" :key="item.value" :label="item.label"
+                :value="item.value"></el-option>
+            </el-select>
+          </div>
           <div class="field-row">
             <div class="field-label-row">
               <span class="field-label">设备</span>
@@ -311,6 +318,20 @@
                 :value="item.value"></el-option>
             </el-select>
           </div>
+          <div class="field-row" v-if="isUltralyticsEngine">
+            <div class="field-label">Torch 版本</div>
+            <el-select v-model="torchVersion" size="small" placeholder="请选择 Torch 版本">
+              <el-option v-for="item in torchVersionOptions" :key="item.value" :label="item.label"
+                :value="item.value"></el-option>
+            </el-select>
+          </div>
+          <div class="field-row" v-if="isUltralyticsEngine">
+            <div class="field-label">Ultralytics 版本</div>
+            <el-select v-model="ultralyticsVersion" size="small" placeholder="请选择 Ultralytics 版本">
+              <el-option v-for="item in ultralyticsVersionOptions" :key="item.value" :label="item.label"
+                :value="item.value"></el-option>
+            </el-select>
+          </div>
           <div class="field-row">
             <div class="field-label-row">
               <span class="field-label">设备</span>
@@ -328,6 +349,13 @@
             </el-select>
           </div>
           <template v-if="isPaddleEngine">
+            <div class="field-row">
+              <div class="field-label">Paddle 版本</div>
+              <el-select v-model="paddleVersion" size="small" placeholder="请选择 Paddle 版本">
+                <el-option v-for="item in paddleVersionOptions" :key="item.value" :label="item.label"
+                  :value="item.value"></el-option>
+              </el-select>
+            </div>
             <div class="field-row wide">
               <div class="field-label-row">
                 <span class="field-label">配置文件路径</span>
@@ -623,6 +651,21 @@ const LOSS_WEIGHT_HINTS = {
   dfl: "控制分布焦点损失占比",
 };
 
+const TORCH_VERSION_OPTIONS = ["1.13.1", "2.0.1", "2.1.2", "2.2.2"].map((value) => ({
+  value,
+  label: value,
+}));
+
+const ULTRALYTICS_VERSION_OPTIONS = ["8.0.196", "8.1.0", "8.2.0", "8.3.0"].map((value) => ({
+  value,
+  label: value,
+}));
+
+const PADDLE_VERSION_OPTIONS = ["2.5.2", "2.6.1", "3.0.0", "3.1.0"].map((value) => ({
+  value,
+  label: value,
+}));
+
 export default {
   name: "OfficialPanel",
   props: {
@@ -655,6 +698,12 @@ export default {
         { value: "linear", label: "线性下降" },
         { value: "cosine", label: "余弦退火" }
       ],
+      torchVersionOptions: TORCH_VERSION_OPTIONS,
+      ultralyticsVersionOptions: ULTRALYTICS_VERSION_OPTIONS,
+      paddleVersionOptions: PADDLE_VERSION_OPTIONS,
+      torchVersion: TORCH_VERSION_OPTIONS[0].value,
+      ultralyticsVersion: ULTRALYTICS_VERSION_OPTIONS[0].value,
+      paddleVersion: PADDLE_VERSION_OPTIONS[0].value,
       selectedDevice: "0",
       batchSize: "16",
       options: [
@@ -1013,6 +1062,7 @@ export default {
       this.resetArchitectureSelection();
       this.resetAugmentationState();
       this.resetLossWeightState();
+      this.resetRuntimeVersions();
       this.configPath = "";
       this.evalDuringTrain = true;
       this.evalInterval = 1;
@@ -1032,6 +1082,15 @@ export default {
       this.emitConfigChange();
     },
     lrScheduler() {
+      this.emitConfigChange();
+    },
+    torchVersion() {
+      this.emitConfigChange();
+    },
+    ultralyticsVersion() {
+      this.emitConfigChange();
+    },
+    paddleVersion() {
       this.emitConfigChange();
     },
     batchSize() {
@@ -1072,6 +1131,11 @@ export default {
     }
   },
   methods: {
+    resetRuntimeVersions() {
+      this.torchVersion = TORCH_VERSION_OPTIONS[0].value;
+      this.ultralyticsVersion = ULTRALYTICS_VERSION_OPTIONS[0].value;
+      this.paddleVersion = PADDLE_VERSION_OPTIONS[0].value;
+    },
     clearPretrainUploaderFiles() {
       const uploaderRef = this.$refs.pretrainUploader;
       const uploader = Array.isArray(uploaderRef) ? uploaderRef[0] : uploaderRef;
@@ -1673,10 +1737,13 @@ export default {
         loss_weights: lossWeights,
       };
       if (this.isPaddleEngine) {
+        configData.paddle_version = this.paddleVersion;
         configData.config_path = String(this.configPath || "").trim();
         configData.eval_during_train = !!this.evalDuringTrain;
         configData.eval_interval = Math.max(1, parseInt(this.evalInterval, 10) || 1);
       } else {
+        configData.torch_version = this.torchVersion;
+        configData.ultralytics_version = this.ultralyticsVersion;
         configData.config_path = "";
       }
 
