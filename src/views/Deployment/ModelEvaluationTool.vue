@@ -91,7 +91,7 @@
           </div>
           <el-progress :percentage="jobProgress" :status="progressStatus" :stroke-width="14" />
           <div class="status-meta">
-            <span>阶段: <b>{{ jobPhase || "-" }}</b></span>
+            <span>阶段: <b>{{ phaseText }}</b></span>
             <span>进度: <b>{{ processed }}</b> / {{ total }}</span>
             <span>范围: <b>{{ form.scope }}</b></span>
           </div>
@@ -221,6 +221,18 @@ export default {
       if (this.jobStatus === "cancelled") return "warning";
       if (this.jobStatus === "completed") return "success";
       return null;
+    },
+    phaseText() {
+      const map = {
+        preparing: "准备中",
+        validating: "原生验证中",
+        inferring: "逐图推理中",
+        calculating: "计算指标中",
+        done: "完成",
+        failed: "失败",
+        cancelled: "已取消",
+      };
+      return map[this.jobPhase] || this.jobPhase || "-";
     },
     metrics() {
       return this.result?.metrics || null;
