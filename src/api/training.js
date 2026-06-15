@@ -847,6 +847,7 @@ export async function ExportModel(jobId, options = {}) {
       opset: options.opset != null ? Number(options.opset) : undefined,
       dynamic: options.dynamic != null ? !!options.dynamic : undefined,
       imgsz: options.imgsz != null ? Number(options.imgsz) : undefined,
+      include_report: !!options.include_report,
     };
 
     const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/export`, {

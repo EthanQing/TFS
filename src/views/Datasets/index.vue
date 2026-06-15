@@ -173,6 +173,7 @@
 <script>
 import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset, updateIllegalDataset } from "@/api/illegalDatasets";
 import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset, updateStandardDataset } from "@/api/standardDatasets";
+import { formatMb } from "@/api/apiUtils";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
@@ -465,10 +466,15 @@ export default {
       return count.toString();
     },
     formatDatasetSize(sizeStr) {
-      if (!sizeStr) return '0MB';
-      if (typeof sizeStr === 'string' && sizeStr.includes('MB')) return sizeStr;
-      if (typeof sizeStr === 'number') return sizeStr.toFixed(1) + 'MB';
-      return sizeStr;
+      if (typeof sizeStr === 'number') return formatMb(sizeStr);
+      const text = String(sizeStr || '').trim();
+      if (!text) return formatMb(0);
+      const match = text.match(/(\d+\.?\d*)\s*(GB|MB)?/i);
+      if (!match) return text;
+      const value = parseFloat(match[1]);
+      if (!Number.isFinite(value)) return formatMb(0);
+      const unit = String(match[2] || 'MB').toUpperCase();
+      return formatMb(unit === 'GB' ? value * 1024 : value);
     },
     getDatasetTypeLabel(type) {
       const map = { 'detection': '目标检测', 'segmentation': '图像分割', 'classification': '图像分类' };
@@ -477,8 +483,12 @@ export default {
     parseDatasetSize(sizeStr) {
       if (!sizeStr) return 0;
       if (typeof sizeStr === 'number') return sizeStr;
-      const match = String(sizeStr).match(/(\d+\.?\d*)/);
-      return match ? parseFloat(match[1]) : 0;
+      const match = String(sizeStr).match(/(\d+\.?\d*)\s*(GB|MB)?/i);
+      if (!match) return 0;
+      const value = parseFloat(match[1]);
+      if (!Number.isFinite(value)) return 0;
+      const unit = String(match[2] || 'MB').toUpperCase();
+      return unit === 'GB' ? value * 1024 : value;
     },
   },
   mounted() {

@@ -200,6 +200,9 @@
       </div>
 
       <span slot="footer" class="dialog-footer">
+        <el-checkbox v-model="exportForm.include_report" :disabled="exporting" class="export-report-checkbox">
+          连同训练报告一同导出
+        </el-checkbox>
         <el-button @click="exportDialogVisible = false" :disabled="exporting">取消</el-button>
         <el-button type="primary" @click="confirmExport" :loading="exporting">导出</el-button>
       </span>
@@ -256,6 +259,7 @@ export default {
         opset: 12,
         dynamic: true,
         imgsz: 640,
+        include_report: false,
       },
       multiselectIcon,
       selectAllOffIcon,
@@ -476,15 +480,35 @@ export default {
         return;
       }
       this.exportTargetJobId = jobId;
-      this.exportForm = { ...this.exportForm, format: 'pt', weights: 'best' };
+      this.exportForm = { ...this.exportForm, format: 'pt', weights: 'best', include_report: false };
       this.exportDialogVisible = true;
     },
     exportFilename(res, fallbackJobId) {
+      if (this.exportForm.include_report) {
+        const returnedName = res?.artifact?.name || res?.output_filename || res?.filename;
+        if (returnedName && String(returnedName).toLowerCase().endsWith('.zip')) return String(returnedName);
+        const format = String(res?.format || this.exportForm.format || 'pt').toLowerCase();
+        const weights = String(res?.weights || this.exportForm.weights || 'best').toLowerCase();
+        return `${fallbackJobId || 'model'}_${weights}_${format}_with_report.zip`;
+      }
       const artifactName = res?.artifact?.name || res?.output_filename || res?.filename;
       if (artifactName) return String(artifactName);
       const format = String(res?.format || this.exportForm.format || 'pt').toLowerCase();
       const weights = String(res?.weights || this.exportForm.weights || 'best').toLowerCase();
       return `${fallbackJobId || 'model'}_${weights}.${format}`;
+    },
+    filenameFromDisposition(disposition) {
+      const text = String(disposition || '');
+      const utf8Match = text.match(/filename\*=UTF-8''([^;]+)/i);
+      if (utf8Match && utf8Match[1]) {
+        try {
+          return decodeURIComponent(utf8Match[1]);
+        } catch (_) {
+          return utf8Match[1];
+        }
+      }
+      const asciiMatch = text.match(/filename="?([^";]+)"?/i);
+      return asciiMatch && asciiMatch[1] ? asciiMatch[1] : '';
     },
     async downloadExportFile(rawUrl, filename) {
       const raw = String(rawUrl || '').trim();
@@ -501,7 +525,7 @@ export default {
       const objectUrl = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = objectUrl;
-      a.download = filename || '';
+      a.download = this.filenameFromDisposition(response.headers.get('Content-Disposition')) || filename || '';
       a.style.display = 'none';
       document.body.appendChild(a);
       a.click();
@@ -1188,6 +1212,18 @@ export default {
 
 .action-btn {
   font-weight: 600;
+}
+
+.dialog-footer {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.export-report-checkbox {
+  margin-right: auto;
 }
 
 .create-framework-selector {

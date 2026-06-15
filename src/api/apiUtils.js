@@ -605,6 +605,8 @@ export function normalizeFileArray(input) {
 export function formatMb(mb) {
     const n = Number(mb);
     if (!Number.isFinite(n)) return '0MB';
+    if (n <= 0) return '0MB';
+    if (n >= 1024) return `${(n / 1024).toFixed(2)}GB`;
     return `${n.toFixed(2)}MB`;
 }
 

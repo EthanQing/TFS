@@ -253,6 +253,7 @@ import {
   splitStandardDataset,
   updateStandardDataset,
 } from '@/api/standardDatasets';
+import { formatMb } from '@/api/apiUtils';
 
 export default {
   name: 'StandardDatasetDetail',
@@ -321,8 +322,7 @@ export default {
     },
     datasetSizeText() {
       const mb = Number(this.statistics && this.statistics.total_size_mb);
-      if (Number.isFinite(mb) && mb > 0) return `${mb.toFixed(2)} MB`;
-      return '0 MB';
+      return formatMb(Number.isFinite(mb) && mb > 0 ? mb : 0);
     },
     isEmpty() {
       return this.totalImages <= 0;

@@ -324,7 +324,7 @@ import {
   fetchIllegalDatasetPublishJob,
   fetchActiveIllegalDatasetPublishJob,
 } from '@/api/illegalDatasets';
-import { loadUploadTask } from '@/api/apiUtils';
+import { formatMb, loadUploadTask } from '@/api/apiUtils';
 
 export default {
   name: 'IllegalDatasetDetail',
@@ -424,8 +424,7 @@ export default {
     },
     datasetSizeText() {
       const mb = Number(this.statistics && this.statistics.total_size_mb);
-      if (Number.isFinite(mb) && mb > 0) return `${mb.toFixed(2)} MB`;
-      return '0 MB';
+      return formatMb(Number.isFinite(mb) && mb > 0 ? mb : 0);
     },
     isEmpty() {
       return !this.activeVersion || this.totalImages <= 0;

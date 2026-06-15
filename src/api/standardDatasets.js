@@ -45,7 +45,7 @@ export async function fetchStandardDatasets({ page = 1, pageSize = 50, includeSt
             format: item.format || 'yolo',
             num_images: item.statistics?.num_images ?? item.statistics?.total_images ?? item.statistics?.image_count ?? 0,
             num_classes: item.statistics?.num_classes || 0,
-            dataset_size_mb: item.statistics?.size_mb ? `${item.statistics.size_mb.toFixed(2)}MB` : '0MB',
+            dataset_size_mb: formatMb(item.statistics?.size_mb),
             preview_image_url: toAbsUrl(item.preview_image_url || ''),
         }));
     } catch (error) {
