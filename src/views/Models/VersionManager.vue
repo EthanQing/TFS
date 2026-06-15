@@ -11,12 +11,6 @@
                 >
                     + 发布新版本
                 </el-button>
-                <el-button
-                    class="custom-info-btn"
-                    @click="goRollbackCenter"
-                >
-                    模型回滚
-                </el-button>
             </div>
         </div>
 
@@ -503,21 +497,6 @@ export default {
                     this.$message.success('新版本已发布');
                 }
             });
-        },
-        goRollbackCenter() {
-            let projectId = null;
-            try {
-                const raw = localStorage.getItem('currentProject');
-                const obj = raw ? JSON.parse(raw) : null;
-                const n = Number(obj?.project_id || obj?.id);
-                if (Number.isFinite(n) && n > 0) projectId = n;
-            } catch (_) {
-                projectId = null;
-            }
-
-            const query = { tool: 'rollback' };
-            if (projectId) query.project_id = projectId;
-            this.$router.push({ path: '/deployment', query });
         }
     }
 };

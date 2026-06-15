@@ -4,12 +4,12 @@
       <div class="hero-left">
         <div class="hero-eyebrow">生产环境就绪</div>
         <h1 class="hero-title">部署中心</h1>
-        <p class="hero-subtitle">一站式完成模型部署、对比、推理测试和版本回滚。</p>
+        <p class="hero-subtitle">一站式完成模型格式转换、对比和推理测试。</p>
       </div>
       <div class="hero-right">
         <div class="stat-card">
           <div class="stat-label">工具数量</div>
-          <div class="stat-value">5</div>
+          <div class="stat-value">3</div>
         </div>
       </div>
     </header>
@@ -39,30 +39,14 @@
               <span class="tool-desc">单图 / 批量 / 视频</span>
             </div>
           </li>
-          <li :class="{ active: activeTool === 'deploy-service' }" @click="setActiveTool('deploy-service')">
-            <i class="el-icon-s-operation"></i>
-            <div class="tool-info">
-              <span class="tool-name">模型部署服务</span>
-              <span class="tool-desc">流水线·进度·日志·重试</span>
-            </div>
-          </li>
-          <li :class="{ active: activeTool === 'rollback' }" @click="setActiveTool('rollback')">
-            <i class="el-icon-refresh-left"></i>
-            <div class="tool-info">
-              <span class="tool-name">模型回滚</span>
-              <span class="tool-desc">切换生效的部署版本</span>
-            </div>
-          </li>
         </ul>
       </aside>
 
       <main class="deploy-main glass-panel">
         <transition name="fade" mode="out-in">
-          <DeploymentServiceTool v-if="activeTool === 'deploy-service'" />
-          <FormatConversion v-else-if="activeTool === 'conversion'" :external-state.sync="formatConversionState" />
+          <FormatConversion v-if="activeTool === 'conversion'" :external-state.sync="formatConversionState" />
           <ModelComparison v-else-if="activeTool === 'comparison'" />
           <ModelInferenceTest v-else-if="activeTool === 'inference-test'" />
-          <ModelRollbackTool v-else-if="activeTool === 'rollback'" />
         </transition>
       </main>
     </section>
@@ -70,20 +54,19 @@
 </template>
 
 <script>
-import DeploymentServiceTool from "@/views/Deployment/DeploymentServiceTool.vue";
 import FormatConversion from "@/views/Models/FormatConversion.vue";
 import ModelComparison from "@/views/Deployment/ModelComparison.vue";
 import ModelInferenceTest from "@/views/Deployment/ModelInferenceTest.vue";
-import ModelRollbackTool from "@/views/Deployment/ModelRollbackTool.vue";
 
-const VALID_TOOLS = new Set(["deploy-service", "conversion", "comparison", "inference-test", "rollback"]);
+const DEFAULT_TOOL = "conversion";
+const VALID_TOOLS = new Set([DEFAULT_TOOL, "comparison", "inference-test"]);
 
 export default {
   name: "DeploymentCenter",
-  components: { DeploymentServiceTool, FormatConversion, ModelComparison, ModelInferenceTest, ModelRollbackTool },
+  components: { FormatConversion, ModelComparison, ModelInferenceTest },
   data() {
     return {
-      activeTool: "conversion",
+      activeTool: DEFAULT_TOOL,
       formatConversionState: null,
     };
   },
@@ -98,7 +81,13 @@ export default {
   methods: {
     syncToolFromRoute() {
       const q = String(this.$route?.query?.tool || "").trim();
-      if (VALID_TOOLS.has(q)) this.activeTool = q;
+      const nextTool = VALID_TOOLS.has(q) ? q : DEFAULT_TOOL;
+      this.activeTool = nextTool;
+      if (q && q !== nextTool) {
+        this.$router
+          .replace({ path: "/deployment", query: { ...this.$route.query, tool: nextTool } })
+          .catch(() => {});
+      }
     },
     setActiveTool(tool) {
       if (!VALID_TOOLS.has(tool)) return;
