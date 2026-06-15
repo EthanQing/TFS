@@ -322,6 +322,7 @@ import {
   activateIllegalDatasetVersion,
   createIllegalDatasetPublishJob,
   fetchIllegalDatasetPublishJob,
+  fetchActiveIllegalDatasetPublishJob,
 } from '@/api/illegalDatasets';
 import { loadUploadTask } from '@/api/apiUtils';
 
@@ -517,6 +518,9 @@ export default {
     '$route.query.id'(nextId) {
       if (!nextId || String(nextId) === String(this.datasetId)) return;
       this.datasetId = nextId;
+      this.stopPublishJobPolling();
+      this.resetPublishJobState();
+      this.publishing = false;
       this.loadAll().finally(() => {
         this.$nextTick(() => this.restoreActiveUploadTask());
       });
@@ -752,6 +756,53 @@ export default {
         await this.sleep(2000);
       }
       throw new Error('转换轮询已取消');
+    },
+    async finishPublishJob(finalJob) {
+      const result = finalJob && finalJob.result ? finalJob.result : null;
+      const standardDatasetId = result && result.standard_dataset_id;
+      if (!standardDatasetId) {
+        throw new Error('转换任务已完成，但未返回标准数据集 ID');
+      }
+      this.$message.success(`标准数据集已转换完成：#${standardDatasetId}`);
+      this.showPublishResultNotice(result);
+      if (standardDatasetId) {
+        this.$confirm('标准数据集已生成，是否立即前往详情页查看？', '转换成功', {
+          type: 'success',
+          confirmButtonText: '前往查看',
+          cancelButtonText: '留在当前页',
+        }).then(() => {
+          this.$router.push({ path: '/standard-dataset-detail', query: { id: standardDatasetId } });
+        }).catch(() => { });
+      }
+      await this.loadAll({ skipPublishRestore: true });
+    },
+    async restoreActivePublishJob() {
+      if (!this.datasetId || this.publishing) return;
+      let job = null;
+      try {
+        job = await fetchActiveIllegalDatasetPublishJob(this.datasetId);
+      } catch (error) {
+        console.warn('恢复转换任务进度失败:', error);
+        return;
+      }
+      const status = String(job && job.status || '').trim().toLowerCase();
+      const jobId = String(job && job.job_id || '').trim();
+      if (!jobId || !['queued', 'running'].includes(status)) return;
+
+      this.updatePublishJobState({ ...job, job_id: jobId });
+      this.publishing = true;
+      try {
+        const finalJob = await this.waitForPublishJob(jobId);
+        await this.finishPublishJob(finalJob);
+      } catch (error) {
+        if (String(error && error.message || '') !== '转换轮询已取消') {
+          console.error(error);
+          this.$message.error(`转换失败：${error.message || error}`);
+        }
+      } finally {
+        this.resetPublishJobState({ keepLast: true });
+        this.publishing = false;
+      }
     },
     getPresetStorageKey() {
       return 'illegal_label_mapping_presets_v3';
@@ -1216,7 +1267,7 @@ export default {
         this.$message.error(`修改失败：${error.message || error}`);
       }
     },
-    async loadAll() {
+    async loadAll({ skipPublishRestore = false } = {}) {
       if (!this.datasetId) {
         this.$message.error('未找到原始数据集 ID');
         return;
@@ -1239,6 +1290,9 @@ export default {
         this.publishForm.version_id = this.activeVersionId || null;
 
         this.syncPanelFromSavedMappings();
+        if (!skipPublishRestore) {
+          this.restoreActivePublishJob();
+        }
       } catch (error) {
         console.error(error);
         this.$message.error(`加载原始数据集失败：${error.message || error}`);
@@ -1340,23 +1394,7 @@ export default {
         this.$message.info(`转换任务已提交：${this.publishPhaseLabel(this.publishJobPhase, job.status)}`);
 
         const finalJob = await this.waitForPublishJob(jobId);
-        const result = finalJob && finalJob.result ? finalJob.result : null;
-        const standardDatasetId = result && result.standard_dataset_id;
-        if (!standardDatasetId) {
-          throw new Error('转换任务已完成，但未返回标准数据集 ID');
-        }
-        this.$message.success(`标准数据集已转换完成：#${standardDatasetId}`);
-        this.showPublishResultNotice(result);
-        if (standardDatasetId) {
-          this.$confirm('标准数据集已生成，是否立即前往详情页查看？', '转换成功', {
-            type: 'success',
-            confirmButtonText: '前往查看',
-            cancelButtonText: '留在当前页',
-          }).then(() => {
-            this.$router.push({ path: '/standard-dataset-detail', query: { id: standardDatasetId } });
-          }).catch(() => { });
-        }
-        await this.loadAll();
+        await this.finishPublishJob(finalJob);
       } catch (error) {
         if (String(error && error.message || '') !== '转换轮询已取消') {
           console.error(error);
