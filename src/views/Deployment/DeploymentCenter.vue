@@ -4,12 +4,12 @@
       <div class="hero-left">
         <div class="hero-eyebrow">生产环境就绪</div>
         <h1 class="hero-title">部署中心</h1>
-        <p class="hero-subtitle">一站式完成模型格式转换、对比和推理测试。</p>
+        <p class="hero-subtitle">一站式完成模型格式转换、对比、推理测试和指标评估。</p>
       </div>
       <div class="hero-right">
         <div class="stat-card">
           <div class="stat-label">工具数量</div>
-          <div class="stat-value">3</div>
+          <div class="stat-value">4</div>
         </div>
       </div>
     </header>
@@ -39,6 +39,13 @@
               <span class="tool-desc">单图 / 批量 / 视频</span>
             </div>
           </li>
+          <li :class="{ active: activeTool === 'model-evaluation' }" @click="setActiveTool('model-evaluation')">
+            <i class="el-icon-data-line"></i>
+            <div class="tool-info">
+              <span class="tool-name">模型指标测试</span>
+              <span class="tool-desc">Precision / Recall / mAP</span>
+            </div>
+          </li>
         </ul>
       </aside>
 
@@ -47,6 +54,7 @@
           <FormatConversion v-if="activeTool === 'conversion'" :external-state.sync="formatConversionState" />
           <ModelComparison v-else-if="activeTool === 'comparison'" />
           <ModelInferenceTest v-else-if="activeTool === 'inference-test'" />
+          <ModelEvaluationTool v-else-if="activeTool === 'model-evaluation'" />
         </transition>
       </main>
     </section>
@@ -57,13 +65,14 @@
 import FormatConversion from "@/views/Models/FormatConversion.vue";
 import ModelComparison from "@/views/Deployment/ModelComparison.vue";
 import ModelInferenceTest from "@/views/Deployment/ModelInferenceTest.vue";
+import ModelEvaluationTool from "@/views/Deployment/ModelEvaluationTool.vue";
 
 const DEFAULT_TOOL = "conversion";
-const VALID_TOOLS = new Set([DEFAULT_TOOL, "comparison", "inference-test"]);
+const VALID_TOOLS = new Set([DEFAULT_TOOL, "comparison", "inference-test", "model-evaluation"]);
 
 export default {
   name: "DeploymentCenter",
-  components: { FormatConversion, ModelComparison, ModelInferenceTest },
+  components: { FormatConversion, ModelComparison, ModelInferenceTest, ModelEvaluationTool },
   data() {
     return {
       activeTool: DEFAULT_TOOL,
