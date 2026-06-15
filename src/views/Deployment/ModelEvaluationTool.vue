@@ -74,8 +74,8 @@
             <el-button type="primary" :disabled="!canStart" :loading="starting" @click="startEvaluation">
               <i class="el-icon-video-play"></i> 开始测试
             </el-button>
-            <el-button type="danger" plain :disabled="!isRunning" :loading="cancelLoading" @click="cancelCurrent">
-              取消任务
+            <el-button type="danger" plain :disabled="!canCancel" :loading="cancelLoading" @click="cancelCurrent">
+              {{ cancelRequested ? "取消中" : "取消任务" }}
             </el-button>
           </div>
         </el-form>
@@ -184,6 +184,7 @@ export default {
       total: 0,
       errorMessage: "",
       result: null,
+      currentCancelRequested: false,
       streamHandle: null,
       pollTimer: null,
       wsHint: "",
@@ -199,10 +200,16 @@ export default {
     isRunning() {
       return this.jobStatus === "queued" || this.jobStatus === "running";
     },
+    cancelRequested() {
+      return !!this.currentCancelRequested && this.isRunning;
+    },
+    canCancel() {
+      return !!this.jobId && this.isRunning && !this.cancelRequested;
+    },
     statusText() {
       const map = {
         queued: "排队中",
-        running: "评估中",
+        running: this.cancelRequested ? "取消中" : "评估中",
         completed: "已完成",
         failed: "失败",
         cancelled: "已取消",
@@ -306,6 +313,7 @@ export default {
       this.processed = Number(data.processed || 0);
       this.total = Number(data.total || 0);
       this.errorMessage = data.error_message || "";
+      this.currentCancelRequested = !!data.cancel_requested;
       if (data.result && typeof data.result === "object") this.result = data.result;
     },
     hydrateFormFromJob(data) {
@@ -341,6 +349,7 @@ export default {
       this.starting = true;
       this.errorMessage = "";
       this.result = null;
+      this.currentCancelRequested = false;
       this.stopStream();
       this.stopPolling();
       try {
@@ -409,11 +418,27 @@ export default {
       this.pollTimer = null;
     },
     async cancelCurrent() {
-      if (!this.jobId || !this.isRunning) return;
+      if (!this.jobId || !this.isRunning || this.cancelRequested) return;
       this.cancelLoading = true;
       try {
-        const data = await cancelModelEvaluation(this.jobId);
+        let cancelJobId = this.jobId;
+        try {
+          const active = await fetchActiveModelEvaluation({ includeItems: false });
+          if (active && active.job_id && !TERMINAL.has(String(active.status || ""))) {
+            this.hydrateFormFromJob(active);
+            this.applySnapshot(active);
+            cancelJobId = active.job_id;
+          }
+        } catch (_) {
+          0;
+        }
+        const data = await cancelModelEvaluation(cancelJobId);
         this.applySnapshot(data);
+        if (TERMINAL.has(String(data.status || ""))) {
+          this.stopStream();
+          this.stopPolling();
+        }
+        this.$message.success("已发送取消请求");
       } catch (e) {
         this.$message.error(`取消失败: ${e.message || e}`);
       } finally {
@@ -430,6 +455,7 @@ export default {
       this.total = 0;
       this.errorMessage = "";
       this.result = null;
+      this.currentCancelRequested = false;
       this.wsHint = "";
     },
     formatPercent(v) {
