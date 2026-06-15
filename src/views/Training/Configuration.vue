@@ -165,6 +165,7 @@ export default {
               epochs: '训练轮数',
               batch_size: '批大小',
               learning_rate: '学习率',
+              lr_scheduler: '学习率下降策略',
               image_size: '图片尺寸',
               input_size: '图片尺寸',
               img_size: '图片尺寸',

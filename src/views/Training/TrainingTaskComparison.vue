@@ -521,7 +521,7 @@ export default {
             });
 
             // Specific interest keys
-            const interest = ['epochs', 'batch_size', 'learning_rate', 'modelfile', 'optimizer', 'imgsz', 'device'];
+            const interest = ['epochs', 'batch_size', 'learning_rate', 'lr_scheduler', 'modelfile', 'optimizer', 'imgsz', 'device'];
             const sortedKeys = Array.from(paramKeys).sort((a, b) => {
                 const ia = interest.indexOf(a);
                 const ib = interest.indexOf(b);

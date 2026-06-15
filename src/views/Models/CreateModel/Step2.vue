@@ -118,6 +118,7 @@ export default {
         epochs: 100,
         batch_size: 16,
         learning_rate: 0.01,
+        lr_scheduler: "linear",
         img_size: 640,
         optimizer: "auto",
         device: "cpu",

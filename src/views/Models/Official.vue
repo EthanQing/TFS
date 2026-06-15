@@ -112,6 +112,13 @@
             <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
           </div>
           <div class="field-row">
+            <div class="field-label">学习率下降策略</div>
+            <el-select v-model="lrScheduler" size="small" placeholder="Select">
+              <el-option v-for="item in lrSchedulerOptions" :key="item.value" :label="item.label"
+                :value="item.value"></el-option>
+            </el-select>
+          </div>
+          <div class="field-row">
             <div class="field-label-row">
               <span class="field-label">设备</span>
               <el-tooltip effect="dark" placement="top" content="默认使用单卡 GPU 0。多卡请用逗号分隔（如 0,1）。如需仅使用 CPU，请输入 cpu。">
@@ -296,6 +303,13 @@
           <div class="field-row">
             <div class="field-label">学习率</div>
             <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">学习率下降策略</div>
+            <el-select v-model="lrScheduler" size="small" placeholder="Select">
+              <el-option v-for="item in lrSchedulerOptions" :key="item.value" :label="item.label"
+                :value="item.value"></el-option>
+            </el-select>
           </div>
           <div class="field-row">
             <div class="field-label-row">
@@ -636,6 +650,11 @@ export default {
       imgSize: "640",
       patience: "100",
       learningRate: "0.01",
+      lrScheduler: "linear",
+      lrSchedulerOptions: [
+        { value: "linear", label: "线性下降" },
+        { value: "cosine", label: "余弦退火" }
+      ],
       selectedDevice: "0",
       batchSize: "16",
       options: [
@@ -1010,6 +1029,9 @@ export default {
       this.emitConfigChange();
     },
     learningRate() {
+      this.emitConfigChange();
+    },
+    lrScheduler() {
       this.emitConfigChange();
     },
     batchSize() {
@@ -1639,6 +1661,7 @@ export default {
         input_size: parsedImageSize,
         patience: parseInt(this.patience, 10) || 100,
         learning_rate: parseFloat(this.learningRate) || 0.01,
+        lr_scheduler: String(this.lrScheduler || "linear").trim().toLowerCase() || "linear",
         batch_size: this.batchSize != null && String(this.batchSize).trim() !== '' ? parseInt(this.batchSize, 10) : 16,
         device: this.getDeviceValue(),
         optimizer: String(this.optimizer || "auto").toLowerCase(),

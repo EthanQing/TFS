@@ -315,6 +315,7 @@ export default {
         ["batch_size", "Batch Size", p.batch_size],
         ["image_size", "Image Size", p.image_size],
         ["learning_rate", "Learning Rate", p.learning_rate],
+        ["lr_scheduler", "LR Scheduler", p.lr_scheduler],
         ["patience", "Patience", p.patience],
         ["device", "Device", p.device],
         ["workers", "Workers", p.workers],
