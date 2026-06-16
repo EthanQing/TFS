@@ -80,7 +80,7 @@
                       filterable allow-create default-first-option @change="onTargetEdited(node.exactRow)" >
                       <el-option v-for="opt in node.availableTargets" :key="opt" :label="opt" :value="opt" />
                     </el-select>
-                    <el-tooltip v-if="node.hasChildren" content="将左侧设置的映射向下应用到所有子项" placement="top">
+                    <el-tooltip v-if="node.hasChildren" content="将此标签的映射向下应用到所有子项" placement="top">
                       <el-button class="cascade-btn" type="primary" plain icon="el-icon-download" size="mini"
                         @click="setCascadeTarget(node, node.exactRow.targetLabel)" />
                     </el-tooltip>
@@ -96,15 +96,19 @@
             <td class="col-action">
               <template v-if="node.isVirtual">
                 <el-button v-if="!node.allDescendantsDiscarded" type="text" size="mini" class="action-discard"
+                  :disabled="hasDiscardedAncestor(node.key)"
                   @click="discardAll(node, true)" title="丢弃所有子项"><i class="el-icon-delete" /></el-button>
-                <el-button v-else type="text" size="mini" class="action-restore" @click="discardAll(node, false)"
+                <el-button v-else type="text" size="mini" class="action-restore" :disabled="hasDiscardedAncestor(node.key)"
+                  @click="discardAll(node, false)"
                   title="恢复所有子项"><i class="el-icon-refresh-left" /></el-button>
               </template>
               <template v-else>
                 <el-button v-if="!node.exactRow.discarded" type="text" size="mini" class="action-discard"
-                  @click="toggleDiscard(node.exactRow, true)" title="丢弃此标签"><i class="el-icon-delete" /></el-button>
+                  :disabled="hasDiscardedAncestor(node.exactRow.sourceLabel)"
+                  @click="toggleDiscard(node.exactRow, true)" title="丢弃此标签及所有子项"><i class="el-icon-delete" /></el-button>
                 <el-button v-else type="text" size="mini" class="action-restore"
-                  @click="toggleDiscard(node.exactRow, false)" title="恢复此标签"><i
+                  :disabled="hasDiscardedAncestor(node.exactRow.sourceLabel)"
+                  @click="toggleDiscard(node.exactRow, false)" title="恢复此标签及所有子项"><i
                     class="el-icon-refresh-left" /></el-button>
               </template>
             </td>
@@ -485,19 +489,17 @@ export default {
     },
     setCascadeTarget(node, val) {
       if (!val) return;
-      node.descendantRows.forEach(function (row) {
+      if (this.hasDiscardedAncestor(node.key)) return;
+      var rows = node.isVirtual ? node.descendantRows : [node.exactRow].concat(node.descendantRows);
+      rows.filter(function (row) { return !!row; }).forEach(function (row) {
         row.discarded = false;
         row.targetLabel = val;
         row.manuallyEdited = true;
       });
     },
     discardAll(node, discard) {
-      var self = this;
-      node.descendantRows.forEach(function (row) {
-        row.discarded = discard;
-        if (discard) row.targetLabel = '';
-        else if (self.activePreset) row.targetLabel = self.computeTarget(row.sourceLabel, self.activePreset, self.levelValue);
-      });
+      if (!discard && this.hasDiscardedAncestor(node.key)) return;
+      this.applyDiscardState(node.descendantRows, discard);
     },
     toggleGroup(key) {
       this.$set(this.expandedGroups, key, !this.expandedGroups[key]);
@@ -506,9 +508,8 @@ export default {
       row.manuallyEdited = true;
     },
     toggleDiscard(row, discard) {
-      row.discarded = discard;
-      if (discard) row.targetLabel = '';
-      else if (this.activePreset) row.targetLabel = this.computeTarget(row.sourceLabel, this.activePreset, this.levelValue);
+      if (!discard && this.hasDiscardedAncestor(row.sourceLabel)) return;
+      this.applyDiscardState(this.getSubtreeRows(row.sourceLabel), discard);
     },
     buildMapping() {
       var mapping = {};
@@ -571,6 +572,49 @@ export default {
       });
       return s.trim();
     },
+    getSubtreeRows(sourceLabel) {
+      var targetParts = this.splitLabel(sourceLabel);
+      if (!targetParts.length) {
+        return this.rows.filter(function (row) { return String(row.sourceLabel || '').trim() === String(sourceLabel || '').trim(); });
+      }
+      return this.rows.filter(function (row) {
+        var parts = this.splitLabel(row.sourceLabel);
+        if (parts.length < targetParts.length) return false;
+        for (var i = 0; i < targetParts.length; i++) {
+          if (parts[i] !== targetParts[i]) return false;
+        }
+        return true;
+      }.bind(this));
+    },
+    getAncestorLabels(sourceLabel) {
+      var parts = this.splitLabel(sourceLabel);
+      var ancestors = [];
+      for (var i = 1; i < parts.length; i++) {
+        ancestors.push(parts.slice(0, i).join(this.separator));
+      }
+      return ancestors;
+    },
+    hasDiscardedAncestor(sourceLabel) {
+      var ancestors = this.getAncestorLabels(sourceLabel);
+      if (!ancestors.length) return false;
+      return ancestors.some(function (label) {
+        return this.rows.some(function (row) {
+          return String(row.sourceLabel || '').trim() === label && row.discarded;
+        });
+      }.bind(this));
+    },
+    applyDiscardState(rows, discard) {
+      var self = this;
+      (Array.isArray(rows) ? rows : []).forEach(function (row) {
+        row.discarded = discard;
+        if (discard) {
+          row.targetLabel = '';
+        } else if (self.activePreset) {
+          row.targetLabel = self.computeTarget(row.sourceLabel, self.activePreset, self.levelValue);
+        }
+        row.manuallyEdited = true;
+      });
+    },
     applyExternalMapping(mapping) {
       if (!mapping || typeof mapping !== 'object') {
         return { total: this.rows.length, matched: 0, unmatched: this.rows.length };
@@ -586,6 +630,7 @@ export default {
       }.bind(this));
 
       var matched = 0;
+      var discardRoots = [];
       this.rows.forEach(function (row) {
         var src = String(row.sourceLabel || '').trim();
         var hit = Object.prototype.hasOwnProperty.call(direct, src)
@@ -602,6 +647,7 @@ export default {
           if (hitStatus === 'delete') {
             row.discarded = true;
             row.targetLabel = '';
+            discardRoots.push(row.sourceLabel);
           } else {
             row.discarded = false;
             row.targetLabel = String(mapped || '').trim();
@@ -615,6 +661,7 @@ export default {
         if (strVal === '__DISCARD__' || strVal === '') {
           row.discarded = true;
           row.targetLabel = '';
+          discardRoots.push(row.sourceLabel);
           row.manuallyEdited = true;
           return;
         }
@@ -622,6 +669,16 @@ export default {
         row.targetLabel = strVal;
         row.manuallyEdited = true;
       }.bind(this));
+
+      discardRoots
+        .map(function (label) { return String(label || '').trim(); })
+        .filter(function (label) { return !!label; })
+        .sort(function (a, b) {
+          return this.splitLabel(a).length - this.splitLabel(b).length;
+        }.bind(this))
+        .forEach(function (label) {
+          this.applyDiscardState(this.getSubtreeRows(label), true);
+        }.bind(this));
 
       return {
         total: this.rows.length,

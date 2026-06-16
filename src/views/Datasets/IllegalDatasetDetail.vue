@@ -29,7 +29,7 @@
           <div class="stat-value">{{ formatNumber(totalImages) }}</div>
         </div>
         <div class="stat-card">
-          <div class="stat-label">类别数</div>
+          <div class="stat-label">{{ classCountLabel }}</div>
           <div class="stat-value">{{ formatNumber(classCount) }}</div>
         </div>
         <div class="stat-card">
@@ -419,8 +419,30 @@ export default {
     totalImages() {
       return Number(this.statistics && this.statistics.total_images) || 0;
     },
+    rawClassCount() {
+      const rawValues = new Set();
+      (Array.isArray(this.rawLabels) ? this.rawLabels : []).forEach((label) => {
+        const value = String(label || '').trim();
+        if (value) rawValues.add(value);
+      });
+      if (rawValues.size > 0) return rawValues.size;
+      return Number(
+        this.statistics && (
+          this.statistics.num_classes ||
+          this.statistics.class_count ||
+          this.statistics.declared_class_count ||
+          this.statistics.used_class_count
+        )
+      ) || 0;
+    },
+    hasSavedLabelMappings() {
+      return Array.isArray(this.mappingRows) && this.mappingRows.length > 0;
+    },
     classCount() {
-      return this.publishTargetLabels.length;
+      return this.hasSavedLabelMappings ? this.publishTargetLabels.length : this.rawClassCount;
+    },
+    classCountLabel() {
+      return this.hasSavedLabelMappings ? '映射类别数' : '原始类别数';
     },
     datasetSizeText() {
       const mb = Number(this.statistics && this.statistics.total_size_mb);
@@ -442,14 +464,36 @@ export default {
       return Array.from(values).sort((a, b) => a.localeCompare(b, 'zh-CN'));
     },
     publishTargetLabels() {
-      const values = (Array.isArray(this.mappingRows) ? this.mappingRows : [])
-        .filter((row) => {
-          const status = this.normalizeMappingStatus(row && row.status, row && row.mapped_label);
-          return status !== 'delete';
-        })
-        .map((row) => String(row && row.mapped_label || '').trim())
-        .filter((value) => value && value !== '__DISCARD__');
-      return Array.from(new Set(values)).sort((a, b) => a.localeCompare(b, 'zh-CN'));
+      const separator = '%';
+      const savedMap = new Map();
+      (Array.isArray(this.mappingRows) ? this.mappingRows : []).forEach((row) => {
+        const raw = String(row && row.raw_label || '').trim();
+        if (!raw) return;
+        savedMap.set(raw, {
+          mapped_label: String(row && row.mapped_label || '').trim(),
+          status: this.normalizeMappingStatus(row && row.status, row && row.mapped_label),
+        });
+      });
+      const rawSet = new Set();
+      (Array.isArray(this.rawLabels) ? this.rawLabels : []).forEach((label) => {
+        const raw = String(label || '').trim();
+        if (raw) rawSet.add(raw);
+      });
+      savedMap.forEach((_value, key) => rawSet.add(key));
+
+      const values = [];
+      rawSet.forEach((raw) => {
+        const saved = savedMap.get(raw);
+        if (saved) {
+          if (saved.status === 'delete' || !saved.mapped_label || saved.mapped_label === '__DISCARD__') return;
+          values.push(saved.mapped_label);
+          return;
+        }
+        if (this.hasDeletedSavedAncestor(raw, savedMap, separator)) return;
+        const parts = String(raw || '').split(separator).map((part) => String(part || '').trim()).filter(Boolean);
+        values.push(parts.length > 0 ? parts[0] : raw);
+      });
+      return Array.from(new Set(values.filter((value) => value && value !== '__DISCARD__'))).sort((a, b) => a.localeCompare(b, 'zh-CN'));
     },
     savedLabelMappingObject() {
       return this.buildMappingObjectFromRows(this.mappingRows);
@@ -1109,7 +1153,7 @@ export default {
         this.mappingPresetsSaving = false;
       }
     },
-    normalizeMappings(rawLabels, savedItems) {
+    normalizeMappings(savedItems) {
       const savedMap = new Map();
       (Array.isArray(savedItems) ? savedItems : []).forEach((item) => {
         const raw = String(item && item.raw_label || '').trim();
@@ -1121,29 +1165,28 @@ export default {
           status: status,
         });
       });
-      const keys = new Set();
-      (Array.isArray(rawLabels) ? rawLabels : []).forEach((label) => {
-        const raw = String(label || '').trim();
-        if (raw) keys.add(raw);
-      });
-      savedMap.forEach((_value, key) => keys.add(key));
-      return Array.from(keys)
+      return Array.from(savedMap.keys())
         .sort((a, b) => a.localeCompare(b, 'zh-CN'))
         .map((raw) => {
           const saved = savedMap.get(raw);
-          if (saved) {
-            return {
-              raw_label: raw,
-              mapped_label: saved.mapped_label,
-              status: saved.status,
-            };
-          }
           return {
             raw_label: raw,
-            mapped_label: raw,
-            status: 'keep',
+            mapped_label: saved.mapped_label,
+            status: saved.status,
           };
         });
+    },
+    hasDeletedSavedAncestor(raw, savedMap, separator = '%') {
+      const parts = String(raw || '').split(separator).map((part) => String(part || '').trim()).filter(Boolean);
+      if (parts.length < 2) return false;
+      for (let index = 1; index < parts.length; index += 1) {
+        const parent = parts.slice(0, index).join(separator);
+        const saved = savedMap.get(parent);
+        if (saved && (saved.status === 'delete' || !saved.mapped_label || saved.mapped_label === '__DISCARD__')) {
+          return true;
+        }
+      }
+      return false;
     },
     buildMappingObjectFromRows(rows) {
       return (Array.isArray(rows) ? rows : []).reduce((acc, row) => {
@@ -1284,7 +1327,7 @@ export default {
 
         this.rawLabels = Array.isArray(rawPayload && rawPayload.labels) ? rawPayload.labels : [];
         const mappingItems = Array.isArray(mappingPayload && mappingPayload.items) ? mappingPayload.items : [];
-        this.mappingRows = this.normalizeMappings(this.rawLabels, mappingItems);
+        this.mappingRows = this.normalizeMappings(mappingItems);
 
         this.publishForm.version_id = this.activeVersionId || null;
 
@@ -1325,7 +1368,7 @@ export default {
           return row.mapped_label !== '';
         });
         await updateIllegalDatasetLabelMappings(this.datasetId, items);
-        this.mappingRows = this.normalizeMappings(this.rawLabels, items);
+        this.mappingRows = this.normalizeMappings(items);
         if (!silent) this.$message.success('映射保存成功');
         this.syncPanelFromSavedMappings();
         return true;
