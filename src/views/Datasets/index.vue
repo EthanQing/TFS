@@ -964,6 +964,7 @@ export default {
   font-weight: 700;
   box-shadow: var(--shadow-sm);
   z-index: 2;
+  transition: right 0.2s;
 }
 
 .card-format-badge {
@@ -1000,6 +1001,10 @@ export default {
 .dataset-card:hover .card-actions {
   opacity: 1;
   visibility: visible;
+}
+
+.dataset-card:hover .card-format-badge {
+  right: 92px;
 }
 
 .card-icon-btn:hover {
