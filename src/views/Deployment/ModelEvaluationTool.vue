@@ -20,15 +20,26 @@
         <div class="card-title">评估配置</div>
         <el-form label-position="top" size="small">
           <el-form-item label="选择模型">
-            <el-select v-model="form.modelKey" filterable placeholder="选择可评估模型" :loading="modelsLoading">
+            <el-select
+              v-model="form.modelKey"
+              filterable
+              placeholder="选择可评估模型"
+              :loading="modelsLoading"
+              popper-class="model-eval-select-dropdown"
+            >
               <el-option
                 v-for="m in models"
                 :key="m._key"
-                :label="`${m.label} [${m.engine}]`"
+                :label="m.label"
                 :value="m._key"
               >
-                <span>{{ m.label }}</span>
-                <el-tag size="mini" type="info" effect="plain" class="option-tag">{{ m.engine }}</el-tag>
+                <div class="model-option">
+                  <span class="model-option-label">{{ m.label }}</span>
+                  <span class="model-option-tags">
+                    <el-tag size="mini" type="info" effect="plain">{{ m.engine }}</el-tag>
+                    <el-tag size="mini" effect="plain">项目 {{ m.project_id }}</el-tag>
+                  </span>
+                </div>
               </el-option>
             </el-select>
           </el-form-item>
@@ -534,10 +545,46 @@ export default {
 }
 .config-card ::v-deep .el-select {
   width: 100%;
+  max-width: 100%;
+}
+.config-card ::v-deep .el-input,
+.config-card ::v-deep .el-input__inner {
+  width: 100%;
+  max-width: 100%;
+}
+.config-card ::v-deep .el-select__tags,
+.config-card ::v-deep .el-select .el-input {
+  max-width: 100%;
+}
+.config-card ::v-deep .el-select .el-input__inner {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .option-tag {
   float: right;
   margin-top: 8px;
+}
+.model-option {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.model-option-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--color-primary);
+}
+.model-option-tags {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 .scope-group {
   width: 100%;
@@ -648,5 +695,35 @@ export default {
   .metric-grid {
     grid-template-columns: repeat(2, minmax(120px, 1fr));
   }
+}
+</style>
+
+<style>
+.model-eval-select-dropdown .el-select-dropdown__item {
+  max-width: min(520px, calc(100vw - 48px));
+  padding-right: 12px;
+}
+
+.model-eval-select-dropdown .model-option {
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.model-eval-select-dropdown .model-option-label {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.model-eval-select-dropdown .model-option-tags {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 </style>

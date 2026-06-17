@@ -78,7 +78,10 @@
             </div>
 
             <div class="card-header-group">
-                <div class="card-title">{{ project.project_name }}</div>
+                <div class="card-title-row">
+                  <div class="card-title">{{ project.project_name }}</div>
+                  <span class="project-id-chip">ID {{ project.project_id }}</span>
+                </div>
                 <div class="card-date">
                    <i class="el-icon-time"></i> {{ formatDate(project.created_at) || '未知' }}
                 </div>
@@ -542,6 +545,13 @@ export default {
   flex: 1;
 }
 
+.card-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
 .card-title {
   font-size: 1.1rem;
   font-weight: 700;
@@ -549,6 +559,19 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.project-id-chip {
+  flex: 0 0 auto;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  border: 1px solid var(--border-light);
+  background: var(--bg-body);
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.5;
 }
 
 .card-date {
