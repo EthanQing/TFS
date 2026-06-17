@@ -1,12 +1,12 @@
 <template>
   <div class="rollback-tool">
-    <div class="tool-head">
-      <div>
-        <h3>模型回滚</h3>
+    <div class="tool-header premium-header">
+      <div class="header-content">
+        <h3 class="gradient-text"><i class="el-icon-refresh-left"></i> 模型回滚</h3>
         <p>将当前生效的部署回滚到之前成功部署的模型版本。</p>
       </div>
-      <div class="head-actions">
-        <el-button size="small" @click="reloadAll" :loading="loading">刷新</el-button>
+      <div class="tool-actions">
+        <el-button class="action-btn" size="medium" @click="reloadAll" :loading="loading">刷新</el-button>
       </div>
     </div>
 
@@ -334,19 +334,54 @@ export default {
   flex-direction: column;
   gap: 12px;
 }
-.tool-head {
+.premium-header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
   align-items: center;
+  gap: 20px;
+  padding: 20px 28px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
-.tool-head h3 {
+.header-content h3 {
+  margin: 0 0 6px 0;
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+.header-content h3 i {
+  -webkit-text-fill-color: #0ea5e9;
+}
+.header-content p {
   margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  letter-spacing: 0.3px;
 }
-.tool-head p {
-  margin: 4px 0 0;
-  color: var(--text-secondary);
-  font-size: 12px;
+.tool-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.action-btn {
+  font-weight: 600;
+  border-radius: 8px;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 10px 18px;
+}
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
 }
 .card-block {
   border-radius: 10px;

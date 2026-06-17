@@ -1,15 +1,15 @@
 <template>
   <div class="model-eval-tool">
-    <div class="tool-head">
-      <div>
-        <h3><i class="el-icon-data-line"></i> 模型指标测试</h3>
+    <div class="tool-header premium-header">
+      <div class="header-content">
+        <h3 class="gradient-text"><i class="el-icon-data-line"></i> 模型指标测试</h3>
         <p>选择训练好的模型和标准测试数据集，真实计算 Precision、Recall、F1 与 mAP。</p>
       </div>
-      <div class="head-actions">
-        <el-button size="small" @click="reloadOptions" :loading="loadingOptions">
+      <div class="tool-actions">
+        <el-button class="action-btn" size="medium" @click="reloadOptions" :loading="loadingOptions">
           <i class="el-icon-refresh"></i> 刷新
         </el-button>
-        <el-button size="small" @click="resetState" :disabled="isRunning">
+        <el-button class="action-btn cancel-btn-light" size="medium" @click="resetState" :disabled="isRunning">
           <i class="el-icon-refresh-left"></i> 重置
         </el-button>
       </div>
@@ -502,27 +502,64 @@ export default {
   flex-direction: column;
   gap: 14px;
 }
-.tool-head {
+.premium-header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  align-items: flex-start;
+  align-items: center;
+  gap: 20px;
+  padding: 20px 28px;
+  background: rgba(255, 255, 255, 0.85);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: 16px;
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.02), 0 2px 4px -1px rgba(0, 0, 0, 0.02);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
-.tool-head h3 {
-  margin: 0;
-  font-size: 18px;
-  display: flex;
+.header-content h3 {
+  margin: 0 0 6px 0;
+  font-size: 24px;
+  font-weight: 700;
+  background: linear-gradient(135deg, #0ea5e9, #3b82f6);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  display: inline-flex;
   align-items: center;
   gap: 8px;
 }
-.tool-head p {
-  margin: 6px 0 0;
-  color: var(--text-secondary);
-  font-size: 13px;
+.header-content h3 i {
+  -webkit-text-fill-color: #0ea5e9;
 }
-.head-actions {
+.header-content p {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  letter-spacing: 0.3px;
+}
+.tool-actions {
   display: flex;
-  gap: 8px;
+  gap: 12px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.action-btn {
+  border-radius: 8px;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 10px 18px;
+}
+.action-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+}
+.cancel-btn-light {
+  color: #ef4444;
+  border-color: #fecaca;
+  background: #fff;
+}
+.cancel-btn-light:hover {
+  color: #dc2626;
+  border-color: #fca5a5;
+  background: #fef2f2;
 }
 .eval-grid {
   display: grid;
