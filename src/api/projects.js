@@ -109,6 +109,15 @@ export async function FetchProjectsModelsSize(projectIds = []) {
   return Array.isArray(data) ? data : [];
 }
 
+export async function fetchProjectTrainingAlerts(projectIds = []) {
+  const ids = Array.isArray(projectIds) ? projectIds.map((x) => Number(x)).filter((x) => Number.isFinite(x)) : [];
+  if (!ids.length) return [];
+  const response = await fetch(`${API_BASE}/api/v3/projects/training-alerts?project_ids=${encodeURIComponent(ids.join(','))}`);
+  const data = await safeJson(response);
+  if (!response.ok) throw new Error(toError(data, response));
+  return Array.isArray(data) ? data : [];
+}
+
 export async function fetchProjectCompareBaseline(projectId, frameworkKey) {
   const response = await fetch(`${API_BASE}/api/v3/projects/${encodeURIComponent(projectId)}/compare-baseline?framework_key=${encodeURIComponent(frameworkKey)}`);
   const data = await safeJson(response);

@@ -140,6 +140,7 @@ import {
   CancelTrainingJob,
   ResumeTrainingJob,
   openTrainingRunMetricsStream,
+  markTrainingRunReviewed,
 } from "@/api/training";
 import { fetchChartConfig, saveChartConfig } from "@/api/chartConfig";
 import {
@@ -217,6 +218,7 @@ export default {
       savingConfig: false,
       configLoaded: false,
       qualifiedStatus: null,
+      reviewedMarkedForJobId: null,
     };
   },
   computed: {
@@ -343,6 +345,7 @@ export default {
       this.streamLastMetricId = 0;
       this.streamLastEventId = 0;
       this.qualifiedStatus = null;
+      this.reviewedMarkedForJobId = null;
     },
     nextEvalEpoch(currentEpoch, evalInterval) {
       const interval = Math.max(1, Math.floor(Number(evalInterval) || 1));
@@ -406,7 +409,19 @@ export default {
         this.closeMetricsStream();
       }
       if (normalizeStatus(this.status) === 'completed') {
+        this.markCurrentRunReviewed('training-manager');
         this.$nextTick(() => this.refreshQualifiedStatus());
+      }
+    },
+    async markCurrentRunReviewed(source) {
+      const jobId = String(this.jobId || '').trim();
+      if (!jobId || normalizeStatus(this.status) !== 'completed') return;
+      if (this.reviewedMarkedForJobId === jobId) return;
+      this.reviewedMarkedForJobId = jobId;
+      try {
+        await markTrainingRunReviewed(jobId, source);
+      } catch (e) {
+        console.warn('Failed to mark training run reviewed:', e);
       }
     },
     normalizeIncomingMetricKeys(metricDict) {
@@ -730,7 +745,7 @@ export default {
           cancelButtonText: '取消',
           type: 'warning'
         });
-        
+
         this.stopping = true;
         await CancelTrainingJob(this.jobId);
         this.$message.success('已发送停止请求');
@@ -750,7 +765,7 @@ export default {
           cancelButtonText: '取消',
           type: 'info'
         });
-        
+
         this.continueing = true;
         console.log("Sending resume request for jobId:", this.jobId);
         await ResumeTrainingJob(this.jobId);
@@ -797,6 +812,7 @@ export default {
         this.$message.warning('缺少训练任务 ID');
         return;
       }
+      this.markCurrentRunReviewed('training-report');
       this.$router.push({ path: '/training-report', query: { runId: this.jobId } });
     },
 

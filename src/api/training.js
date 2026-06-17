@@ -428,11 +428,11 @@ export async function fetchTrainingJobsPage(page = 1, pageSize = 20, filters = {
     if (filters.project_id) url += `&project_id=${encodeURIComponent(filters.project_id)}`;
     if (filters.status) url += `&status=${encodeURIComponent(filters.status)}`;
     if (filters.search) {
-      // Note: The backend currently doesn't support search query parameter generically, only specific fields. 
-      // If backend doesn't support search, we might need to filter client side or just ignore. 
+      // Note: The backend currently doesn't support search query parameter generically, only specific fields.
+      // If backend doesn't support search, we might need to filter client side or just ignore.
       // Assuming backend doesn't support 'search' param yet based on previous file reads.
       // However, to implementing full server side search we would need backend changes.
-      // For now, let's just pass what we can. 
+      // For now, let's just pass what we can.
     }
 
     const res = await fetch(url);
@@ -741,6 +741,24 @@ export async function ResumeTrainingJob(jobId) {
     return await mapTrainingRunToJob(data);
   } catch (error) {
     console.error("恢复训练任务失败:", error);
+    throw error;
+  }
+}
+
+export async function markTrainingRunReviewed(runId, source = "view") {
+  try {
+    const id = normStr(runId);
+    if (!id) throw new Error("Missing run id");
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/review`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ source: normStr(source) || "view" }),
+    });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return data;
+  } catch (error) {
+    console.warn("标记训练任务已检查失败:", error);
     throw error;
   }
 }

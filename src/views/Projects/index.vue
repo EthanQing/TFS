@@ -5,14 +5,14 @@
          <div class="pr-eyebrow">项目工作室</div>
         <h1 class="pr-title">项目管理</h1>
         <p class="pr-subtitle">将数据集和模型分组到专注的工作区中进行训练。</p>
-        
+
         <div class="pr-actions">
            <el-button type="primary" icon="el-icon-plus" @click="dialogFormVisible = true">
             新建项目
           </el-button>
         </div>
       </div>
-      
+
       <div class="pr-hero-stats">
         <div class="hero-stat">
           <div class="stat-value">{{ totalProjects }}</div>
@@ -86,11 +86,17 @@
                    <i class="el-icon-time"></i> {{ formatDate(project.created_at) || '未知' }}
                 </div>
             </div>
-            
+
             <div class="card-desc">
               {{ project.description && project.description.trim() ? project.description : '暂无描述' }}
             </div>
-            
+
+            <div v-if="project.training_alert_view" class="training-alert" :class="project.training_alert_view.type">
+              <i :class="project.training_alert_view.icon"></i>
+              <span>{{ project.training_alert_view.text }}</span>
+              <small v-if="project.training_alert_view.detail">{{ project.training_alert_view.detail }}</small>
+            </div>
+
             <div class="card-stats">
               <div class="stat-item">
                 <div class="stat-label">模型</div>
@@ -155,7 +161,7 @@
 
 <script>
 // Keep logic intact, update styling structures
-import { fetchProjects, createProject, deleteProject, FetchProjectsModelsSize } from "@/api/projects";
+import { fetchProjects, createProject, deleteProject, FetchProjectsModelsSize, fetchProjectTrainingAlerts } from "@/api/projects";
 import { fetchStandardDatasetOptions } from "@/api/standardDatasets";
 export default {
   name: "ProjectsIndex",
@@ -192,7 +198,7 @@ export default {
       let result = [...this.projects];
       if (this.searchQuery) {
         const query = this.searchQuery.toLowerCase();
-        result = result.filter(project => 
+        result = result.filter(project =>
           project.project_name.toLowerCase().includes(query)
         );
       }
@@ -297,7 +303,7 @@ export default {
           const created = result || newProject;
           const ds = this.datasetList.find(d => Number(d.dataset_id) === Number(created.standard_dataset_id ?? created.dataset_id));
           if (ds) created.dataset = { dataset_id: ds.dataset_id, dataset_name: ds.dataset_name, dataset_type: ds.dataset_type };
-          
+
           this.projects.unshift(created);
           this.$message.success("Project Created");
           this.dialogFormVisible = false;
@@ -324,6 +330,7 @@ export default {
         } catch (_) {
           0;
         }
+        await this.fetchProjectTrainingAlerts();
       } catch (e) {
         console.error(e);
       }
@@ -350,6 +357,55 @@ export default {
       if (typeof sizeStr === 'number') return sizeStr;
       const match = String(sizeStr).match(/(\d+\.?\d*)/);
       return match ? parseFloat(match[1]) : 0;
+    },
+    projectTrainingAlert(project) {
+      const alert = project && project.training_alert;
+      if (!alert || typeof alert !== 'object') return null;
+      const runningCount = Number(alert.running_count) || 0;
+      if (runningCount > 0) {
+        const run = alert.latest_running_run || {};
+        const progress = Number(run.progress);
+        const detail = Number.isFinite(progress) && progress > 0 ? `${Math.round(progress)}%` : this.formatRunEpoch(run);
+        return {
+          type: 'is-running',
+          icon: 'el-icon-loading',
+          text: `训练中 · ${runningCount} 个任务`,
+          detail,
+        };
+      }
+      const unreviewedCount = Number(alert.unreviewed_completed_count) || 0;
+      if (unreviewedCount > 0) {
+        return {
+          type: 'is-review',
+          icon: 'el-icon-document',
+          text: `待检查 · ${unreviewedCount} 个完成任务`,
+          detail: '',
+        };
+      }
+      return null;
+    },
+    formatRunEpoch(run) {
+      const current = Number(run && run.current_epoch);
+      const total = Number(run && run.total_epochs);
+      if (Number.isFinite(current) && current > 0 && Number.isFinite(total) && total > 0) {
+        return `${current}/${total}`;
+      }
+      return '';
+    },
+    async fetchProjectTrainingAlerts() {
+      const ids = this.projects.map(p => p.project_id).filter(Boolean);
+      if (!ids.length) return;
+      try {
+        const list = await fetchProjectTrainingAlerts(ids);
+        const alertMap = new Map((Array.isArray(list) ? list : []).map(item => [Number(item.project_id), item]));
+        this.projects.forEach(project => {
+          const alert = alertMap.get(Number(project.project_id)) || null;
+          this.$set(project, 'training_alert', alert);
+          this.$set(project, 'training_alert_view', this.projectTrainingAlert({ training_alert: alert }));
+        });
+      } catch (e) {
+        console.warn('Failed to fetch project training alerts:', e);
+      }
     },
   },
   mounted() {
@@ -586,6 +642,36 @@ export default {
     height: 2.8em; /* 2 lines approx */
     overflow: hidden;
     text-overflow: ellipsis;
+}
+
+.training-alert {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  padding: 6px 10px;
+  border-radius: var(--radius-md);
+  border: 1px solid transparent;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+.training-alert small {
+  margin-left: auto;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.training-alert.is-running {
+  color: #1d4ed8;
+  background: #eff6ff;
+  border-color: #bfdbfe;
+}
+
+.training-alert.is-review {
+  color: #047857;
+  background: #ecfdf5;
+  border-color: #a7f3d0;
 }
 
 .card-stats {

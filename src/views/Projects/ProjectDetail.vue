@@ -231,7 +231,8 @@ import {
   FetchTrainingJobsStatus,
   ExportModel,
   CancelTrainingJob,
-  ResumeTrainingJob
+  ResumeTrainingJob,
+  markTrainingRunReviewed
 } from '@/api/training';
 import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
@@ -470,8 +471,18 @@ export default {
       if (command === 'export') this.openExportDialog(jobId);
       if (command === 'setbaseline') this.$message.info('设为基准功能待实现');
     },
+    async markCompletedRunReviewed(jobId, source) {
+      const model = this.findProjectModel(jobId);
+      if (!model || String(model.status || '').toLowerCase() !== 'completed') return;
+      try {
+        await markTrainingRunReviewed(jobId, source);
+      } catch (e) {
+        console.warn('Failed to mark training run reviewed:', e);
+      }
+    },
     openTrainingReport(jobId) {
       if (!jobId) return;
+      this.markCompletedRunReviewed(jobId, 'training-report');
       this.$router.push({ path: '/training-report', query: { runId: jobId } });
     },
     findProjectModel(jobId) {
@@ -668,6 +679,9 @@ export default {
       return msg.includes('cannot delete') || msg.includes('still reference');
     },
     goProjectsCharts(model) {
+      if (String(model?.status || '').toLowerCase() === 'completed') {
+        this.markCompletedRunReviewed(model.job_id, 'training-manager');
+      }
       this.$router.push({ path: '/projectscharts/trainpart', query: { jobId: model.job_id } });
     },
     async refreshRunningStatuses() {

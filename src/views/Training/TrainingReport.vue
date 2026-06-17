@@ -179,7 +179,7 @@
 </template>
 
 <script>
-import { DownloadTrainingReportDocx, FetchTrainingReport } from "@/api/training";
+import { DownloadTrainingReportDocx, FetchTrainingReport, markTrainingRunReviewed } from "@/api/training";
 
 const CORE_METRIC_CANDIDATES = {
   "mAP50-95": [
@@ -310,6 +310,7 @@ export default {
       errorMessage: "",
       unavailable: false,
       exportingDocx: false,
+      reviewedMarkedForRunId: null,
       activeParamPanels: ["general", "augmentation", "loss", "additional"],
     };
   },
@@ -370,6 +371,8 @@ export default {
         if (normalizeStatus(data?.basic?.status) !== "completed") {
           this.unavailable = true;
           this.errorMessage = "训练尚未完成，报告不可用。";
+        } else {
+          this.markReportReviewed(runId);
         }
       } catch (err) {
         const msg = err?.message || "报告加载失败";
@@ -377,6 +380,16 @@ export default {
         this.unavailable = err?.status === 400 || /尚未完成|不可用/.test(msg);
       } finally {
         this.loading = false;
+      }
+    },
+    async markReportReviewed(runId) {
+      const id = String(runId || "").trim();
+      if (!id || this.reviewedMarkedForRunId === id) return;
+      this.reviewedMarkedForRunId = id;
+      try {
+        await markTrainingRunReviewed(id, "training-report");
+      } catch (e) {
+        console.warn("Failed to mark training run reviewed:", e);
       }
     },
     goBack() {
