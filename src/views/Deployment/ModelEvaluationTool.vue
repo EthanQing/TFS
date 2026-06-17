@@ -700,7 +700,8 @@ export default {
 
 <style>
 .model-eval-select-dropdown .el-select-dropdown__item {
-  max-width: min(520px, calc(100vw - 48px));
+  width: 312px;
+  max-width: 312px;
   padding-right: 12px;
 }
 
@@ -721,9 +722,18 @@ export default {
 }
 
 .model-eval-select-dropdown .model-option-tags {
-  flex: 0 0 auto;
+  min-width: 0;
+  flex: 0 1 auto;
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+
+.model-eval-select-dropdown .model-option-tags .el-tag {
+  min-width: 0;
+  max-width: 96px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 </style>
