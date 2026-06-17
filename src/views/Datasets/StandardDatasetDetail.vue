@@ -168,7 +168,6 @@
 
     <div v-if="showImagePreview" class="preview-modal" @click="closeImagePreview">
       <div class="modal-card glass-panel" @click.stop>
-        <button class="close-btn" @click="closeImagePreview"><i class="el-icon-close"></i></button>
         <div class="modal-image-wrapper">
           <div ref="previewCanvasWrap" class="modal-canvas-wrap">
             <img ref="previewModalImage" :src="previewImage.image_url" :alt="previewImage.image_name"
@@ -1340,19 +1339,6 @@ export default {
   max-height: calc(100vh - 48px);
   padding: 24px;
   overflow: auto;
-}
-
-.close-btn {
-  position: absolute;
-  top: 16px;
-  right: 16px;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  border: none;
-  background: #f8fafc;
-  cursor: pointer;
-  color: #334155;
 }
 
 .modal-image-wrapper {
