@@ -127,12 +127,23 @@
                   </span>
                   <el-dropdown-menu slot="dropdown">
                     <!-- <el-dropdown-item v-if="model.status === 'completed'" command="setbaseline">设为基准</el-dropdown-item> -->
-                    <el-dropdown-item v-if="model.status === 'completed'" command="report" icon="el-icon-document">
-                      查看报告
+                    <el-dropdown-item command="export" :disabled="isPaddleModel(model)">
+                      <span class="pd-menu-item">
+                        <i class="el-icon-download"></i>
+                        <span>导出<span v-if="isPaddleModel(model)">（Paddle 暂不支持）</span></span>
+                      </span>
                     </el-dropdown-item>
-                    <el-dropdown-item command="delete" icon="el-icon-delete" class="danger-text">删除</el-dropdown-item>
-                    <el-dropdown-item command="export" icon="el-icon-download" :disabled="isPaddleModel(model)">
-                      导出<span v-if="isPaddleModel(model)">（Paddle 暂不支持）</span>
+                    <el-dropdown-item v-if="model.status === 'completed'" command="report">
+                      <span class="pd-menu-item">
+                        <i class="el-icon-document"></i>
+                        <span>查看报告</span>
+                      </span>
+                    </el-dropdown-item>
+                    <el-dropdown-item command="delete" class="danger-text">
+                      <span class="pd-menu-item">
+                        <i class="el-icon-delete"></i>
+                        <span>删除</span>
+                      </span>
                     </el-dropdown-item>
                   </el-dropdown-menu>
                 </el-dropdown>
@@ -1208,6 +1219,21 @@ export default {
 
 .danger-text {
   color: #ef4444;
+}
+
+.pd-menu-item {
+  min-width: 92px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  line-height: 1;
+}
+
+.pd-menu-item i {
+  width: 16px;
+  text-align: center;
+  font-size: 14px;
+  flex: 0 0 16px;
 }
 
 .action-btn {
