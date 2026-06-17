@@ -52,11 +52,28 @@
     <section class="ds-content" v-loading="loading">
       <section v-if="filteredDatasets.length" class="dataset-grid">
         <div class="dataset-card" v-for="d in filteredDatasets" :key="d.dataset_id" @click="goDetail(d)">
-          <div class="card-media" :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
+          <div v-if="activeTab === 'standard'" class="card-media"
+            :style="{ backgroundImage: `url(${d.preview_image_url || defaultPreview})` }">
             <span class="card-type-badge">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
             <span v-if="activeTab === 'standard' && d.format" class="card-format-badge">{{ d.format.toUpperCase()
             }}</span>
             <div class="card-overlay"></div>
+          </div>
+          <div v-else class="raw-card-panel">
+            <span class="card-type-badge raw-type-badge">{{ getDatasetTypeLabel(d.dataset_type) }}</span>
+            <div class="raw-panel-content">
+              <div class="raw-panel-icon">
+                <i class="el-icon-folder-opened"></i>
+              </div>
+              <div>
+                <div class="raw-panel-kicker">原始数据集</div>
+                <div class="raw-panel-title">等待映射与发布</div>
+              </div>
+            </div>
+            <div class="raw-panel-meta">
+              <span>ID {{ d.dataset_id || '-' }}</span>
+              <span>{{ formatImageCount(d.num_images) }} 图片</span>
+            </div>
           </div>
           <div class="card-body">
             <div class="card-header">
@@ -842,6 +859,99 @@ export default {
   background-size: cover;
   background-position: center;
   position: relative;
+}
+
+.raw-card-panel {
+  height: 180px;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 48px 18px 16px;
+  background:
+    linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(14, 165, 233, 0.06)),
+    var(--bg-body);
+  border-bottom: 1px solid var(--border-light);
+  overflow: hidden;
+}
+
+.raw-card-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.08) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.08) 1px, transparent 1px);
+  background-size: 28px 28px;
+  mask-image: linear-gradient(to bottom, rgba(0, 0, 0, 0.5), transparent 78%);
+  pointer-events: none;
+}
+
+.raw-card-panel::after {
+  content: "";
+  position: absolute;
+  width: 120px;
+  height: 120px;
+  right: -36px;
+  bottom: -42px;
+  border-radius: 50%;
+  background: rgba(37, 99, 235, 0.08);
+  pointer-events: none;
+}
+
+.raw-type-badge {
+  background: rgba(255, 255, 255, 0.92);
+}
+
+.raw-panel-content {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.raw-panel-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.88);
+  color: var(--color-primary);
+  box-shadow: var(--shadow-sm);
+  font-size: 1.5rem;
+}
+
+.raw-panel-kicker {
+  color: var(--color-primary);
+  font-size: 0.75rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+}
+
+.raw-panel-title {
+  color: var(--text-main);
+  font-weight: 800;
+  font-size: 1.05rem;
+}
+
+.raw-panel-meta {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--text-secondary);
+  font-size: 0.78rem;
+}
+
+.raw-panel-meta span {
+  padding: 4px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.82);
+  box-shadow: var(--shadow-sm);
 }
 
 .card-overlay {
