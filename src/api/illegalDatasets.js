@@ -219,6 +219,12 @@ export async function fetchActiveIllegalDatasetPublishJob(datasetId) {
     return getJson(`${PREFIX}/${encodeURIComponent(datasetId)}/publish-jobs/active`);
 }
 
+export async function cancelIllegalDatasetPublishJob(datasetId, jobId) {
+    if (!datasetId) throw new Error('缺少 datasetId');
+    if (!jobId) throw new Error('缺少 jobId');
+    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/publish-jobs/${encodeURIComponent(jobId)}/cancel`, {});
+}
+
 // ── View / Annotations / Statistics / Files ──────────────────────────────
 
 export async function fetchIllegalDatasetView(datasetId, { versionId = null, classId = null, page = 1, pageSize = 50 } = {}) {

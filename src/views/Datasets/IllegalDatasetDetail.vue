@@ -99,7 +99,20 @@
                     <span v-if="publishJobId">任务 {{ shortPublishJobId }}</span>
                   </div>
                 </div>
-                <el-tag size="small" :type="publishStatusTagType">{{ publishStatusLabel(publishJobStatus) }}</el-tag>
+                <div class="publish-progress-actions">
+                  <el-tag size="small" :type="publishStatusTagType">{{ publishStatusLabel(publishJobStatus) }}</el-tag>
+                  <el-button
+                    v-if="canCancelPublishJob"
+                    class="publish-cancel-btn"
+                    type="danger"
+                    plain
+                    size="mini"
+                    :loading="publishCancelLoading"
+                    @click="cancelPublishJob"
+                  >
+                    停止转换
+                  </el-button>
+                </div>
               </div>
               <el-progress
                 :percentage="publishJobPercent"
@@ -323,6 +336,7 @@ import {
   createIllegalDatasetPublishJob,
   fetchIllegalDatasetPublishJob,
   fetchActiveIllegalDatasetPublishJob,
+  cancelIllegalDatasetPublishJob,
 } from '@/api/illegalDatasets';
 import { formatMb, loadUploadTask } from '@/api/apiUtils';
 
@@ -380,6 +394,7 @@ export default {
       publishJobError: '',
       publishJobUpdatedAt: '',
       publishJobPollToken: 0,
+      publishCancelLoading: false,
     };
   },
   computed: {
@@ -537,6 +552,10 @@ export default {
       if (status === 'completed') return 'success';
       if (status === 'failed') return 'exception';
       return undefined;
+    },
+    canCancelPublishJob() {
+      const status = String(this.publishJobStatus || '').toLowerCase();
+      return Boolean(this.publishJobId) && ['queued', 'running'].includes(status);
     },
     shortPublishJobId() {
       const raw = String(this.publishJobId || '');
@@ -793,7 +812,7 @@ export default {
           throw new Error(job && job.error_message ? job.error_message : '服务端处理失败');
         }
         if (status === 'cancelled') {
-          throw new Error('转换任务已取消');
+          return job;
         }
 
         await this.sleep(2000);
@@ -801,6 +820,11 @@ export default {
       throw new Error('转换轮询已取消');
     },
     async finishPublishJob(finalJob) {
+      const status = String(finalJob && finalJob.status || '').trim().toLowerCase();
+      if (status === 'cancelled') {
+        this.$message.info('转换任务已取消');
+        return;
+      }
       const result = finalJob && finalJob.result ? finalJob.result : null;
       const standardDatasetId = result && result.standard_dataset_id;
       if (!standardDatasetId) {
@@ -818,6 +842,33 @@ export default {
         }).catch(() => { });
       }
       await this.loadAll({ skipPublishRestore: true });
+    },
+    async cancelPublishJob() {
+      if (!this.canCancelPublishJob || this.publishCancelLoading) return;
+      try {
+        await this.$confirm('确定要停止当前转换任务吗？已生成的临时转换文件会由后台清理或后续任务覆盖。', '停止转换', {
+          type: 'warning',
+          confirmButtonText: '停止转换',
+          cancelButtonText: '继续等待',
+        });
+      } catch (error) {
+        if (error === 'cancel' || error === 'close') return;
+        throw error;
+      }
+
+      this.publishCancelLoading = true;
+      try {
+        const job = await cancelIllegalDatasetPublishJob(this.datasetId, this.publishJobId);
+        this.updatePublishJobState(job);
+        this.stopPublishJobPolling();
+        this.publishing = false;
+        this.$message.success('已停止转换任务');
+      } catch (error) {
+        console.error(error);
+        this.$message.error(`停止转换失败：${error.message || error}`);
+      } finally {
+        this.publishCancelLoading = false;
+      }
     },
     async restoreActivePublishJob() {
       if (!this.datasetId || this.publishing) return;
@@ -1863,6 +1914,17 @@ export default {
   font-size: 15px;
   font-weight: 700;
   color: #111827;
+}
+
+.publish-progress-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.publish-cancel-btn {
+  padding: 6px 10px;
 }
 
 .publish-progress-sub {
