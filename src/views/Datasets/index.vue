@@ -67,19 +67,31 @@
             <div class="card-stats" :class="activeTab === 'illegal' ? 'stats-3col' : 'stats-4col'">
               <div class="stat-item">
                 <div class="stat-label">图片</div>
-                <div class="stat-value">{{ formatImageCount(d.num_images) }}</div>
+                <div class="stat-value">
+                  <i v-if="d.__stats_loading" class="el-icon-loading stat-loading-icon"></i>
+                  <span v-else>{{ formatImageCount(d.num_images) }}</span>
+                </div>
               </div>
               <div class="stat-item">
                 <div class="stat-label">类别</div>
-                <div class="stat-value">{{ d.num_classes || 0 }}</div>
+                <div class="stat-value">
+                  <i v-if="d.__stats_loading" class="el-icon-loading stat-loading-icon"></i>
+                  <span v-else>{{ formatStatValue(d.num_classes) }}</span>
+                </div>
               </div>
               <div class="stat-item" v-if="activeTab === 'standard'">
                 <div class="stat-label">目标数</div>
-                <div class="stat-value">{{ d.statistics?.total_objects }}</div>
+                <div class="stat-value">
+                  <i v-if="d.__stats_loading" class="el-icon-loading stat-loading-icon"></i>
+                  <span v-else>{{ formatStatValue(d.statistics?.total_objects) }}</span>
+                </div>
               </div>
               <div class="stat-item">
                 <div class="stat-label">大小</div>
-                <div class="stat-value">{{ formatDatasetSize(d.dataset_size_mb) }}</div>
+                <div class="stat-value">
+                  <i v-if="d.__stats_loading" class="el-icon-loading stat-loading-icon"></i>
+                  <span v-else>{{ formatDatasetSize(d.dataset_size_mb) }}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -171,9 +183,9 @@
 </template>
 
 <script>
-import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset, updateIllegalDataset } from "@/api/illegalDatasets";
-import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset, updateStandardDataset } from "@/api/standardDatasets";
-import { formatMb } from "@/api/apiUtils";
+import { fetchIllegalDatasets, createIllegalDataset, deleteIllegalDataset, updateIllegalDataset, fetchIllegalDatasetStatistics } from "@/api/illegalDatasets";
+import { fetchStandardDatasets, createStandardDataset, deleteStandardDataset, updateStandardDataset, fetchStandardDatasetStatistics, fetchStandardDatasetView } from "@/api/standardDatasets";
+import { formatMb, toAbsUrl } from "@/api/apiUtils";
 import defaultDatasetImg from "@/assets/images/Datasets/image.png";
 
 export default {
@@ -203,6 +215,10 @@ export default {
       ],
 
       datasets: [],
+      datasetTabs: {
+        illegal: { items: [], loaded: false, loading: false, lastLoadedAt: null, statsToken: 0 },
+        standard: { items: [], loaded: false, loading: false, lastLoadedAt: null, statsToken: 0 },
+      },
 
       dialogFormVisible: false,
       form: { name: "", type: "" },
@@ -256,7 +272,7 @@ export default {
       this.filterType = 'all';
       this.activeSort = null;
       this.searchQuery = "";
-      this.fetchDatasetsList();
+      this.activateDatasetTab();
     },
     goDetail(dataset) {
       if (this.activeTab === 'illegal') {
@@ -312,7 +328,7 @@ export default {
 
         this.createdDatasetId = ds && (ds.illegal_dataset_id || ds.standard_dataset_id || ds.id);
         this.$message.success(`Dataset Created: ${this.form.name}`);
-        this.fetchDatasetsList();
+        await this.refreshCurrentTab();
       } catch (error) {
         this.$message.error('Creation failed: ' + (error.message || error));
       } finally {
@@ -320,37 +336,94 @@ export default {
       }
     },
     async fetchDatasetsList() {
-      try {
-        this.loading = true;
-        let list;
-        if (this.activeTab === 'illegal') {
-          list = await fetchIllegalDatasets();
-        } else {
-          list = await fetchStandardDatasets();
-        }
-
-        this.datasets = Array.isArray(list) ? list : [];
-        this.seedPreviewFromCache();
-        this.loadPreviewsParallel();
-      } catch (e) {
-        console.error('Failed to fetch datasets:', e);
-        this.datasets = [];
-      } finally {
+      return this.fetchDatasetsForTab(this.activeTab, { force: false });
+    },
+    activateDatasetTab() {
+      const cache = this.datasetTabs[this.activeTab];
+      if (cache && cache.loaded) {
+        this.datasets = cache.items;
         this.loading = false;
+        this.loadDatasetStatsForTab(this.activeTab);
+        return;
+      }
+      this.fetchDatasetsForTab(this.activeTab, { force: false });
+    },
+    async refreshCurrentTab() {
+      this.invalidateDatasetTab(this.activeTab);
+      await this.fetchDatasetsForTab(this.activeTab, { force: true });
+    },
+    invalidateDatasetTab(tab) {
+      const cache = this.datasetTabs[tab];
+      if (!cache) return;
+      cache.loaded = false;
+      cache.items = [];
+      cache.lastLoadedAt = null;
+      cache.statsToken += 1;
+      if (tab === this.activeTab) {
+        this.datasets = [];
       }
     },
-    seedPreviewFromCache() {
-      this.datasets.forEach(d => {
-        if (this.activeTab === 'illegal') {
+    async fetchDatasetsForTab(tab, { force = false } = {}) {
+      const cache = this.datasetTabs[tab];
+      if (!cache) return;
+      if (!force && cache.loaded) {
+        if (tab === this.activeTab) this.datasets = cache.items;
+        this.loadDatasetStatsForTab(tab);
+        return;
+      }
+      try {
+        cache.loading = true;
+        if (tab === this.activeTab) this.loading = true;
+        let list;
+        if (tab === 'illegal') {
+          list = await fetchIllegalDatasets({ includeStatistics: false });
+        } else {
+          list = await fetchStandardDatasets({ includeStatistics: false });
+        }
+
+        cache.items = (Array.isArray(list) ? list : []).map(item => this.normalizeListDataset(item, tab));
+        cache.loaded = true;
+        cache.lastLoadedAt = Date.now();
+        cache.statsToken += 1;
+        if (tab === this.activeTab) {
+          this.datasets = cache.items;
+          this.seedPreviewFromCache(tab);
+        }
+        this.loadDatasetStatsForTab(tab);
+      } catch (e) {
+        console.error('Failed to fetch datasets:', e);
+        cache.items = [];
+        cache.loaded = false;
+        if (tab === this.activeTab) this.datasets = [];
+      } finally {
+        cache.loading = false;
+        if (tab === this.activeTab) this.loading = false;
+      }
+    },
+    normalizeListDataset(item, tab) {
+      return {
+        ...item,
+        __tab: tab,
+        __stats_loaded: !!item.statistics,
+        __stats_loading: false,
+        __stats_error: false,
+        __preview_loading: false,
+      };
+    },
+    seedPreviewFromCache(tab = this.activeTab) {
+      const cache = this.datasetTabs[tab];
+      const items = cache ? cache.items : this.datasets;
+      items.forEach(d => {
+        if (tab === 'illegal') {
           localStorage.removeItem(`ds_preview_illegal_${d.dataset_id}`);
           this.$set(d, 'preview_image_url', '');
           return;
         }
-        const key = `ds_preview_${this.activeTab}_${d.dataset_id}`;
+        const key = `ds_preview_${tab}_${d.dataset_id}`;
         const cached = localStorage.getItem(key) || '';
         const backendPreview = d.preview_image_url || '';
         const imageCount = Number(d.num_images || 0);
-        if (imageCount <= 0) {
+        if (d.__stats_loaded && imageCount <= 0) {
           localStorage.removeItem(key);
           this.$set(d, 'preview_image_url', '');
         } else if (backendPreview) {
@@ -363,11 +436,87 @@ export default {
       });
       this.$forceUpdate();
     },
-    async loadPreviewsParallel() {
-      // Logic for preview can be implemented here by calling thumbnail endpoints.
-      // E.g., picking the first file of the dataset. For now, since view api gives it,
-      // we might not need separate requests if we don't have the file paths here.
-      // This is a placeholder for custom preview loading logic.
+    async loadDatasetStatsForTab(tab) {
+      const cache = this.datasetTabs[tab];
+      if (!cache || !cache.items.length) return;
+      const token = cache.statsToken;
+      const pending = cache.items.filter(d => d && d.dataset_id && !d.__stats_loaded && !d.__stats_loading);
+      if (!pending.length) return;
+      await this.runLimited(pending, 4, async dataset => {
+        if (token !== cache.statsToken) return;
+        this.$set(dataset, '__stats_loading', true);
+        this.$set(dataset, '__stats_error', false);
+        try {
+          const stats = tab === 'illegal'
+            ? await fetchIllegalDatasetStatistics(dataset.dataset_id)
+            : await fetchStandardDatasetStatistics(dataset.dataset_id);
+          if (token !== cache.statsToken) return;
+          this.applyDatasetStatistics(dataset, stats);
+          this.$set(dataset, '__stats_loading', false);
+          if (tab === 'standard') {
+            await this.ensureStandardPreview(dataset, token);
+          }
+        } catch (error) {
+          console.warn('Failed to load dataset statistics:', error);
+          if (token === cache.statsToken) this.$set(dataset, '__stats_error', true);
+        } finally {
+          if (token === cache.statsToken) this.$set(dataset, '__stats_loading', false);
+        }
+      });
+    },
+    async runLimited(items, limit, worker) {
+      let cursor = 0;
+      const runners = Array.from({ length: Math.min(limit, items.length) }, async () => {
+        while (cursor < items.length) {
+          const item = items[cursor++];
+          await worker(item);
+        }
+      });
+      await Promise.all(runners);
+    },
+    applyDatasetStatistics(dataset, stats) {
+      const totalImages = stats?.num_images ?? stats?.total_images ?? stats?.image_count ?? null;
+      const numClasses = stats?.num_classes ?? null;
+      const sizeMb = stats?.size_mb ?? stats?.total_size_mb ?? stats?.dataset_size_mb ?? null;
+      this.$set(dataset, 'statistics', stats || null);
+      this.$set(dataset, 'num_images', totalImages);
+      this.$set(dataset, 'num_classes', numClasses);
+      this.$set(dataset, 'dataset_size_mb', sizeMb != null ? formatMb(sizeMb) : null);
+      this.$set(dataset, '__stats_loaded', true);
+    },
+    async ensureStandardPreview(dataset, token) {
+      if (!dataset) return;
+      const tab = 'standard';
+      const cache = this.datasetTabs[tab];
+      if (!cache) return;
+      const key = `ds_preview_${tab}_${dataset.dataset_id}`;
+      if (Number(dataset.num_images || 0) <= 0) {
+        localStorage.removeItem(key);
+        this.$set(dataset, 'preview_image_url', '');
+        return;
+      }
+      if (dataset.preview_image_url) return;
+      const cached = localStorage.getItem(key) || '';
+      if (cached && !/images\/image\.png$/.test(cached)) {
+        this.$set(dataset, 'preview_image_url', cached);
+        return;
+      }
+      if (dataset.__preview_loading) return;
+      this.$set(dataset, '__preview_loading', true);
+      try {
+        const view = await fetchStandardDatasetView(dataset.dataset_id, { page: 1, pageSize: 1 });
+        if (token !== cache.statsToken) return;
+        const first = Array.isArray(view?.items) ? view.items[0] : null;
+        const preview = toAbsUrl(first?.thumbnail_url || first?.image_url || '');
+        if (preview) {
+          localStorage.setItem(key, preview);
+          this.$set(dataset, 'preview_image_url', preview);
+        }
+      } catch (error) {
+        console.warn('Failed to load dataset preview:', error);
+      } finally {
+        if (cache && token === cache.statsToken) this.$set(dataset, '__preview_loading', false);
+      }
     },
     datasetDeleteKey(id, kind = this.activeTab) {
       return `${kind}:${id}`;
@@ -391,7 +540,7 @@ export default {
           await deleteStandardDataset(id, { force: false, deleteFiles: true });
         }
         this.showPopup = false;
-        await this.fetchDatasetsList();
+        await this.refreshCurrentTab();
         this.$message.success('数据集删除完成');
       } catch (error) {
         if (this.isDeleteConflict(error)) {
@@ -407,7 +556,7 @@ export default {
             } else {
               await deleteStandardDataset(id, { force: true, deleteFiles: true });
             }
-            await this.fetchDatasetsList();
+            await this.refreshCurrentTab();
             this.$message.success('数据集删除完成');
           } catch (forceError) {
             if (forceError !== 'cancel' && forceError !== 'close') {
@@ -461,18 +610,27 @@ export default {
       }
     },
     formatImageCount(count) {
-      if (!count) return '0';
+      if (count === null || count === undefined || count === '') return '--';
+      count = Number(count);
+      if (!Number.isFinite(count)) return '--';
+      if (count === 0) return '0';
       if (count >= 1000) return (count / 1000).toFixed(1) + 'K';
       return count.toString();
+    },
+    formatStatValue(value) {
+      if (value === null || value === undefined || value === '') return '--';
+      const num = Number(value);
+      if (!Number.isFinite(num)) return '--';
+      return num.toString();
     },
     formatDatasetSize(sizeStr) {
       if (typeof sizeStr === 'number') return formatMb(sizeStr);
       const text = String(sizeStr || '').trim();
-      if (!text) return formatMb(0);
+      if (!text) return '--';
       const match = text.match(/(\d+\.?\d*)\s*(GB|MB)?/i);
       if (!match) return text;
       const value = parseFloat(match[1]);
-      if (!Number.isFinite(value)) return formatMb(0);
+      if (!Number.isFinite(value)) return '--';
       const unit = String(match[2] || 'MB').toUpperCase();
       return formatMb(unit === 'GB' ? value * 1024 : value);
     },
@@ -492,7 +650,7 @@ export default {
     },
   },
   mounted() {
-    this.fetchDatasetsList();
+    this.activateDatasetTab();
   },
 };
 </script>
@@ -827,6 +985,11 @@ export default {
   font-size: 0.9rem;
   font-weight: 700;
   color: var(--text-main);
+}
+
+.stat-loading-icon {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
 }
 
 /* Empty State */

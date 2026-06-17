@@ -43,9 +43,9 @@ export async function fetchStandardDatasets({ page = 1, pageSize = 50, includeSt
             dataset_type: item.dataset_type || item.type || 'detection',
             dataset_id: item.standard_dataset_id,
             format: item.format || 'yolo',
-            num_images: item.statistics?.num_images ?? item.statistics?.total_images ?? item.statistics?.image_count ?? 0,
-            num_classes: item.statistics?.num_classes || 0,
-            dataset_size_mb: formatMb(item.statistics?.size_mb),
+            num_images: item.statistics?.num_images ?? item.statistics?.total_images ?? item.statistics?.image_count ?? null,
+            num_classes: item.statistics?.num_classes ?? null,
+            dataset_size_mb: item.statistics ? formatMb(item.statistics?.size_mb) : null,
             preview_image_url: toAbsUrl(item.preview_image_url || ''),
         }));
     } catch (error) {
