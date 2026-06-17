@@ -85,6 +85,16 @@
           <strong>{{ progress }}%</strong>
         </div>
         <el-progress :percentage="progress" :stroke-width="8" />
+        <div class="task-meta">
+          <span v-if="progressCountText">{{ progressCountText }}</span>
+          <span v-if="detailMessage">{{ detailMessage }}</span>
+        </div>
+        <div v-if="currentItem" class="task-current" :title="currentItem">
+          {{ currentItem }}
+        </div>
+        <div v-if="lastErrorMessage" class="task-error">
+          {{ stageText }}：{{ lastErrorMessage }}
+        </div>
       </div>
     </div>
 
@@ -165,7 +175,11 @@ const STAGE_LABELS = {
   validating: '正在校验目录...',
   linking: '正在创建目录引用...',
   scanning: '正在扫描目录...',
+  pairing: '正在配对图片和 JSON...',
+  parsing: '正在解析 JSON 标签...',
   indexing: '正在生成索引...',
+  finalizing: '正在收尾...',
+  materializing: '正在切换版本...',
   done: '导入完成',
   failed: '导入失败',
 };
@@ -204,6 +218,11 @@ export default {
       importing: false,
       progress: 0,
       stage: '',
+      processedCount: 0,
+      totalCount: 0,
+      currentItem: '',
+      detailMessage: '',
+      lastErrorMessage: '',
       rootDialogVisible: false,
       fsPath: '',
       fsParentPath: null,
@@ -222,6 +241,13 @@ export default {
     },
     stageText() {
       return STAGE_LABELS[this.stage] || this.stage || '正在导入...';
+    },
+    progressCountText() {
+      const processed = Number(this.processedCount || 0);
+      const total = Number(this.totalCount || 0);
+      if (total > 0) return `${processed}/${total}`;
+      if (processed > 0) return `已处理 ${processed}`;
+      return '';
     },
   },
   methods: {
@@ -372,6 +398,11 @@ export default {
       this.importing = true;
       this.progress = 0;
       this.stage = 'queued';
+      this.processedCount = 0;
+      this.totalCount = 0;
+      this.currentItem = '';
+      this.detailMessage = '';
+      this.lastErrorMessage = '';
       try {
         const payload = {
           root_id: this.rootId,
@@ -385,10 +416,15 @@ export default {
         const taskId = task && task.task_id;
         if (taskId) {
           await pollUploadTask(taskId, {
-            interval: 2000,
+            interval: 1000,
             onStageChange: (stage, info) => {
               this.stage = stage;
               this.progress = Math.max(this.progress, Number(info && info.progress) || 0);
+              this.processedCount = Number((info && (info.processedCount ?? info.processed_count)) || 0);
+              this.totalCount = Number((info && (info.totalCount ?? info.total_count)) || 0);
+              this.currentItem = String((info && (info.currentItem || info.current_item)) || '');
+              this.detailMessage = String((info && (info.detailMessage || info.detail_message)) || '');
+              this.lastErrorMessage = String((info && info.errorMessage) || '');
             },
           });
         }
@@ -399,6 +435,7 @@ export default {
         this.$emit('update:visible', false);
       } catch (error) {
         this.stage = 'failed';
+        this.lastErrorMessage = String(error && error.message || error || '');
         this.$message.error(`挂载目录导入失败：${error.message || error}`);
       } finally {
         this.importing = false;
@@ -555,6 +592,31 @@ export default {
   justify-content: space-between;
   margin-bottom: 8px;
   color: #334155;
+}
+
+.task-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.task-current {
+  margin-top: 6px;
+  color: #475569;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-error {
+  margin-top: 8px;
+  color: #b91c1c;
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .root-picker {

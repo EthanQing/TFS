@@ -393,6 +393,11 @@ export async function pollUploadTask(taskId, {
 
     let lastStage = '';
     let lastProgress = -1;
+    let lastProcessedCount = -1;
+    let lastTotalCount = -1;
+    let lastCurrentItem = '';
+    let lastDetailMessage = '';
+    let lastErrorMessage = '';
 
     const wait = (ms) => new Promise((resolve) => {
         const timer = setTimeout(resolve, ms);
@@ -421,17 +426,47 @@ export async function pollUploadTask(taskId, {
         const progress = Number(data && data.progress) || 0;
         const errorMessage = String(data && data.error_message || '').trim();
         const message = String(data && data.message || '').trim();
+        const processedCount = Number(data && data.processed_count) || 0;
+        const totalCount = Number(data && data.total_count) || 0;
+        const currentItem = String(data && data.current_item || '').trim();
+        const detailMessage = String(data && data.detail_message || '').trim();
 
         // 通知阶段或进度变化
-        if (stage && typeof onStageChange === 'function' && (stage !== lastStage || progress !== lastProgress || errorMessage)) {
+        const changed = (
+            stage !== lastStage
+            || progress !== lastProgress
+            || processedCount !== lastProcessedCount
+            || totalCount !== lastTotalCount
+            || currentItem !== lastCurrentItem
+            || detailMessage !== lastDetailMessage
+            || errorMessage !== lastErrorMessage
+        );
+        if (
+            stage
+            && typeof onStageChange === 'function'
+            && changed
+        ) {
             lastStage = stage;
             lastProgress = progress;
+            lastProcessedCount = processedCount;
+            lastTotalCount = totalCount;
+            lastCurrentItem = currentItem;
+            lastDetailMessage = detailMessage;
+            lastErrorMessage = errorMessage;
             onStageChange(stage, {
                 status,
                 stage,
                 progress,
                 errorMessage: errorMessage || null,
                 message: message || null,
+                processedCount,
+                totalCount,
+                currentItem: currentItem || null,
+                detailMessage: detailMessage || null,
+                processed_count: processedCount,
+                total_count: totalCount,
+                current_item: currentItem || null,
+                detail_message: detailMessage || null,
             });
         }
 
