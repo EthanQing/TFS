@@ -41,9 +41,9 @@
           >
             {{ qualifiedStatus?.checking ? '检查中...' : '标记为合格' }}
           </el-button>
-          <el-tag v-else type="success" effect="dark" size="medium">
-            <i class="el-icon-success"></i> 已合格
-          </el-tag>
+          <el-button v-else type="success" size="small" icon="el-icon-success" disabled>
+            已合格
+          </el-button>
         </div>
       </div>
     </section>
@@ -993,6 +993,14 @@ export default {
     background: transparent;
     padding: 0;
     justify-content: center;
+}
+
+.tm-stat.action-stat ::v-deep .el-button--success.is-disabled {
+  color: #fff;
+  background-color: var(--color-success);
+  border-color: var(--color-success);
+  opacity: 1;
+  cursor: default;
 }
 
 .tm-progress-card {
