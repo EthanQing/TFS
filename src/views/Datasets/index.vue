@@ -70,10 +70,6 @@
                 <div class="raw-panel-title">等待映射与发布</div>
               </div>
             </div>
-            <div class="raw-panel-meta">
-              <span>ID {{ d.dataset_id || '-' }}</span>
-              <span>{{ formatImageCount(d.num_images) }} 图片</span>
-            </div>
           </div>
           <div class="card-body">
             <div class="card-header">
@@ -866,8 +862,8 @@ export default {
   position: relative;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
-  padding: 48px 18px 16px;
+  justify-content: center;
+  padding: 48px 18px 24px;
   background:
     linear-gradient(135deg, rgba(37, 99, 235, 0.08), rgba(14, 165, 233, 0.06)),
     var(--bg-body);
@@ -935,23 +931,6 @@ export default {
   color: var(--text-main);
   font-weight: 800;
   font-size: 1.05rem;
-}
-
-.raw-panel-meta {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  color: var(--text-secondary);
-  font-size: 0.78rem;
-}
-
-.raw-panel-meta span {
-  padding: 4px 8px;
-  border-radius: var(--radius-full);
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: var(--shadow-sm);
 }
 
 .card-overlay {
