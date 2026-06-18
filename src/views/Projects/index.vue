@@ -163,6 +163,7 @@
 // Keep logic intact, update styling structures
 import { fetchProjects, createProject, deleteProject, FetchProjectsModelsSize, fetchProjectTrainingAlerts } from "@/api/projects";
 import { fetchStandardDatasetOptions } from "@/api/standardDatasets";
+import { cameFromTrainingAlertSource, consumeProjectTrainingAlertsDirty } from "@/utils/projectTrainingAlerts";
 export default {
   name: "ProjectsIndex",
   data() {
@@ -178,6 +179,7 @@ export default {
       form: { name: "", description: "", dataset: "" , user: "" },
       projects: [],
       datasetList: [],
+      trainingAlertsRefreshing: false,
       rules: {
         name: [{ required: true, message: "请输入项目名称", trigger: "blur" }],
         dataset: [{ required: true, message: "请选择标准数据集", trigger: "blur" }]
@@ -392,9 +394,22 @@ export default {
       }
       return '';
     },
+    shouldRefreshTrainingAlerts(fromRoute) {
+      return cameFromTrainingAlertSource(fromRoute) || consumeProjectTrainingAlertsDirty();
+    },
+    async refreshProjectTrainingAlerts({ force = false } = {}) {
+      if (this.trainingAlertsRefreshing) return;
+      if (!force && !this.shouldRefreshTrainingAlerts(null)) return;
+      if (!Array.isArray(this.projects) || !this.projects.length) {
+        await this.fetchProjectsList();
+        return;
+      }
+      await this.fetchProjectTrainingAlerts();
+    },
     async fetchProjectTrainingAlerts() {
       const ids = this.projects.map(p => p.project_id).filter(Boolean);
       if (!ids.length) return;
+      this.trainingAlertsRefreshing = true;
       try {
         const list = await fetchProjectTrainingAlerts(ids);
         const alertMap = new Map((Array.isArray(list) ? list : []).map(item => [Number(item.project_id), item]));
@@ -405,12 +420,30 @@ export default {
         });
       } catch (e) {
         console.warn('Failed to fetch project training alerts:', e);
+      } finally {
+        this.trainingAlertsRefreshing = false;
       }
     },
   },
   mounted() {
     this.fetchProjectsList();
     this.fetchDatasetsList();
+  },
+  activated() {
+    this.refreshProjectTrainingAlerts();
+  },
+  beforeRouteEnter(to, from, next) {
+    next(vm => {
+      if (cameFromTrainingAlertSource(from) || consumeProjectTrainingAlertsDirty()) {
+        vm.refreshProjectTrainingAlerts({ force: true });
+      }
+    });
+  },
+  beforeRouteUpdate(to, from, next) {
+    next();
+    if (cameFromTrainingAlertSource(from) || consumeProjectTrainingAlertsDirty()) {
+      this.refreshProjectTrainingAlerts({ force: true });
+    }
   },
 };
 </script>

@@ -149,6 +149,7 @@ import {
   fetchQualifiedModelsByModelVersionId,
   markModelAsQualified,
 } from "@/api/models";
+import { markProjectTrainingAlertsDirty } from "@/utils/projectTrainingAlerts";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "deleted"]);
 const METRIC_ALIAS_GROUPS = [
@@ -373,8 +374,14 @@ export default {
       }
     },
     applyStatusPayload(payload = {}) {
+      const previousStatus = normalizeStatus(this.status);
       const status = normalizeStatus(payload.status);
-      if (status) this.status = status;
+      if (status) {
+        this.status = status;
+        if (status !== previousStatus && ["queued", "running", "completed"].includes(status)) {
+          markProjectTrainingAlertsDirty(`training-status-${status}`);
+        }
+      }
 
       const progress = Number(payload.progress);
       if (Number.isFinite(progress)) {
@@ -420,6 +427,7 @@ export default {
       this.reviewedMarkedForJobId = jobId;
       try {
         await markTrainingRunReviewed(jobId, source);
+        markProjectTrainingAlertsDirty('training-run-reviewed');
       } catch (e) {
         console.warn('Failed to mark training run reviewed:', e);
       }
@@ -748,6 +756,7 @@ export default {
 
         this.stopping = true;
         await CancelTrainingJob(this.jobId);
+        markProjectTrainingAlertsDirty('training-task-stopped');
         this.$message.success('已发送停止请求');
         await this.syncSnapshot({ withStatus: true, withMetrics: false });
       } catch (e) {
@@ -769,6 +778,7 @@ export default {
         this.continueing = true;
         console.log("Sending resume request for jobId:", this.jobId);
         await ResumeTrainingJob(this.jobId);
+        markProjectTrainingAlertsDirty('training-task-resumed');
         this.$message.success('已发送继续请求');
         await this.syncSnapshot({ withStatus: true, withMetrics: false });
       } catch (e) {
@@ -813,6 +823,7 @@ export default {
         return;
       }
       this.markCurrentRunReviewed('training-report');
+      markProjectTrainingAlertsDirty('open-training-report');
       this.$router.push({ path: '/training-report', query: { runId: this.jobId } });
     },
 

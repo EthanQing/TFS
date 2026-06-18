@@ -237,6 +237,7 @@ import {
 import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
 import { resolveFramework } from '@/utils/trainingFramework';
+import { markProjectTrainingAlertsDirty } from '@/utils/projectTrainingAlerts';
 import multiselectIcon from '@/assets/icon/Multiselect.svg';
 import selectAllOffIcon from '@/assets/icon/Select All Off.svg';
 import selectAllOnIcon from '@/assets/icon/Select All.svg';
@@ -384,6 +385,7 @@ export default {
   },
   methods: {
     goBackToProjects() {
+      markProjectTrainingAlertsDirty('project-detail-back');
       this.$router.push({ path: '/projects' });
     },
     openCreateJob() {
@@ -415,6 +417,7 @@ export default {
       this.goProjectsCharts(model);
     },
     onTaskAdded() {
+      markProjectTrainingAlertsDirty('training-task-added');
       const pid = this.projectInfo?.project_id || this.$route.query.projectId;
       if (pid) this.loadProjectDetails(pid);
       this.dialogVisible = false;
@@ -425,6 +428,7 @@ export default {
         const updated = await startTrainingJob(jobId);
         const idx = this.projectModels.findIndex(m => m.job_id === jobId);
         if (idx >= 0 && updated?.status) this.$set(this.projectModels[idx], 'status', updated.status);
+        markProjectTrainingAlertsDirty('training-task-started');
         this.$message.success('已添加到训练队列。');
       } catch (e) {
         this.$message.error('启动训练失败。');
@@ -439,6 +443,7 @@ export default {
         const updated = await CancelTrainingJob(jobId);
         const idx = this.projectModels.findIndex(m => m.job_id === jobId);
         if (idx >= 0 && updated?.status) this.$set(this.projectModels[idx], 'status', updated.status);
+        markProjectTrainingAlertsDirty('training-task-stopped');
         this.$message.success('已发送停止请求。');
       } catch (e) {
         if (e !== 'cancel' && e !== 'close') {
@@ -456,6 +461,7 @@ export default {
         const updated = await ResumeTrainingJob(jobId);
         const idx = this.projectModels.findIndex(m => m.job_id === jobId);
         if (idx >= 0 && updated?.status) this.$set(this.projectModels[idx], 'status', updated.status);
+        markProjectTrainingAlertsDirty('training-task-resumed');
         this.$message.success('已恢复训练任务，状态更新为 Queued。');
       } catch (e) {
         if (e !== 'cancel' && e !== 'close') {
@@ -476,13 +482,15 @@ export default {
       if (!model || String(model.status || '').toLowerCase() !== 'completed') return;
       try {
         await markTrainingRunReviewed(jobId, source);
+        markProjectTrainingAlertsDirty('training-run-reviewed');
       } catch (e) {
         console.warn('Failed to mark training run reviewed:', e);
       }
     },
-    openTrainingReport(jobId) {
+    async openTrainingReport(jobId) {
       if (!jobId) return;
-      this.markCompletedRunReviewed(jobId, 'training-report');
+      await this.markCompletedRunReviewed(jobId, 'training-report');
+      markProjectTrainingAlertsDirty('open-training-report');
       this.$router.push({ path: '/training-report', query: { runId: jobId } });
     },
     findProjectModel(jobId) {
@@ -581,6 +589,7 @@ export default {
       try {
         await this.$confirm('确定要删除此训练任务吗？', '确认删除', { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' });
         await DeleteTrainingJob(jobId, { force: false });
+        markProjectTrainingAlertsDirty('training-task-deleted');
         this.$message.success('删除成功。');
         const pid = this.projectInfo?.project_id || this.$route.query.projectId;
         if (pid) this.loadProjectDetails(pid);
@@ -590,6 +599,7 @@ export default {
           try {
             await this.$confirm('该训练任务有关联模型版本/部署，是否强制链式删除？', '确认强制删除', { type: 'warning', confirmButtonText: '强制删除', cancelButtonText: '取消' });
             await DeleteTrainingJob(jobId, { force: true });
+            markProjectTrainingAlertsDirty('training-task-force-deleted');
             this.$message.success('删除成功。');
             const pid = this.projectInfo?.project_id || this.$route.query.projectId;
             if (pid) this.loadProjectDetails(pid);
@@ -642,6 +652,7 @@ export default {
         for (const jobId of this.selectedJobIds) {
           try {
             await DeleteTrainingJob(jobId, { force: false });
+            markProjectTrainingAlertsDirty('training-task-batch-deleted');
           } catch (err) {
             // 可以记录失败的，但不中断其他删除
             console.warn(`删除任务 ${jobId} 失败`, err);
@@ -678,10 +689,11 @@ export default {
       const msg = String((error && error.message) || '').toLowerCase();
       return msg.includes('cannot delete') || msg.includes('still reference');
     },
-    goProjectsCharts(model) {
+    async goProjectsCharts(model) {
       if (String(model?.status || '').toLowerCase() === 'completed') {
-        this.markCompletedRunReviewed(model.job_id, 'training-manager');
+        await this.markCompletedRunReviewed(model.job_id, 'training-manager');
       }
+      markProjectTrainingAlertsDirty('open-training-manager');
       this.$router.push({ path: '/projectscharts/trainpart', query: { jobId: model.job_id } });
     },
     async refreshRunningStatuses() {
@@ -692,7 +704,14 @@ export default {
           const s = await FetchTrainingJobsStatus(job.job_id);
           if (s) {
             if (s.current_epoch !== undefined) this.$set(job, 'current_epoch', s.current_epoch);
-            if (s.status) this.$set(job, 'status', s.status);
+            if (s.status) {
+              const previousStatus = String(job.status || '').toLowerCase();
+              this.$set(job, 'status', s.status);
+              const nextStatus = String(s.status || '').toLowerCase();
+              if (nextStatus !== previousStatus && ['queued', 'running', 'completed'].includes(nextStatus)) {
+                markProjectTrainingAlertsDirty(`project-detail-status-${nextStatus}`);
+              }
+            }
           }
         } catch (_) {
           return null;

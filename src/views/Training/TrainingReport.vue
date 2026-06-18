@@ -180,6 +180,7 @@
 
 <script>
 import { DownloadTrainingReportDocx, FetchTrainingReport, markTrainingRunReviewed } from "@/api/training";
+import { markProjectTrainingAlertsDirty } from "@/utils/projectTrainingAlerts";
 
 const CORE_METRIC_CANDIDATES = {
   "mAP50-95": [
@@ -388,11 +389,13 @@ export default {
       this.reviewedMarkedForRunId = id;
       try {
         await markTrainingRunReviewed(id, "training-report");
+        markProjectTrainingAlertsDirty('training-report-reviewed');
       } catch (e) {
         console.warn("Failed to mark training run reviewed:", e);
       }
     },
     goBack() {
+      markProjectTrainingAlertsDirty('training-report-back');
       if (window.history.length > 1) {
         this.$router.back();
       } else {
