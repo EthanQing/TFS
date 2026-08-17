@@ -86,7 +86,8 @@ module.exports = defineConfig({
   devServer: {
     port: 18581,
     client: {
-      overlay: false
+      overlay: false,
+      webSocketURL: 'auto://0.0.0.0:0/ws'
     },
     proxy: {
       '/api': {
