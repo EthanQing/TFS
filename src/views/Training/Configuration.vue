@@ -94,40 +94,36 @@ export default {
                 
             } catch (error) {
                 console.error('获取配置参数失败:', error);
-                this.error = '加载配置参数失败，请稍后重试';
-                // 设置默认配置项以防止页面显示为空
-                this.setDefaultConfigItems();
+                this.error = error?.message || '加载配置参数失败，请稍后重试';
+                this.configItems = [];
             } finally {
                 this.loading = false;
             }
         },
         
         convertParametersToConfigItems(parameters) {
-            // 将API返回的参数对象转换为配置项数组
             const configItems = [];
-            
-            // 遍历参数对象的所有属性
-            for (const [key, value] of Object.entries(parameters)) {
-                // 跳过可能的嵌套对象或数组，只处理基本类型
-                if (typeof value !== 'object' || value === null) {
-                    configItems.push({
-                        name: key,
-                        value: this.formatValue(value)
-                    });
-                } else if (typeof value === 'object' && !Array.isArray(value)) {
-                    // 如果是对象，则展开其属性
-                    for (const [subKey, subValue] of Object.entries(value)) {
-                        if (typeof subValue !== 'object' || subValue === null) {
-                            configItems.push({
-                                name: `${key}.${subKey}`,
-                                value: this.formatValue(subValue)
-                            });
-                        }
-                    }
-                }
-            }
-            
+            this.flattenConfigValue(parameters, '', configItems);
             return configItems;
+        },
+
+        flattenConfigValue(value, path, items) {
+            const isPlainObject = value && typeof value === 'object' && !Array.isArray(value)
+                && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+            if (!isPlainObject) {
+                if (path) items.push({ name: path, value: this.formatValue(value) });
+                return;
+            }
+
+            const keys = Object.keys(value);
+            if (!keys.length) {
+                if (path) items.push({ name: path, value: this.formatValue(value) });
+                return;
+            }
+            keys.forEach((key) => {
+                const nextPath = path ? `${path}.${key}` : key;
+                this.flattenConfigValue(value[key], nextPath, items);
+            });
         },
         
         formatValue(value) {
@@ -139,21 +135,21 @@ export default {
       }
       if (typeof value === 'boolean') return value ? 'true' : 'false';
       if (typeof value === 'number') return value.toString();
+      if (Array.isArray(value)) {
+        try {
+          return JSON.stringify(value);
+        } catch (_) {
+          return '暂无';
+        }
+      }
+      if (value && typeof value === 'object') {
+        try {
+          return JSON.stringify(value);
+        } catch (_) {
+          return '暂无';
+        }
+      }
       return String(value);
-        },
-        
-        setDefaultConfigItems() {
-            // 设置默认配置项
-            this.configItems = [
-                { name: "agnostic_nms", value: "false" },
-                { name: "batch", value: "128" },
-                { name: "device", value: "GPU" },
-                { name: "epochs", value: "600" },
-                { name: "imgsz", value: "640" },
-                { name: "optimizer", value: "SGD" },
-                { name: "patience", value: "100" },
-                { name: "pretrained", value: "No" }
-            ];
         },
         displayName(name){
             if(!name) return '';

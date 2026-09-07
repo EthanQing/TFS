@@ -97,21 +97,21 @@
                                 <th v-for="task in comparingTasks" :key="task.id" class="task-col">
                                     <span class="task-badge" :style="{ backgroundColor: task.color }">{{ task.name }}</span>
                                 </th>
-                                <th class="best-col">最优值</th>
+                                <th v-if="!isCustomComparison" class="best-col">最优值</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="(metric, index) in metricsData" :key="index" :class="{ 'high-importance': metric.importance === 'high' }">
+                            <tr v-for="(metric, index) in metricsData" :key="index" :class="{ 'high-importance': !isCustomComparison && metric.importance === 'high' }">
                                 <td class="metric-name">
                                     <span class="metric-label">{{ metric.name }}</span>
-                                    <span v-if="metric.importance === 'high'" class="importance-badge">重要</span>
+                                    <span v-if="!isCustomComparison && metric.importance === 'high'" class="importance-badge">重要</span>
                                 </td>
                                 <td v-for="task in comparingTasks" :key="task.id" class="metric-value">
-                                    <span :class="{ 'best-metric': isBestMetric(metric, task.id) }">
+                                    <span :class="{ 'best-metric': !isCustomComparison && isBestMetric(metric, task.id) }">
                                         {{ metric.values[task.id] }}
                                     </span>
                                 </td>
-                                <td class="best-value">
+                                <td v-if="!isCustomComparison" class="best-value">
                                     <strong>{{ metric.best }}</strong>
                                 </td>
                             </tr>
@@ -144,7 +144,7 @@
                         <div class="chart-placeholder" v-if="comparingTasks.length > 0">
                             <div class="chart-content">
                                 <TrainingChart
-                                    :chart-type="activeChart === 'accuracy' ? 'metrics' : 'custom'"
+                                    :chart-type="!isCustomComparison && activeChart === 'accuracy' ? 'metrics' : 'custom'"
                                     :custom-series="currentChartSeries"
                                     :custom-title="currentChartTitle"
                                     :custom-y-axis-name="currentChartYAxis"
@@ -208,6 +208,10 @@ export default {
         };
     },
     computed: {
+        isCustomComparison() {
+            return this.comparingTasks.length > 0
+                && this.comparingTasks[0].frameworkKey === 'engine:custom-source';
+        },
         maxEpoch() {
             let max = 0;
             Object.values(this.curveDataMap).forEach(m => {
@@ -224,10 +228,12 @@ export default {
         },
         currentChartTitle() {
             const map = { loss: 'Loss 对比', accuracy: '指标对比', mAP: 'mAP 对比' };
-            return map[this.activeChart] || '曲线对比';
+            return this.isCustomComparison
+                ? (this.activeChart || '曲线对比')
+                : (map[this.activeChart] || '曲线对比');
         },
         currentChartYAxis() {
-            return this.activeChart === 'loss' ? 'Loss' : 'Value';
+            return !this.isCustomComparison && this.activeChart === 'loss' ? 'Loss' : 'Value';
         },
         currentChartSeries() {
             if (!this.comparingTasks.length) return [];
@@ -235,8 +241,11 @@ export default {
             
             this.comparingTasks.forEach(task => {
                 const dataObj = this.curveDataMap[task.id] || {};
-                const candidates = this.chartCandidates(task.frameworkKey, this.activeChart);
-                const picked = this.pickFirstSeries(dataObj, candidates);
+                const picked = this.isCustomComparison
+                    ? (Array.isArray(dataObj[this.activeChart])
+                        ? { key: this.activeChart, data: dataObj[this.activeChart] }
+                        : null)
+                    : this.pickFirstSeries(dataObj, this.chartCandidates(task.frameworkKey, this.activeChart));
                 if (picked) {
                     series.push({
                         name: task.name,
@@ -332,6 +341,18 @@ export default {
             return [];
         },
         buildCurveSheetsForExport(runs) {
+            if (this.isCustomComparison) {
+                return this.availableCharts.map(chart => ({
+                    name: chart.name,
+                    series: runs.map(run => ({
+                        runId: run.runId,
+                        runName: run.name,
+                        values: Array.isArray(this.curveDataMap[run.runId]?.[chart.id])
+                            ? this.curveDataMap[run.runId][chart.id].slice()
+                            : [],
+                    })),
+                }));
+            }
             const frameworkKey = runs[0]?.frameworkKey || 'pytorch';
             const defs = [
                 { name: 'Loss', keys: this.chartCandidates(frameworkKey, 'loss') },
@@ -366,7 +387,7 @@ export default {
                 const metricRows = this.metricsData.map((row) => ({
                     key: row.name,
                     valuesByRun: { ...(row.values || {}) },
-                    best: row.best,
+                    ...(this.isCustomComparison ? {} : { best: row.best }),
                 }));
                 const curveSheets = this.buildCurveSheetsForExport(runs);
                 const frameworkLabel = runs[0]?.frameworkLabel || 'Framework';
@@ -378,6 +399,8 @@ export default {
                     parameterRows,
                     metricRows,
                     curveSheets,
+                    includeBestMetric: !this.isCustomComparison,
+                    uniqueCurveSheetNames: this.isCustomComparison,
                 });
                 const filename = this.buildExportFilename('training_task_comparison', frameworkLabel);
                 await downloadWorkbook(workbook, filename);
@@ -504,6 +527,53 @@ export default {
                 this.loading = false;
             }
         },
+        formatCompareValue(value) {
+            if (value === null || value === undefined) return '-';
+            if (typeof value === 'object') {
+                try {
+                    return JSON.stringify(value);
+                } catch (_) {
+                    return '-';
+                }
+            }
+            return String(value);
+        },
+        formatMetricValue(value) {
+            const n = Number(value);
+            return Number.isFinite(n) ? n.toFixed(4) : '-';
+        },
+        numericMetricMap(metrics) {
+            const source = metrics && typeof metrics === 'object' && !Array.isArray(metrics) ? metrics : {};
+            const out = {};
+            Object.keys(source).forEach(key => {
+                const value = source[key];
+                if (typeof value === 'number') {
+                    if (Number.isFinite(value)) out[key] = value;
+                    return;
+                }
+                if (typeof value !== 'string' || !value.trim()) return;
+                const n = Number(value);
+                if (Number.isFinite(n)) out[key] = n;
+            });
+            return out;
+        },
+        flattenParameterValues(value, prefix, onValue) {
+            const isPlainObject = value && typeof value === 'object' && !Array.isArray(value)
+                && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+            if (!isPlainObject) {
+                if (prefix) onValue(prefix, value);
+                return;
+            }
+            const keys = Object.keys(value);
+            if (!keys.length && prefix) {
+                onValue(prefix, value);
+                return;
+            }
+            keys.forEach(key => {
+                const next = prefix ? prefix + '.' + key : key;
+                this.flattenParameterValues(value[key], next, onValue);
+            });
+        },
         processParameterData(data) {
             // Data is expected to be { [runId]: { parameters: {...}, ... } } or Array
             // Let's assume Array based on typical REST list (or check api/training.js map logic)
@@ -512,6 +582,28 @@ export default {
             
             const runs = this.extractCompareRuns(data);
             if (!runs.length) return;
+
+            if (this.isCustomComparison) {
+                const valuesByKey = {};
+                runs.forEach(r => {
+                    const rid = String(r.job_id || r.run_id || r.id);
+                    this.flattenParameterValues(r.parameters || {}, '', (key, value) => {
+                        if (!valuesByKey[key]) valuesByKey[key] = {};
+                        valuesByKey[key][rid] = this.formatCompareValue(value);
+                    });
+                });
+                this.parameterData = Object.keys(valuesByKey)
+                    .sort((a, b) => String(a).localeCompare(String(b), 'zh'))
+                    .map(name => {
+                        const values = { ...valuesByKey[name] };
+                        this.comparingTasks.forEach(task => {
+                            const id = String(task.id);
+                            if (!Object.prototype.hasOwnProperty.call(values, id)) values[id] = '-';
+                        });
+                        return { name, values };
+                    });
+                return;
+            }
 
             // Collect all parameter keys
             const paramKeys = new Set();
@@ -537,13 +629,37 @@ export default {
                     // Extract job_id properly
                     const rid = r.job_id || r.run_id || r.id; 
                     const val = r.parameters?.[key];
-                    values[rid] = val !== undefined && val !== null ? String(val) : '-';
+                    values[rid] = val !== undefined && val !== null ? this.formatCompareValue(val) : '-';
                 });
                 return { name: key, values };
             });
         },
         processMetricsData(data) {
             const runs = this.extractCompareRuns(data);
+            if (this.isCustomComparison) {
+                const valuesByKey = {};
+                runs.forEach(r => {
+                    const rid = String(r.job_id || r.run_id || r.id);
+                    const finalMetrics = this.numericMetricMap(r.final_metrics || r.result?.final_metrics);
+                    const bestMetrics = this.numericMetricMap(r.best_metrics || r.result?.best_metrics);
+                    const merged = { ...bestMetrics, ...finalMetrics };
+                    Object.keys(merged).forEach(key => {
+                        if (!valuesByKey[key]) valuesByKey[key] = {};
+                        valuesByKey[key][rid] = this.formatMetricValue(merged[key]);
+                    });
+                });
+                this.metricsData = Object.keys(valuesByKey)
+                    .sort((a, b) => String(a).localeCompare(String(b), 'zh'))
+                    .map(name => {
+                        const values = { ...valuesByKey[name] };
+                        this.comparingTasks.forEach(task => {
+                            const id = String(task.id);
+                            if (!Object.prototype.hasOwnProperty.call(values, id)) values[id] = '-';
+                        });
+                        return { name, values };
+                    });
+                return;
+            }
             // Define metrics of interest
             const metricsOfInterest = this.metricDefsForFramework(this.comparingTasks[0]?.frameworkKey);
 
@@ -652,6 +768,29 @@ export default {
                     this.curveDataMap[this.comparingTasks[idx].id] = res.metrics;
                 }
             });
+            if (this.isCustomComparison) {
+                const keys = new Set();
+                Object.values(this.curveDataMap).forEach(metrics => {
+                    Object.keys(metrics || {}).forEach(key => {
+                        if (Array.isArray(metrics[key])) keys.add(key);
+                    });
+                });
+                this.availableCharts = Array.from(keys)
+                    .sort((a, b) => String(a).localeCompare(String(b), 'zh'))
+                    .map(key => ({ id: key, name: key }));
+            } else {
+                this.availableCharts = [
+                    { id: 'loss', name: 'Loss 曲线' },
+                    { id: 'accuracy', name: 'Accuracy/Metrics 曲线' },
+                    { id: 'mAP', name: 'mAP 曲线' }
+                ];
+            }
+            this.ensureActiveChart();
+        },
+        ensureActiveChart() {
+            if (!this.availableCharts.some(chart => chart.id === this.activeChart)) {
+                this.activeChart = this.availableCharts[0]?.id || '';
+            }
         },
         isHighestValue(values, taskId) {
             // String comparison might be enough for params

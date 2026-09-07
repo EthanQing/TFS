@@ -496,6 +496,34 @@ export async function FetchTrainingJobsStatus(jobId) {
   }
 }
 
+// FetchTrainingJobDetail 获取训练任务完整详情，并复用统一的前端任务映射。
+export async function FetchTrainingJobDetail(runId) {
+  try {
+    const id = normStr(runId);
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}`);
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return await mapTrainingRunToJob(data);
+  } catch (error) {
+    console.error("获取训练任务详情失败:", error);
+    throw error;
+  }
+}
+
+// FetchTrainingRunArtifacts 获取训练产物历史，保留后端返回的原始字段。
+export async function FetchTrainingRunArtifacts(runId) {
+  try {
+    const id = normStr(runId);
+    const res = await fetch(`${API_BASE}/api/v3/training-runs/${encodeURIComponent(id)}/artifacts`);
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(toErrorMessage(data, res));
+    return pickPageItems(data);
+  } catch (error) {
+    console.error("获取训练产物失败:", error);
+    throw error;
+  }
+}
+
 // FetchTrainingJobsMetrics_detailed 获取训练任务指标接口
 export async function FetchTrainingJobsMetrics_detailed(jobId) {
   try {

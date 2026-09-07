@@ -18,7 +18,7 @@
         <div v-if="canStop" class="tm-stat action-stat">
            <el-button type="danger" size="small" icon="el-icon-video-pause" @click="handleStop" :loading="stopping">停止训练</el-button>
         </div>
-        <div v-else class="tm-stat action-stat">
+        <div v-else-if="canResume" class="tm-stat action-stat">
            <el-button type="primary" size="small" icon="el-icon-video-pause" @click="handleContinue" :loading="continueing">继续训练</el-button>
         </div>
         <div class="tm-stat action-stat">
@@ -257,6 +257,10 @@ export default {
       const s = normalizeStatus(this.status);
       return s === "running" || s === "queued";
     },
+    canResume() {
+      const engine = normalizeStatus(this.engine);
+      return !this.canStop && (engine === "ultralytics-yolo" || engine === "paddle-det");
+    },
     waitEvalHint() {
       if (normalizeStatus(this.status) !== "running") return "";
       if (normalizeStatus(this.engine) !== "paddle-det") return "";
@@ -436,6 +440,8 @@ export default {
       const source = metricDict && typeof metricDict === "object" ? metricDict : {};
       const normalized = { ...source };
 
+      if (!this.isBuiltInMetricEngine()) return normalized;
+
       METRIC_ALIAS_GROUPS.forEach(({ target, aliases }) => {
         if (hasOwn(normalized, target)) return;
         for (const key of aliases) {
@@ -457,6 +463,8 @@ export default {
         normalized[key] = raw[key].map((item) => toMetricNumber(item));
       });
 
+      if (!this.isBuiltInMetricEngine()) return normalized;
+
       METRIC_ALIAS_GROUPS.forEach(({ target, aliases }) => {
         if (Array.isArray(normalized[target])) return;
         for (const key of aliases) {
@@ -468,6 +476,10 @@ export default {
       });
 
       return normalized;
+    },
+    isBuiltInMetricEngine() {
+      const engine = normalizeStatus(this.engine);
+      return engine === "ultralytics-yolo" || engine === "paddle-det";
     },
     mergeSeriesSnapshot(key, incoming) {
       if (!Array.isArray(incoming)) return false;

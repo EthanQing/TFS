@@ -4,6 +4,7 @@
       <el-button icon="el-icon-arrow-left" @click="goBack">返回</el-button>
       <div class="toolbar-spacer"></div>
       <el-button
+        v-if="report && !isCustomReport"
         type="primary"
         icon="el-icon-document"
         :loading="exportingDocx"
@@ -56,7 +57,7 @@
         </div>
       </section>
 
-      <section class="summary-grid">
+      <section v-if="!isCustomReport" class="summary-grid">
         <div class="summary-card">
           <span>数据集</span>
           <strong>{{ report.dataset.dataset_name || '-' }}</strong>
@@ -85,18 +86,46 @@
         </div>
       </section>
 
+      <section v-else class="summary-grid">
+        <div class="summary-card">
+          <span>Run ID</span>
+          <strong class="mono">{{ report.basic.run_id || '-' }}</strong>
+        </div>
+        <div class="summary-card">
+          <span>任务名称</span>
+          <strong>{{ report.basic.name || '-' }}</strong>
+        </div>
+        <div class="summary-card">
+          <span>模型 / 引擎</span>
+          <strong>{{ report.basic.model_label || '自定义模型' }}</strong>
+          <small>{{ report.basic.engine || '-' }}</small>
+        </div>
+        <div class="summary-card">
+          <span>项目</span>
+          <strong>{{ report.basic.project_name || report.basic.project_id || '-' }}</strong>
+        </div>
+        <div class="summary-card">
+          <span>创建时间</span>
+          <strong>{{ formatDateTime(report.basic.created_at) }}</strong>
+        </div>
+        <div class="summary-card">
+          <span>开始 / 完成</span>
+          <strong>{{ formatDateTime(report.basic.started_at) }} / {{ formatDateTime(report.basic.finished_at) }}</strong>
+        </div>
+      </section>
+
       <section class="report-section">
         <header class="section-header">
           <i class="el-icon-crop"></i>
           <h2>模型架构选型</h2>
         </header>
         <div class="info-grid">
-          <InfoItem label="家族" :value="report.architecture.family" />
-          <InfoItem label="变体" :value="report.architecture.variant" />
+          <InfoItem label="家族" :value="report.architecture.family || '-'" />
+          <InfoItem label="变体" :value="report.architecture.variant || '-'" />
           <InfoItem label="任务类型" :value="taskTypeLabel(report.architecture.task_type)" />
-          <InfoItem label="训练引擎" :value="report.basic.engine" />
-          <InfoItem label="预训练权重" :value="report.architecture.pretrained_path || '-'" class="info-wide" />
-          <InfoItem label="描述" :value="report.architecture.description || '-'" class="info-wide" />
+          <InfoItem label="训练引擎" :value="report.basic.engine || '-'" />
+          <InfoItem v-if="!isCustomReport" label="预训练权重" :value="report.architecture.pretrained_path || '-'" class="info-wide" />
+          <InfoItem v-if="!isCustomReport" label="描述" :value="report.architecture.description || '-'" class="info-wide" />
         </div>
       </section>
 
@@ -114,14 +143,17 @@
               </div>
             </div>
           </el-collapse-item>
-          <el-collapse-item title="增强配置" name="augmentation">
+          <el-collapse-item v-if="!isCustomReport" title="增强配置" name="augmentation">
             <KeyValueTable :items="objectEntries(report.parameters.augmentation)" empty-text="暂无增强配置" />
           </el-collapse-item>
-          <el-collapse-item title="损失权重" name="loss">
+          <el-collapse-item v-if="!isCustomReport" title="损失权重" name="loss">
             <KeyValueTable :items="objectEntries(report.parameters.loss_weights)" empty-text="暂无损失权重配置" />
           </el-collapse-item>
-          <el-collapse-item title="框架特有 / 其他参数" name="additional">
+          <el-collapse-item v-if="!isCustomReport" title="框架特有 / 其他参数" name="additional">
             <KeyValueTable :items="objectEntries(report.parameters.additional_params)" empty-text="暂无其他参数" />
+          </el-collapse-item>
+          <el-collapse-item v-else title="自定义参数" name="custom_args">
+            <KeyValueTable :items="customArgsItems" empty-text="暂无 custom_args" />
           </el-collapse-item>
         </el-collapse>
       </section>
@@ -136,14 +168,14 @@
           <div v-for="metric in coreMetricItems" :key="metric.name" class="core-metric-card">
             <span>{{ metric.name }}</span>
             <strong>{{ formatMetric(metric.value) }}</strong>
-            <small>Best</small>
+            <small>{{ isCustomReport ? 'Final' : 'Best' }}</small>
           </div>
         </div>
         <el-alert
           v-else
-          title="暂无核心指标"
+          :title="isCustomReport ? '暂无训练指标' : '暂无核心指标'"
           type="info"
-          description="未在 best_metrics / final_metrics 中找到 mAP、Precision、Recall 等核心指标。"
+          :description="isCustomReport ? '暂无训练指标' : '未在 best_metrics / final_metrics 中找到 mAP、Precision、Recall 等核心指标。'"
           show-icon
           :closable="false"
           class="section-alert"
@@ -166,12 +198,25 @@
           <i class="el-icon-box"></i>
           <h2>模型产物</h2>
         </header>
-        <div class="artifact-list">
+        <div v-if="!isCustomReport" class="artifact-list">
           <InfoItem label="最佳权重" :value="report.artifacts.best_weights_path || '-'" class="info-wide" />
           <InfoItem label="最终权重" :value="report.artifacts.last_weights_path || '-'" class="info-wide" />
           <InfoItem label="模型大小" :value="formatSize(report.artifacts.model_size_mb)" />
           <InfoItem label="推理耗时" :value="formatLatency(report.artifacts.inference_time_ms)" />
           <InfoItem label="FLOPs" :value="formatFlops(report.artifacts.flops)" />
+        </div>
+        <div v-else class="custom-artifact-list">
+          <div v-for="(artifact, index) in report.artifacts" :key="artifact.artifact_id || (artifact.name || 'artifact') + '-' + index" class="custom-artifact-card">
+            <InfoItem label="名称" :value="artifact.name || '-'" />
+            <InfoItem label="角色" :value="artifactRoleLabel(artifact.role)" />
+            <InfoItem label="类型" :value="artifact.kind || '-'" />
+            <InfoItem label="路径" :value="artifact.path || '-'" class="info-wide" />
+            <InfoItem label="大小" :value="formatArtifactSize(artifact.size_bytes)" />
+            <InfoItem label="格式" :value="artifact.meta && artifact.meta.format || '-'" />
+            <InfoItem label="创建时间" :value="formatDateTime(artifact.created_at)" />
+            <InfoItem v-if="artifact.meta && Object.keys(artifact.meta).length" label="Metadata" :value="formatValue(artifact.meta)" class="info-wide" />
+          </div>
+          <div v-if="!report.artifacts.length" class="empty-inline">暂无训练产物</div>
         </div>
       </section>
     </main>
@@ -179,7 +224,14 @@
 </template>
 
 <script>
-import { DownloadTrainingReportDocx, FetchTrainingReport, markTrainingRunReviewed } from "@/api/training";
+import {
+  DownloadTrainingReportDocx,
+  FetchTrainingReport,
+  FetchTrainingJobDetail,
+  FetchTrainingJobsMetrics_detailed,
+  FetchTrainingRunArtifacts,
+  markTrainingRunReviewed,
+} from "@/api/training";
 import { markProjectTrainingAlertsDirty } from "@/utils/projectTrainingAlerts";
 
 const CORE_METRIC_CANDIDATES = {
@@ -316,21 +368,34 @@ export default {
     };
   },
   computed: {
+    isCustomReport() {
+      return normalizeStatus(this.report?.basic?.engine) === "custom-source";
+    },
     generalParamItems() {
       const p = (this.report && this.report.parameters) || {};
-      const items = [
-        ["epochs", "Epochs", p.epochs],
-        ["batch_size", "Batch Size", p.batch_size],
-        ["image_size", "Image Size", p.image_size],
-        ["learning_rate", "Learning Rate", p.learning_rate],
-        ["lr_scheduler", "LR Scheduler", p.lr_scheduler],
-        ["patience", "Patience", p.patience],
-        ["device", "Device", p.device],
-        ["workers", "Workers", p.workers],
-        ["optimizer", "Optimizer", p.optimizer],
-        ["use_pretrained", "Use Pretrained", p.use_pretrained ? "是" : "否"],
-      ];
-      if (p.save_period !== null && p.save_period !== undefined) {
+      const items = this.isCustomReport
+        ? [
+            ["epochs", "Epochs", p.epochs],
+            ["batch_size", "Batch Size", p.batch_size],
+            ["image_size", "Image Size", p.image_size],
+            ["learning_rate", "Learning Rate", p.learning_rate],
+            ["optimizer", "Optimizer", p.optimizer],
+            ["workers", "Workers", p.workers],
+            ["device", "Device", p.device],
+          ]
+        : [
+            ["epochs", "Epochs", p.epochs],
+            ["batch_size", "Batch Size", p.batch_size],
+            ["image_size", "Image Size", p.image_size],
+            ["learning_rate", "Learning Rate", p.learning_rate],
+            ["lr_scheduler", "LR Scheduler", p.lr_scheduler],
+            ["patience", "Patience", p.patience],
+            ["device", "Device", p.device],
+            ["workers", "Workers", p.workers],
+            ["optimizer", "Optimizer", p.optimizer],
+            ["use_pretrained", "Use Pretrained", p.use_pretrained ? "是" : "否"],
+          ];
+      if (!this.isCustomReport && p.save_period !== null && p.save_period !== undefined) {
         items.push(["save_period", "Save Period", p.save_period]);
       }
       return items.map(([key, label, value]) => ({
@@ -341,6 +406,12 @@ export default {
     },
     coreMetricItems() {
       const metrics = (this.report && this.report.metrics) || {};
+      if (this.isCustomReport) {
+        return Object.keys(metrics.final_metrics || {}).map((name) => ({
+          name,
+          value: metrics.final_metrics[name],
+        }));
+      }
       const core = metrics.core_metrics && typeof metrics.core_metrics === "object"
         ? metrics.core_metrics
         : this.extractCoreMetrics(metrics.best_metrics, metrics.final_metrics);
@@ -348,6 +419,10 @@ export default {
         name,
         value: core[name],
       }));
+    },
+    customArgsItems() {
+      const customArgs = this.report?.parameters?.additional_params?.framework_config?.custom_args;
+      return this.flattenItems(customArgs);
     },
   },
   watch: {
@@ -367,9 +442,18 @@ export default {
       this.unavailable = false;
       this.report = null;
       try {
-        const data = await FetchTrainingReport(runId);
-        this.report = data;
-        if (normalizeStatus(data?.basic?.status) !== "completed") {
+        const job = await FetchTrainingJobDetail(runId);
+        const engine = normalizeStatus(job?.engine || job?.architecture?.engine);
+        if (engine === "custom-source") {
+          const [metrics, artifacts] = await Promise.all([
+            FetchTrainingJobsMetrics_detailed(runId),
+            FetchTrainingRunArtifacts(runId),
+          ]);
+          this.report = this.buildCustomReport(job, metrics, artifacts);
+        } else {
+          this.report = await FetchTrainingReport(runId);
+        }
+        if (normalizeStatus(this.report?.basic?.status) !== "completed") {
           this.unavailable = true;
           this.errorMessage = "训练尚未完成，报告不可用。";
         } else {
@@ -382,6 +466,78 @@ export default {
       } finally {
         this.loading = false;
       }
+    },
+    buildCustomReport(job, metricsResponse, artifacts) {
+      const parameters = job?.parameters && typeof job.parameters === "object" ? job.parameters : {};
+      const result = job?.result && typeof job.result === "object" ? job.result : {};
+      const finalMetrics = this.numericMetricMap(result.final_metrics);
+      const bestMetrics = this.numericMetricMap(result.best_metrics);
+      const derivedMetrics = this.finalMetricsFromSeries(metricsResponse?.metrics);
+      Object.keys(derivedMetrics).forEach((key) => {
+        if (finalMetrics[key] === undefined) finalMetrics[key] = derivedMetrics[key];
+      });
+      const architecture = job?.architecture || {};
+      const project = job?.project || {};
+      const taskType = architecture.task_type || job?.task_type || parameters.task_type || null;
+      return {
+        custom_source: true,
+        basic: {
+          run_id: job?.job_id || job?.run_id || this.runId,
+          name: job?.job_name || job?.name || "",
+          status: normalizeStatus(job?.status),
+          model_label: "自定义模型",
+          engine: "custom-source",
+          framework_label: "自定义模型",
+          project_name: project.project_name || project.name || job?.project_name || "",
+          project_id: project.project_id || project.id || job?.project_id || "",
+          created_at: job?.created_at,
+          started_at: job?.started_at,
+          finished_at: job?.finished_at || job?.completed_at,
+          duration_seconds: job?.duration_seconds,
+        },
+        dataset: {},
+        architecture: {
+          family: job?.family || architecture.family || architecture.model_family || "",
+          variant: job?.variant || architecture.variant || architecture.model_variant || "",
+          task_type: taskType,
+        },
+        parameters,
+        metrics: {
+          best_metrics: bestMetrics,
+          final_metrics: finalMetrics,
+        },
+        artifacts: Array.isArray(artifacts) ? artifacts : [],
+      };
+    },
+    numericMetricMap(metrics) {
+      const source = metrics && typeof metrics === "object" && !Array.isArray(metrics) ? metrics : {};
+      const out = {};
+      Object.keys(source).forEach((key) => {
+        const value = source[key];
+        if (typeof value === "number") {
+          if (Number.isFinite(value)) out[key] = value;
+          return;
+        }
+        if (typeof value !== "string" || !value.trim()) return;
+        const n = Number(value);
+        if (Number.isFinite(n)) out[key] = n;
+      });
+      return out;
+    },
+    finalMetricsFromSeries(seriesMap) {
+      const source = seriesMap && typeof seriesMap === "object" ? seriesMap : {};
+      const out = {};
+      Object.keys(source).forEach((key) => {
+        const values = Array.isArray(source[key]) ? source[key] : [];
+        for (let i = values.length - 1; i >= 0; i -= 1) {
+          const n = toFiniteNumber(values[i]);
+          if (n !== null) {
+            out[key] = n;
+            break;
+          }
+        }
+      });
+      return out;
     },
     async markReportReviewed(runId) {
       const id = String(runId || "").trim();
@@ -450,6 +606,29 @@ export default {
           };
         });
     },
+    flattenItems(value, prefix = "", output = []) {
+      const isPlainObject = value && typeof value === "object" && !Array.isArray(value)
+        && (Object.getPrototypeOf(value) === Object.prototype || Object.getPrototypeOf(value) === null);
+      if (!isPlainObject) {
+        if (prefix) {
+          output.push({
+            key: prefix,
+            raw: this.formatRaw(value),
+            value: this.formatValue(value),
+          });
+        }
+        return output;
+      }
+      const keys = Object.keys(value);
+      if (!keys.length && prefix) {
+        output.push({ key: prefix, raw: "{}", value: "{}" });
+        return output;
+      }
+      keys.sort((a, b) => String(a).localeCompare(String(b), "zh")).forEach((key) => {
+        this.flattenItems(value[key], prefix ? prefix + "." + key : key, output);
+      });
+      return output;
+    },
     metricEntries(obj) {
       if (!obj || typeof obj !== "object" || Array.isArray(obj)) return [];
       return Object.keys(obj)
@@ -508,6 +687,19 @@ export default {
       if (n >= 1e9) return `${(n / 1e9).toFixed(2)} GFLOPs`;
       if (n >= 1e6) return `${(n / 1e6).toFixed(2)} MFLOPs`;
       return String(Math.round(n));
+    },
+    formatArtifactSize(value) {
+      const n = toFiniteNumber(value);
+      if (n === null) return "-";
+      if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(2) + " MB";
+      if (n >= 1024) return (n / 1024).toFixed(2) + " KB";
+      return n + " B";
+    },
+    artifactRoleLabel(role) {
+      const value = String(role || "");
+      if (value === "best_weights") return "最佳权重";
+      if (value === "last_weights") return "最终权重";
+      return value || "-";
     },
     formatDuration(seconds) {
       const n = toFiniteNumber(seconds);
@@ -718,6 +910,22 @@ export default {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 14px;
+}
+
+.custom-artifact-list {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.custom-artifact-card {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  padding: 14px;
+  border-radius: 14px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
 }
 
 .info-item {

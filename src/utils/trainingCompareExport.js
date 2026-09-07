@@ -41,6 +41,19 @@ function sheetName(name, fallback) {
   return cleaned.length > 31 ? cleaned.slice(0, 31) : cleaned;
 }
 
+function uniqueSheetName(name, fallback, usedNames) {
+  const base = sheetName(name, fallback);
+  let candidate = base;
+  let suffixIndex = 2;
+  while (usedNames.has(candidate)) {
+    const suffix = "_" + suffixIndex;
+    candidate = base.slice(0, Math.max(1, 31 - suffix.length)) + suffix;
+    suffixIndex += 1;
+  }
+  usedNames.add(candidate);
+  return candidate;
+}
+
 function runColumnLabel(run, idx) {
   const runName = String(run?.name || "").trim();
   const runId = String(run?.runId || "").trim();
@@ -113,8 +126,10 @@ function buildParameterSheet(payload, runLabels, runIds) {
 
 function buildMetricsSheet(payload, runLabels, runIds) {
   const includeDelta = !!String(payload?.baselineRunId || "");
+  const includeBest = payload?.includeBestMetric !== false;
   const rows = [];
-  const headers = ["指标", ...runLabels, "best"];
+  const headers = ["指标", ...runLabels];
+  if (includeBest) headers.push("best");
   if (includeDelta) {
     runLabels.forEach((label) => {
       headers.push(`delta_vs_baseline(${label})`);
@@ -124,8 +139,11 @@ function buildMetricsSheet(payload, runLabels, runIds) {
   rows.push(headers);
   (payload.metricRows || []).forEach((row) => {
     const values = runIds.map((id) => sanitizeCell(row?.valuesByRun?.[id]));
-    const best = row?.best !== undefined && row?.best !== null ? row.best : computeBestValue(row?.valuesByRun);
-    const line = [sanitizeCell(row?.key || ""), ...values, sanitizeCell(best)];
+    const line = [sanitizeCell(row?.key || ""), ...values];
+    if (includeBest) {
+      const best = row?.best !== undefined && row?.best !== null ? row.best : computeBestValue(row?.valuesByRun);
+      line.push(sanitizeCell(best));
+    }
     if (includeDelta) {
       runIds.forEach((runId) => {
         const deltaAbs = row?.deltaByRun?.[runId]?.delta_abs;
@@ -196,9 +214,13 @@ export async function buildWorkbook(payload) {
   if (!curves.length) {
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet([["暂无曲线数据"]]), "Curves");
   } else {
+    const usedCurveSheetNames = new Set(["Summary", "Parameters", "Metrics"]);
     curves.forEach((curve, index) => {
       const rows = buildCurveSheet(curve, runLabelById);
-      const tabName = sheetName(`Curves_${curve?.name || index + 1}`, `Curves_${index + 1}`);
+      const rawName = "Curves_" + (curve?.name || index + 1);
+      const tabName = payload?.uniqueCurveSheetNames
+        ? uniqueSheetName(rawName, "Curves_" + (index + 1), usedCurveSheetNames)
+        : sheetName(rawName, "Curves_" + (index + 1));
       XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), tabName);
     });
   }
