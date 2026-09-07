@@ -97,21 +97,21 @@
                                 <th v-for="task in comparingTasks" :key="task.id" class="task-col">
                                     <span class="task-badge" :style="{ backgroundColor: task.color }">{{ task.name }}</span>
                                 </th>
-                                <th v-if="!isCustomComparison" class="best-col">最优值</th>
+                                <th v-if="!isGenericComparison" class="best-col">最优值</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <tr v-for="(metric, index) in metricsData" :key="index" :class="{ 'high-importance': !isCustomComparison && metric.importance === 'high' }">
+                            <tr v-for="(metric, index) in metricsData" :key="index" :class="{ 'high-importance': !isGenericComparison && metric.importance === 'high' }">
                                 <td class="metric-name">
                                     <span class="metric-label">{{ metric.name }}</span>
-                                    <span v-if="!isCustomComparison && metric.importance === 'high'" class="importance-badge">重要</span>
+                                    <span v-if="!isGenericComparison && metric.importance === 'high'" class="importance-badge">重要</span>
                                 </td>
                                 <td v-for="task in comparingTasks" :key="task.id" class="metric-value">
-                                    <span :class="{ 'best-metric': !isCustomComparison && isBestMetric(metric, task.id) }">
+                                    <span :class="{ 'best-metric': !isGenericComparison && isBestMetric(metric, task.id) }">
                                         {{ metric.values[task.id] }}
                                     </span>
                                 </td>
-                                <td v-if="!isCustomComparison" class="best-value">
+                                <td v-if="!isGenericComparison" class="best-value">
                                     <strong>{{ metric.best }}</strong>
                                 </td>
                             </tr>
@@ -144,7 +144,7 @@
                         <div class="chart-placeholder" v-if="comparingTasks.length > 0">
                             <div class="chart-content">
                                 <TrainingChart
-                                    :chart-type="!isCustomComparison && activeChart === 'accuracy' ? 'metrics' : 'custom'"
+                                    :chart-type="!isGenericComparison && activeChart === 'accuracy' ? 'metrics' : 'custom'"
                                     :custom-series="currentChartSeries"
                                     :custom-title="currentChartTitle"
                                     :custom-y-axis-name="currentChartYAxis"
@@ -208,9 +208,10 @@ export default {
         };
     },
     computed: {
-        isCustomComparison() {
-            return this.comparingTasks.length > 0
-                && this.comparingTasks[0].frameworkKey === 'engine:custom-source';
+        isGenericComparison() {
+            if (!this.comparingTasks.length) return false;
+            const frameworkKey = this.comparingTasks[0].frameworkKey;
+            return frameworkKey !== 'pytorch' && frameworkKey !== 'paddle';
         },
         maxEpoch() {
             let max = 0;
@@ -228,12 +229,12 @@ export default {
         },
         currentChartTitle() {
             const map = { loss: 'Loss 对比', accuracy: '指标对比', mAP: 'mAP 对比' };
-            return this.isCustomComparison
+            return this.isGenericComparison
                 ? (this.activeChart || '曲线对比')
                 : (map[this.activeChart] || '曲线对比');
         },
         currentChartYAxis() {
-            return !this.isCustomComparison && this.activeChart === 'loss' ? 'Loss' : 'Value';
+            return !this.isGenericComparison && this.activeChart === 'loss' ? 'Loss' : 'Value';
         },
         currentChartSeries() {
             if (!this.comparingTasks.length) return [];
@@ -241,7 +242,7 @@ export default {
             
             this.comparingTasks.forEach(task => {
                 const dataObj = this.curveDataMap[task.id] || {};
-                const picked = this.isCustomComparison
+                const picked = this.isGenericComparison
                     ? (Array.isArray(dataObj[this.activeChart])
                         ? { key: this.activeChart, data: dataObj[this.activeChart] }
                         : null)
@@ -341,7 +342,7 @@ export default {
             return [];
         },
         buildCurveSheetsForExport(runs) {
-            if (this.isCustomComparison) {
+            if (this.isGenericComparison) {
                 return this.availableCharts.map(chart => ({
                     name: chart.name,
                     series: runs.map(run => ({
@@ -353,7 +354,7 @@ export default {
                     })),
                 }));
             }
-            const frameworkKey = runs[0]?.frameworkKey || 'pytorch';
+            const frameworkKey = runs[0]?.frameworkKey || 'engine:unknown';
             const defs = [
                 { name: 'Loss', keys: this.chartCandidates(frameworkKey, 'loss') },
                 { name: 'Accuracy-Metrics', keys: this.chartCandidates(frameworkKey, 'accuracy') },
@@ -387,7 +388,7 @@ export default {
                 const metricRows = this.metricsData.map((row) => ({
                     key: row.name,
                     valuesByRun: { ...(row.values || {}) },
-                    ...(this.isCustomComparison ? {} : { best: row.best }),
+                    ...(this.isGenericComparison ? {} : { best: row.best }),
                 }));
                 const curveSheets = this.buildCurveSheetsForExport(runs);
                 const frameworkLabel = runs[0]?.frameworkLabel || 'Framework';
@@ -399,8 +400,8 @@ export default {
                     parameterRows,
                     metricRows,
                     curveSheets,
-                    includeBestMetric: !this.isCustomComparison,
-                    uniqueCurveSheetNames: this.isCustomComparison,
+                    includeBestMetric: !this.isGenericComparison,
+                    uniqueCurveSheetNames: this.isGenericComparison,
                 });
                 const filename = this.buildExportFilename('training_task_comparison', frameworkLabel);
                 await downloadWorkbook(workbook, filename);
@@ -583,7 +584,7 @@ export default {
             const runs = this.extractCompareRuns(data);
             if (!runs.length) return;
 
-            if (this.isCustomComparison) {
+            if (this.isGenericComparison) {
                 const valuesByKey = {};
                 runs.forEach(r => {
                     const rid = String(r.job_id || r.run_id || r.id);
@@ -636,7 +637,7 @@ export default {
         },
         processMetricsData(data) {
             const runs = this.extractCompareRuns(data);
-            if (this.isCustomComparison) {
+            if (this.isGenericComparison) {
                 const valuesByKey = {};
                 runs.forEach(r => {
                     const rid = String(r.job_id || r.run_id || r.id);
@@ -706,18 +707,22 @@ export default {
             });
         },
         chartCandidates(frameworkKey, chartId) {
-            const isPaddle = frameworkKey === 'paddle';
-            const defs = isPaddle
-                ? {
+            let defs;
+            if (frameworkKey === 'paddle') {
+                defs = {
                     loss: ['loss', 'train/loss', 'loss_cls', 'train/loss_cls', 'loss_iou', 'train/loss_iou'],
                     accuracy: ['metrics/precision(B)', 'precision', 'eval/bbox_precision', 'metrics/recall(B)', 'recall', 'eval/bbox_recall'],
                     mAP: ['metrics/mAP50-95(B)', 'mAP', 'eval/bbox_mAP', 'eval/bbox_map', 'metrics/mAP50(B)', 'AP50', 'mAP50'],
-                }
-                : {
+                };
+            } else if (frameworkKey === 'pytorch') {
+                defs = {
                     loss: ['val/box_loss', 'train/box_loss', 'box_loss', 'val/cls_loss', 'train/cls_loss'],
                     accuracy: ['metrics/precision(B)', 'metrics/recall(B)', 'metrics/mAP50(B)'],
                     mAP: ['metrics/mAP50-95(B)', 'metrics/mAP50(B)'],
                 };
+            } else {
+                return [];
+            }
             return defs[chartId] || [];
         },
         pickFirstSeries(dataObj, keys = []) {
@@ -738,14 +743,17 @@ export default {
                     { key: 'loss_cls', fallback: ['train/loss_cls'], label: 'Loss Cls', importance: 'normal', lowerIsBetter: true },
                 ];
             }
-            return [
-                { key: 'metrics/mAP50-95(B)', label: 'mAP50-95', importance: 'high' },
-                { key: 'metrics/mAP50(B)', label: 'mAP50', importance: 'high' },
-                { key: 'metrics/precision(B)', label: 'Precision', importance: 'normal' },
-                { key: 'metrics/recall(B)', label: 'Recall', importance: 'normal' },
-                { key: 'train/box_loss', label: 'Train Box Loss', importance: 'normal', lowerIsBetter: true },
-                { key: 'val/box_loss', label: 'Val Box Loss', importance: 'normal', lowerIsBetter: true }
-            ];
+            if (frameworkKey === 'pytorch') {
+                return [
+                    { key: 'metrics/mAP50-95(B)', label: 'mAP50-95', importance: 'high' },
+                    { key: 'metrics/mAP50(B)', label: 'mAP50', importance: 'high' },
+                    { key: 'metrics/precision(B)', label: 'Precision', importance: 'normal' },
+                    { key: 'metrics/recall(B)', label: 'Recall', importance: 'normal' },
+                    { key: 'train/box_loss', label: 'Train Box Loss', importance: 'normal', lowerIsBetter: true },
+                    { key: 'val/box_loss', label: 'Val Box Loss', importance: 'normal', lowerIsBetter: true }
+                ];
+            }
+            return [];
         },
         async fetchCurveData() {
             // Fetch curves for each selected task
@@ -768,7 +776,7 @@ export default {
                     this.curveDataMap[this.comparingTasks[idx].id] = res.metrics;
                 }
             });
-            if (this.isCustomComparison) {
+            if (this.isGenericComparison) {
                 const keys = new Set();
                 Object.values(this.curveDataMap).forEach(metrics => {
                     Object.keys(metrics || {}).forEach(key => {

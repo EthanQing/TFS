@@ -720,6 +720,13 @@
         </div>
       </section>
     </template>
+
+    <template v-else>
+      <div class="arch-state error">
+        <i class="el-icon-warning"></i>
+        <span>当前训练引擎不可识别，请重新选择训练框架。</span>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -790,7 +797,7 @@ export default {
     },
     engine: {
       type: String,
-      default: "ultralytics-yolo"
+      default: ""
     }
   },
   data() {
@@ -919,7 +926,7 @@ export default {
   },
   computed: {
     normalizedEngine() {
-      return String(this.engine || "ultralytics-yolo").trim().toLowerCase();
+      return String(this.engine || "").trim().toLowerCase();
     },
     isUltralyticsEngine() {
       return this.normalizedEngine === "ultralytics-yolo";
@@ -1015,7 +1022,7 @@ export default {
       const list = Array.isArray(this.ref?.architectures) ? this.ref.architectures : [];
 
       const currentEngineArchitectures = list.filter((it) => {
-        const engine = String(it?.engine || "ultralytics-yolo").trim().toLowerCase();
+        const engine = String(it?.engine || "").trim().toLowerCase();
         return engine === this.normalizedEngine;
       });
 

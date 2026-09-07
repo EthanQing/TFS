@@ -114,8 +114,8 @@
                     </span>
                     <el-dropdown-menu slot="dropdown">
                         <el-dropdown-item command="view">查看详情</el-dropdown-item>
-                        <el-dropdown-item command="export" divided :disabled="isExportUnsupported(job)">
-                          导出模型<span v-if="isExportUnsupported(job)">（暂不支持）</span>
+                        <el-dropdown-item command="export" divided :disabled="!canExportJob(job)">
+                          导出模型<span v-if="!canExportJob(job)">（暂不支持）</span>
                         </el-dropdown-item>
                         <el-dropdown-item command="delete" divided class="text-danger">删除</el-dropdown-item>
                     </el-dropdown-menu>
@@ -153,6 +153,7 @@
 import { fetchTrainingJobs, startTrainingJob, DeleteTrainingJob } from "@/api/training";
 import ModelsStep2 from "@/views/Models/CreateModel/Step2.vue";
 import { resolveFramework } from "@/utils/trainingFramework";
+import { normalizeModelEngine, supportsTrainingExport } from "@/utils/modelCapabilities";
 
 const FRAMEWORK_TABS = [
   { key: "pytorch", label: "PyTorch (YOLO)", shortLabel: "PyTorch", engine: "ultralytics-yolo" },
@@ -255,9 +256,11 @@ export default {
     jobFrameworkLabel(job) {
       return job?.framework_label || this.jobFramework(job).frameworkLabel;
     },
-    isExportUnsupported(job) {
-      const frameworkKey = this.jobFrameworkKey(job);
-      return frameworkKey === "paddle" || frameworkKey === "engine:custom-source";
+    jobEngine(job) {
+      return normalizeModelEngine(job?.engine || job?.architecture?.engine);
+    },
+    canExportJob(job) {
+      return supportsTrainingExport(this.jobEngine(job));
     },
     statusClass(status){
       if(!status) return 'status-pending';
@@ -284,12 +287,14 @@ export default {
       if (command === "view") this.ShowModelDetail(jobId);
       else if (command === "export") {
         const job = this.trainingJobs.find(item => String(item.job_id) === String(jobId));
-        if (this.isExportUnsupported(job)) {
-          const frameworkKey = this.jobFrameworkKey(job);
+        if (!this.canExportJob(job)) {
+          const engine = this.jobEngine(job);
           this.$message.warning(
-            frameworkKey === "engine:custom-source"
+            engine === "custom-source"
               ? "自定义模型导出暂不支持。"
-              : "Paddle 模型导出暂不支持。"
+              : engine === "paddle-det"
+                ? "Paddle 模型导出暂不支持。"
+                : "当前模型引擎暂不支持导出。"
           );
         } else {
           this.$message.info("Export feature coming soon");

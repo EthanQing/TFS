@@ -393,15 +393,13 @@ export default {
   },
   methods: {
     frameworkKey(item) {
-      const engine = item?.engine || "ultralytics-yolo";
-      return resolveFramework(engine).frameworkKey;
+      return resolveFramework(item?.engine || "").frameworkKey;
     },
     isCustomArchitecture(item) {
-      return item?.engine === "custom-source";
+      return String(item?.engine || "").trim().toLowerCase() === "custom-source";
     },
     displayFrameworkLabel(item) {
-      const engine = item?.engine || "ultralytics-yolo";
-      return resolveFramework(engine).frameworkLabel;
+      return resolveFramework(item?.engine || "").frameworkLabel;
     },
     async fetchArchitectures() {
       this.loading = true;

@@ -98,7 +98,7 @@ export default {
     },
     engine: {
       type: String,
-      default: "ultralytics-yolo"
+      default: ""
     },
     frameworkLabel: {
       type: String,
@@ -119,7 +119,7 @@ export default {
         dataset_name: "",
         model_architecture: "",
         architecture_id: null,
-        engine: String(this.engine || "ultralytics-yolo").trim().toLowerCase(),
+        engine: String(this.engine || "").trim().toLowerCase(),
         epochs: 100,
         batch_size: 16,
         learning_rate: 0.01,
@@ -149,7 +149,7 @@ export default {
   },
   computed: {
     normalizedEngine() {
-      return String(this.engine || "ultralytics-yolo").trim().toLowerCase();
+      return String(this.engine || "").trim().toLowerCase();
     },
     engineDisplayName() {
       if (this.frameworkLabel) return this.frameworkLabel;
@@ -169,6 +169,9 @@ export default {
     isCustomSourceEngine() {
       return this.normalizedEngine === "custom-source";
     },
+    isSupportedTrainingEngine() {
+      return ["ultralytics-yolo", "paddle-det", "custom-source"].includes(this.normalizedEngine);
+    },
     officialTaskType() {
       if (!this.isCustomSourceEngine) return this.currentTab;
       return this.normalizeTaskType(
@@ -176,10 +179,12 @@ export default {
       );
     },
     canSubmit() {
+      if (!this.isSupportedTrainingEngine) return false;
       const baseValid = !!(this.selectedProject && this.selectedModel && this.trainParams.dataset_name);
       return baseValid && (!this.isCustomSourceEngine || this.customConfigValid);
     },
     footerMessage() {
+      if (!this.isSupportedTrainingEngine) return "当前训练引擎不可用，请重新选择训练框架。";
       if (!this.selectedProject) return "选择一个项目以继续。";
       if (!this.selectedModel) return "选择一个模型架构以启用训练。";
       if (!this.trainParams.dataset_name) return "该项目未关联标准数据集。";
@@ -246,6 +251,10 @@ export default {
       this.customConfigMessage = payload?.message || "";
     },
     async addTrainingTask() {
+      if (!this.isSupportedTrainingEngine) {
+        this.$message.error("当前训练引擎不可用，请重新选择训练框架。");
+        return;
+      }
       if (!this.selectedProject) {
         this.$message.error("Please select a project first.");
         return;
