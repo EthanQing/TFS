@@ -650,7 +650,7 @@
                 :disabled="!isCustomArchitectureSelectable(arch)"
                 :title="customArchitectureStatusText(arch)"
                 @click="onSelectArchitecture(arch)">
-                <span>{{ formatVariantShort(arch.model_variant) }}</span>
+                <span>{{ arch.model_variant || arch.variant || '' }}</span>
                 <small v-if="!isCustomArchitectureSelectable(arch)" class="arch-chip-status">
                   {{ customArchitectureStatusText(arch) }}
                 </small>

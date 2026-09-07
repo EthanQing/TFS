@@ -100,7 +100,8 @@ async function getArchitectureMap({ force = false } = {}) {
   if (!force && _archCache.map && Date.now() - _archCache.at < ttlMs) return _archCache.map;
   if (!force && _archCache.pending) return _archCache.pending;
 
-  _archCache.pending = (async () => {
+  let request;
+  request = (async () => {
     const res = await fetch(`${API_BASE}/api/v3/architectures`);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));
@@ -113,11 +114,14 @@ async function getArchitectureMap({ force = false } = {}) {
     });
     _archCache.map = map;
     _archCache.at = Date.now();
-    _archCache.pending = null;
     return map;
-  })();
+  })().finally(() => {
+    if (_archCache.pending === request) _archCache.pending = null;
+  });
 
-  return _archCache.pending;
+  _archCache.pending = request;
+
+  return request;
 }
 
 async function getProjectMap({ force = false } = {}) {
@@ -163,13 +167,17 @@ async function resolveArchitectureId({ architecture_id, model_architecture, mode
 
 async function mapTrainingRunToJob(run) {
   const obj = run && typeof run === "object" ? run : {};
-  const archMap = await getArchitectureMap().catch(() => new Map());
+  let archMap = await getArchitectureMap().catch(() => new Map());
   const projMap = await getProjectMap().catch(() => new Map());
 
   const archId = obj.architecture_id != null ? Number(obj.architecture_id) : null;
   const projectId = obj.project_id != null ? Number(obj.project_id) : null;
 
-  const architecture = archId != null && archMap.has(archId) ? archMap.get(archId) : null;
+  let architecture = archId != null && archMap.has(archId) ? archMap.get(archId) : null;
+  if (archId != null && !architecture) {
+    archMap = await getArchitectureMap({ force: true }).catch(() => archMap);
+    architecture = archMap.has(archId) ? archMap.get(archId) : null;
+  }
   const project = projectId != null && projMap.has(projectId) ? projMap.get(projectId) : null;
   const rawEngine =
     architecture?.engine ??
