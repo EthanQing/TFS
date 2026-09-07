@@ -306,6 +306,11 @@ import {
     markModelAsQualified,
 } from "@/api/models";
 import { buildWorkbook, downloadWorkbook } from "@/utils/trainingCompareExport";
+import {
+    normalizeModelEngine,
+    supportsQualification,
+    supportsRuntimeExecution,
+} from "@/utils/modelCapabilities";
 
 export default {
     name: 'ModelComparison',
@@ -637,13 +642,13 @@ export default {
         qualifiableRuns() {
             return this.selectedRuns.filter(run => {
                 const status = String(run.status || '').toLowerCase();
-                return status === 'completed';
+                return status === 'completed' && supportsQualification(this.getRunEngine(run));
             });
         },
         nonQualifiableRuns() {
             return this.selectedRuns.filter(run => {
                 const status = String(run.status || '').toLowerCase();
-                return status !== 'completed';
+                return status !== 'completed' || !supportsQualification(this.getRunEngine(run));
             });
         },
         hasQualifiableRuns() {
@@ -1232,6 +1237,9 @@ export default {
         getFrameworkLabel(row) {
             return row?.framework_label || this.getFrameworkInfo(row).frameworkLabel;
         },
+        getRunEngine(row) {
+            return normalizeModelEngine(row?.engine || row?.architecture?.engine);
+        },
         syncSelectionLocks(selection = []) {
             const first = Array.isArray(selection) && selection.length ? selection[0] : null;
             this.lockedDatasetId = first ? this.getDatasetScopeKey(first) : null;
@@ -1240,6 +1248,9 @@ export default {
         validateSelectionCompatibility(selection = []) {
             const list = Array.isArray(selection) ? selection : [];
             if (!list.length) return null;
+            if (list.some((row) => !supportsRuntimeExecution(this.getRunEngine(row)))) {
+                return "当前模型引擎暂不支持部署对比，请在训练任务对比页面查看训练指标。";
+            }
             const base = list[0];
             const baseDataset = this.getDatasetScopeKey(base);
             const baseFramework = this.getFrameworkInfo(base);
@@ -1255,6 +1266,7 @@ export default {
             return null;
         },
         checkSelectable(row) {
+            if (!supportsRuntimeExecution(this.getRunEngine(row))) return false;
             if (this.tempSelection.length === 0) return true;
             const anchor = this.tempSelection[0];
             const anchorDataset = this.getDatasetScopeKey(anchor);
@@ -1298,6 +1310,9 @@ export default {
             const incompatibleMessage = this.validateSelectionCompatibility(this.selectedRuns);
             if (incompatibleMessage) {
                 this.$message.warning(incompatibleMessage);
+                this.compareData = null;
+                this.metricsData = {};
+                this.trainingParamsByRun = {};
                 return;
             }
             this.syncBaselineAfterSelectionChange();
@@ -1476,6 +1491,7 @@ export default {
         },
 
         async refreshQualifiedStatusForRun(run) {
+            if (!supportsQualification(this.getRunEngine(run))) return;
             const runId = String(this.getRunId(run) || '');
             if (!runId) return;
 
@@ -1527,6 +1543,7 @@ export default {
         },
 
         async handleDropdownMarkQualified(run) {
+            if (!supportsQualification(this.getRunEngine(run))) return;
             const status = this.getQualifiedStatus(run);
             if (!status || status.checking || status.loadingMark) return;
             if (status.isQualified) return;
@@ -1538,6 +1555,7 @@ export default {
         },
 
         async handleMarkQualified(run) {
+            if (!supportsQualification(this.getRunEngine(run))) return;
             const status = this.getQualifiedStatus(run);
             if (!status || !status.modelVersionId) return;
 

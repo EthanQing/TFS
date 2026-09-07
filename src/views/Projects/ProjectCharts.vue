@@ -53,6 +53,7 @@
         @click="setActiveTab('logs'), goLogsPart()"
       >日志</button>
       <button
+        v-if="supportsInferenceModel"
         class="pc-tab"
         :class="{ active: activeTab === 'preview' }"
         @click="setActiveTab('preview'), goPreviewPart()"
@@ -70,6 +71,7 @@
 <script>
 import { fetchTrainingJobs, FetchTrainingJobParameters } from "@/api/training";
 import { API_BASE, WS_BASE } from "@/utils/request";
+import { normalizeModelEngine, supportsInference } from "@/utils/modelCapabilities";
 
 export default {
   name: "ProjectsCharts",
@@ -99,6 +101,12 @@ export default {
     },
     modelArchitecture() {
       return this.trainJobInfo?.architecture?.model_variant || "未知";
+    },
+    modelEngine() {
+      return normalizeModelEngine(this.trainJobInfo?.engine || this.trainJobInfo?.architecture?.engine);
+    },
+    supportsInferenceModel() {
+      return supportsInference(this.modelEngine);
     },
     runStatusLabel() {
       const s = String(this.trainJobInfo?.status || "").toLowerCase();
@@ -199,7 +207,7 @@ export default {
   watch: {
     "$route.query.jobId": {
       handler(newJobId) {
-        if (newJobId && newJobId !== this.jobId) {
+        if (newJobId && String(newJobId) !== String(this.jobId || '')) {
           this.jobId = newJobId;
           localStorage.setItem("currentJobId", newJobId);
           this.loadJobDetails(newJobId);
@@ -241,10 +249,22 @@ export default {
           FetchTrainingJobParameters(jobId)
         ]);
 
-        if (jobsResponse.status === "fulfilled" && jobsResponse.value) {
-          const currentJob = jobsResponse.value.find(job => job.job_id === jobId);
-          if (currentJob) {
-            this.trainJobInfo = currentJob;
+        let currentJob = null;
+        if (jobsResponse.status === "fulfilled" && Array.isArray(jobsResponse.value)) {
+          currentJob = jobsResponse.value.find(job => String(job.job_id) === String(jobId)) || null;
+          if (currentJob) this.trainJobInfo = currentJob;
+        }
+
+        if (this.$route.path.includes("/projectscharts/previewpart") && !supportsInference(
+          currentJob?.engine || currentJob?.architecture?.engine
+        )) {
+          this.activeTab = "train";
+          const navigation = this.$router.replace({
+            path: "/projectscharts/trainpart",
+            query: { ...this.$route.query, jobId },
+          });
+          if (navigation && typeof navigation.catch === "function") {
+            navigation.catch(() => {});
           }
         }
 

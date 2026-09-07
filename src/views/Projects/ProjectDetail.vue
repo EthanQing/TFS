@@ -118,7 +118,7 @@
                 <el-button v-else-if="model.status === 'running'" type="danger" size="mini"
                   :loading="stoppingJobs && stoppingJobs[model.job_id]" class="action-btn"
                   @click.stop="stopJob(model.job_id)">停止</el-button>
-                <el-button v-else-if="['cancelled'].includes((model.status || '').toLowerCase())" type="primary"
+                <el-button v-else-if="['cancelled'].includes((model.status || '').toLowerCase()) && supportsResumeTraining(modelEngine(model))" type="primary"
                   size="mini" :loading="startingJobs && startingJobs[model.job_id]" class="action-btn"
                   @click.stop="resumeJob(model.job_id)">继续</el-button>
                 <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
@@ -127,10 +127,15 @@
                   </span>
                   <el-dropdown-menu slot="dropdown">
                     <!-- <el-dropdown-item v-if="model.status === 'completed'" command="setbaseline">设为基准</el-dropdown-item> -->
-                    <el-dropdown-item command="export" :disabled="isPaddleModel(model)">
+                    <el-dropdown-item command="export" :disabled="!canExportModel(model)">
                       <span class="pd-menu-item">
                         <i class="el-icon-download"></i>
-                        <span>导出<span v-if="isPaddleModel(model)">（Paddle 暂不支持）</span></span>
+                        <span>
+                          导出
+                          <span v-if="isCustomSourceModel(model)">（自定义模型暂不支持）</span>
+                          <span v-else-if="isPaddleModel(model)">（Paddle 暂不支持）</span>
+                          <span v-else-if="!canExportModel(model)">（暂不支持）</span>
+                        </span>
                       </span>
                     </el-dropdown-item>
                     <el-dropdown-item v-if="model.status === 'completed'" command="report">
@@ -238,6 +243,11 @@ import { API_BASE } from '@/utils/request';
 import ModelsStep2 from '@/views/Models/CreateModel/Step2.vue';
 import { resolveFramework } from '@/utils/trainingFramework';
 import { markProjectTrainingAlertsDirty } from '@/utils/projectTrainingAlerts';
+import {
+  normalizeModelEngine,
+  supportsResumeTraining,
+  supportsTrainingExport,
+} from '@/utils/modelCapabilities';
 import multiselectIcon from '@/assets/icon/Multiselect.svg';
 import selectAllOffIcon from '@/assets/icon/Select All Off.svg';
 import selectAllOnIcon from '@/assets/icon/Select All.svg';
@@ -455,6 +465,8 @@ export default {
     },
     async resumeJob(jobId) {
       if (!jobId) return;
+      const model = this.findProjectModel(jobId);
+      if (!supportsResumeTraining(this.modelEngine(model))) return;
       this.$set(this.startingJobs, jobId, true);
       try {
         await this.$confirm('确定要继续之前的训练吗？这将从上次保存的检查点继续训练。', '确认继续', { type: 'info' });
@@ -500,13 +512,28 @@ export default {
       if (model?.framework_key) return model.framework_key;
       return resolveFramework(model?.engine || model?.architecture?.engine || '').frameworkKey;
     },
+    modelEngine(model) {
+      return normalizeModelEngine(model?.engine || model?.architecture?.engine);
+    },
     isPaddleModel(model) {
       return this.modelFrameworkKey(model) === 'paddle';
     },
+    isCustomSourceModel(model) {
+      return this.modelEngine(model) === 'custom-source';
+    },
+    canExportModel(model) {
+      return supportsTrainingExport(this.modelEngine(model));
+    },
     openExportDialog(jobId) {
       const model = this.findProjectModel(jobId);
-      if (this.isPaddleModel(model)) {
-        this.$message.warning('Paddle 模型导出暂不支持。');
+      if (!this.canExportModel(model)) {
+        if (this.isCustomSourceModel(model)) {
+          this.$message.warning('自定义模型导出暂不支持。');
+        } else if (this.isPaddleModel(model)) {
+          this.$message.warning('Paddle 模型导出暂不支持。');
+        } else {
+          this.$message.warning('当前模型引擎暂不支持导出。');
+        }
         return;
       }
       this.exportTargetJobId = jobId;
@@ -565,8 +592,15 @@ export default {
     async confirmExport() {
       const jobId = this.exportTargetJobId;
       if (!jobId) return;
-      if (this.isPaddleModel(this.findProjectModel(jobId))) {
-        this.$message.warning('Paddle 模型导出暂不支持。');
+      const model = this.findProjectModel(jobId);
+      if (!this.canExportModel(model)) {
+        if (this.isCustomSourceModel(model)) {
+          this.$message.warning('自定义模型导出暂不支持。');
+        } else if (this.isPaddleModel(model)) {
+          this.$message.warning('Paddle 模型导出暂不支持。');
+        } else {
+          this.$message.warning('当前模型引擎暂不支持导出。');
+        }
         return;
       }
       this.exporting = true;

@@ -34,12 +34,13 @@
               <el-option
                 v-for="m in models"
                 :key="m._key"
-                :label="`${m.label} [${m.engine}]`"
+                :label="modelOptionLabel(m)"
                 :value="m._key"
+                :disabled="!isExecutionCandidateSupported(m)"
               >
                 <div class="model-option">
-                  <span class="model-name">{{ m.label }}</span>
-                  <el-tag size="mini" type="info" effect="plain" class="engine-tag">{{ m.engine }}</el-tag>
+                  <span class="model-name">{{ modelOptionLabel(m) }}</span>
+                  <el-tag size="mini" type="info" effect="plain" class="engine-tag">{{ modelEngine(m) || "unknown" }}</el-tag>
                 </div>
               </el-option>
             </el-select>
@@ -233,6 +234,7 @@ import {
   openInferenceJobStream,
 } from "@/api/inferenceJobs";
 import { extractInferencePredictions } from "@/utils/inferencePreview";
+import { normalizeModelEngine, supportsInference } from "@/utils/modelCapabilities";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
@@ -275,7 +277,7 @@ export default {
       return this.models.find((m) => m._key === this.form.modelKey) || null;
     },
     canStart() {
-      if (!this.selectedModel || this.isRunning) return false;
+      if (!this.selectedModel || !this.isExecutionCandidateSupported(this.selectedModel) || this.isRunning) return false;
       if (this.form.mode === "video") return this.uploadFileList.length === 1;
       return this.uploadFileList.length > 0;
     },
@@ -339,6 +341,16 @@ export default {
       if (row.model_version_id != null) return `mv:${row.model_version_id}`;
       return `run:${row.run_id}`;
     },
+    modelEngine(model) {
+      return normalizeModelEngine(model?.engine || model?.architecture?.engine);
+    },
+    isExecutionCandidateSupported(model) {
+      return model?.inferable !== false && supportsInference(this.modelEngine(model));
+    },
+    modelOptionLabel(model) {
+      const base = `${model?.label || "未命名模型"} [${this.modelEngine(model) || "unknown"}]`;
+      return this.isExecutionCandidateSupported(model) ? base : `${base}（暂不支持）`;
+    },
     absoluteUrl(url) {
       const raw = String(url || "").trim();
       if (!raw) return "";
@@ -351,7 +363,11 @@ export default {
       try {
         const rows = await fetchInferableModels();
         this.models = (Array.isArray(rows) ? rows : []).map((r) => ({ ...r, _key: this.makeModelKey(r) }));
-        if (!this.form.modelKey && this.models.length) this.form.modelKey = this.models[0]._key;
+        const current = this.models.find((model) => model._key === this.form.modelKey);
+        if (!current || !this.isExecutionCandidateSupported(current)) {
+          const firstSupported = this.models.find((model) => this.isExecutionCandidateSupported(model));
+          this.form.modelKey = firstSupported ? firstSupported._key : "";
+        }
       } catch (e) {
         this.$message.error(`加载模型失败: ${e.message || e}`);
       } finally {
@@ -509,6 +525,10 @@ export default {
       );
     },
     async startInference() {
+      if (!this.isExecutionCandidateSupported(this.selectedModel)) {
+        this.$message.warning("当前模型引擎暂不支持推理。");
+        return;
+      }
       if (!this.canStart) return;
       this.isStarting = true;
       this.errorMessage = "";

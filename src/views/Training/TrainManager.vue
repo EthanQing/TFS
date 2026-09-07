@@ -29,7 +29,7 @@
             训练报告
           </el-button>
         </div>
-        <div v-if="status === 'completed'" class="tm-stat action-stat">
+        <div v-if="status === 'completed' && canQualifyModel" class="tm-stat action-stat">
           <el-button
             v-if="!qualifiedStatus?.isQualified"
             type="success"
@@ -150,6 +150,7 @@ import {
   markModelAsQualified,
 } from "@/api/models";
 import { markProjectTrainingAlertsDirty } from "@/utils/projectTrainingAlerts";
+import { supportsQualification, supportsResumeTraining } from "@/utils/modelCapabilities";
 
 const TERMINAL_STATUSES = new Set(["completed", "failed", "cancelled", "deleted"]);
 const METRIC_ALIAS_GROUPS = [
@@ -258,8 +259,10 @@ export default {
       return s === "running" || s === "queued";
     },
     canResume() {
-      const engine = normalizeStatus(this.engine);
-      return !this.canStop && (engine === "ultralytics-yolo" || engine === "paddle-det");
+      return normalizeStatus(this.status) === "cancelled" && supportsResumeTraining(this.engine);
+    },
+    canQualifyModel() {
+      return normalizeStatus(this.status) === "completed" && supportsQualification(this.engine);
     },
     waitEvalHint() {
       if (normalizeStatus(this.status) !== "running") return "";
@@ -780,6 +783,7 @@ export default {
       }
     },
     async handleContinue() {
+      if (!this.canResume) return;
       try {
         await this.$confirm('确定要继续当前训练任务吗？', '确认继续', {
           confirmButtonText: '继续',
@@ -843,6 +847,10 @@ export default {
 
     async refreshQualifiedStatus() {
       if (!this.jobId || normalizeStatus(this.status) !== 'completed') return;
+      if (!supportsQualification(this.engine)) {
+        this.qualifiedStatus = null;
+        return;
+      }
 
       this.qualifiedStatus = {
         isQualified: false,
@@ -888,6 +896,7 @@ export default {
     },
 
     async handleMarkQualified() {
+      if (!supportsQualification(this.engine)) return;
       if (!this.qualifiedStatus?.modelVersionId) {
         this.$message.warning('未找到模型版本，请稍后重试');
         return;

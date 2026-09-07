@@ -30,13 +30,14 @@
               <el-option
                 v-for="m in models"
                 :key="m._key"
-                :label="m.label"
+                :label="modelOptionLabel(m)"
                 :value="m._key"
+                :disabled="!isEvaluationCandidateSupported(m)"
               >
                 <div class="model-option">
-                  <span class="model-option-label">{{ m.label }}</span>
+                  <span class="model-option-label">{{ modelOptionLabel(m) }}</span>
                   <span class="model-option-tags">
-                    <el-tag size="mini" type="info" effect="plain">{{ m.engine }}</el-tag>
+                    <el-tag size="mini" type="info" effect="plain">{{ modelEngine(m) || "unknown" }}</el-tag>
                     <el-tag size="mini" effect="plain">项目 {{ m.project_id }}</el-tag>
                   </span>
                 </div>
@@ -165,6 +166,7 @@ import {
   fetchModelEvaluation,
   openModelEvaluationStream,
 } from "@/api/modelEvaluations";
+import { normalizeModelEngine, supportsEvaluation } from "@/utils/modelCapabilities";
 
 const TERMINAL = new Set(["completed", "failed", "cancelled"]);
 
@@ -206,7 +208,8 @@ export default {
       return this.models.find((m) => m._key === this.form.modelKey) || null;
     },
     canStart() {
-      return !!this.selectedModel && !!this.form.datasetId && !this.isRunning && !this.recovering;
+      return !!this.selectedModel && this.isEvaluationCandidateSupported(this.selectedModel) &&
+        !!this.form.datasetId && !this.isRunning && !this.recovering;
     },
     isRunning() {
       return this.jobStatus === "queued" || this.jobStatus === "running";
@@ -280,6 +283,16 @@ export default {
       if (row.model_version_id != null) return `mv:${row.model_version_id}`;
       return `run:${row.run_id}`;
     },
+    modelEngine(model) {
+      return normalizeModelEngine(model?.engine || model?.architecture?.engine);
+    },
+    isEvaluationCandidateSupported(model) {
+      return model?.inferable !== false && supportsEvaluation(this.modelEngine(model));
+    },
+    modelOptionLabel(model) {
+      const base = model?.label || "未命名模型";
+      return this.isEvaluationCandidateSupported(model) ? base : `${base}（暂不支持评估）`;
+    },
     async bootstrap() {
       await this.reloadOptions();
       await this.recoverActiveJob({ silent: true });
@@ -297,7 +310,11 @@ export default {
       try {
         const rows = await fetchEvaluationModels();
         this.models = (Array.isArray(rows) ? rows : []).map((r) => ({ ...r, _key: this.makeModelKey(r) }));
-        if (!this.form.modelKey && this.models.length) this.form.modelKey = this.models[0]._key;
+        const current = this.models.find((model) => model._key === this.form.modelKey);
+        if (!current || !this.isEvaluationCandidateSupported(current)) {
+          const firstSupported = this.models.find((model) => this.isEvaluationCandidateSupported(model));
+          this.form.modelKey = firstSupported ? firstSupported._key : "";
+        }
       } catch (e) {
         this.$message.error(`加载模型失败: ${e.message || e}`);
       } finally {
@@ -368,6 +385,10 @@ export default {
       }
     },
     async startEvaluation() {
+      if (!this.isEvaluationCandidateSupported(this.selectedModel)) {
+        this.$message.warning("当前模型引擎暂不支持评估。");
+        return;
+      }
       if (!this.canStart) return;
       this.starting = true;
       this.errorMessage = "";

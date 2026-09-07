@@ -81,9 +81,11 @@
 </template>
 
 <script>
+import { FetchTrainingJobDetail } from "@/api/training";
 import { GetInferenceResult, uploadInferenceImage, fetchModelVersionsByRunId, registerModelVersionFromRun } from "@/api/models";
 import { previewStore } from "@/store/previewStore";
 import { normalizeInferencePredictions } from "@/utils/inferencePreview";
+import { normalizeModelEngine, supportsInference } from "@/utils/modelCapabilities";
 export default {
   name: "PreviewPart",
   data() {
@@ -137,6 +139,16 @@ export default {
         const jobId = this.$route?.query?.jobId || this.jobId;
         if (!jobId) {
           this.$message && this.$message.error("Missing jobId");
+          return;
+        }
+
+        const trainingJob = await FetchTrainingJobDetail(jobId);
+        const engine = normalizeModelEngine(trainingJob?.engine || trainingJob?.architecture?.engine);
+        if (!supportsInference(engine)) {
+          const message = engine === "custom-source"
+            ? "自定义模型当前仅支持训练流程，暂不支持推理。"
+            : "无法确认模型运行引擎，推理不可用。";
+          this.$message && this.$message.warning(message);
           return;
         }
 
