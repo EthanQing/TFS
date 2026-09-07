@@ -16,6 +16,9 @@
           <div class="stat-value">{{ totalArchitectures }}</div>
           <div class="stat-label">总数</div>
         </div>
+        <el-button type="primary" plain @click="openPackageDialog">
+          自定义模型包
+        </el-button>
         <el-button type="primary" class="refresh-btn" icon="el-icon-refresh" circle @click="fetchArchitectures"></el-button>
       </div>
     </header>
@@ -59,8 +62,8 @@
           <div class="arch-grid">
             <article v-for="item in group.items" :key="item.arch_id || item.model_variant" class="arch-card">
               <div class="arch-card-header">
-                <div class="arch-name" :title="formatVariant(item.model_variant)">
-                  {{ formatVariant(item.model_variant) || 'Unnamed' }}
+                <div class="arch-name" :title="formatVariant(item.model_variant, item)">
+                  {{ formatVariant(item.model_variant, item) || 'Unnamed' }}
                 </div>
                 <div class="arch-tags">
                   <span class="arch-tag framework">{{ displayFrameworkLabel(item) }}</span>
@@ -78,23 +81,174 @@
                     <span class="meta-value">{{ truncate(item.pretrained_path) }}</span>
                   </el-tooltip>
                 </div>
+                <div
+                  v-if="isCustomArchitecture(item) && item.custom_model_package_id !== null && item.custom_model_package_id !== undefined"
+                  class="meta-row"
+                >
+                  <span class="meta-label">Package</span>
+                  <span class="meta-value">#{{ item.custom_model_package_id }}</span>
+                </div>
+                <div v-if="isCustomArchitecture(item) && item.description" class="meta-row">
+                  <span class="meta-label">说明</span>
+                  <el-tooltip :content="item.description" placement="top" :open-delay="500">
+                    <span class="meta-value">{{ truncate(item.description) }}</span>
+                  </el-tooltip>
+                </div>
               </div>
             </article>
           </div>
         </section>
       </div>
     </section>
+
+    <el-dialog
+      title="自定义模型包"
+      :visible.sync="packageDialogVisible"
+      width="1000px"
+      @closed="resetPackageUpload"
+    >
+      <div class="package-toolbar">
+        <el-upload
+          ref="packageUploader"
+          action="#"
+          accept=".zip"
+          :auto-upload="false"
+          :limit="1"
+          :on-change="handlePackageFileChange"
+          :on-remove="handlePackageFileRemove"
+          :on-exceed="handlePackageFileExceed"
+        >
+          <el-button size="small" icon="el-icon-upload2">选择 ZIP</el-button>
+          <div slot="tip" class="el-upload__tip">仅支持 .zip 源码包</div>
+        </el-upload>
+        <div class="package-upload-actions">
+          <el-button
+            type="primary"
+            size="small"
+            :loading="packageUploading"
+            :disabled="!packageUploadFile"
+            @click="uploadPackage"
+          >
+            上传
+          </el-button>
+          <el-button size="small" :loading="packageLoading" @click="loadPackageList">
+            刷新列表
+          </el-button>
+        </div>
+      </div>
+      <div v-if="packageUploadError" class="package-upload-error">{{ packageUploadError }}</div>
+
+      <div v-if="packageLoading" class="state loading package-state">
+        <i class="el-icon-loading"></i>
+        <span>正在加载自定义模型包...</span>
+      </div>
+      <div v-else-if="packageError" class="state error package-state">
+        <i class="el-icon-warning"></i>
+        <span>{{ packageError }}</span>
+        <el-button size="mini" type="primary" @click="loadPackageList">重试</el-button>
+      </div>
+      <div v-else-if="!packages.length" class="state empty package-state">
+        <i class="el-icon-info"></i>
+        <span>暂无自定义模型包，请上传 ZIP 源码包。</span>
+      </div>
+      <el-table v-else :data="packages" border stripe size="small" class="package-table">
+        <el-table-column label="名称" min-width="150">
+          <template slot-scope="scope">
+            <div class="package-name">{{ packageName(scope.row) }}</div>
+            <div class="package-id">#{{ scope.row.package_id }}</div>
+          </template>
+        </el-table-column>
+        <el-table-column label="Entrypoint" min-width="180">
+          <template slot-scope="scope">{{ formatEntrypoint(scope.row) }}</template>
+        </el-table-column>
+        <el-table-column prop="runtime_profile" label="Runtime" min-width="130">
+          <template slot-scope="scope">{{ scope.row.runtime_profile || '-' }}</template>
+        </el-table-column>
+        <el-table-column label="创建时间" min-width="155">
+          <template slot-scope="scope">{{ formatPackageDate(scope.row.created_at) }}</template>
+        </el-table-column>
+        <el-table-column label="状态" width="90">
+          <template slot-scope="scope">
+            <el-tag :type="scope.row.retired_at ? 'info' : 'success'" size="mini">
+              {{ scope.row.retired_at ? '已停用' : '可用' }}
+            </el-tag>
+          </template>
+        </el-table-column>
+        <el-table-column label="SHA256" min-width="135">
+          <template slot-scope="scope">
+            <el-tooltip :content="scope.row.source_sha256 || '-'"><span>{{ truncateHash(scope.row.source_sha256) }}</span></el-tooltip>
+          </template>
+        </el-table-column>
+        <el-table-column label="操作" width="180" fixed="right">
+          <template slot-scope="scope">
+            <el-button
+              v-if="!scope.row.retired_at"
+              type="text"
+              size="small"
+              :disabled="retiringPackageId === scope.row.package_id"
+              @click="retirePackage(scope.row)"
+            >
+              停用
+            </el-button>
+            <el-button
+              type="text"
+              size="small"
+              :disabled="Boolean(scope.row.retired_at)"
+              @click="openRegisterDialog(scope.row)"
+            >
+              注册架构
+            </el-button>
+          </template>
+        </el-table-column>
+      </el-table>
+    </el-dialog>
+
+    <el-dialog title="注册自定义模型架构" :visible.sync="registerDialogVisible" width="520px">
+      <div v-if="selectedPackage" class="selected-package">
+        <div><span>模型包：</span>{{ packageName(selectedPackage) }}</div>
+        <div><span>Package ID：</span>#{{ selectedPackage.package_id }}</div>
+      </div>
+      <el-form ref="registerForm" :model="registerForm" :rules="registerRules" label-width="90px">
+        <el-form-item label="Family" prop="family">
+          <el-input v-model="registerForm.family" placeholder="请输入模型系列"></el-input>
+        </el-form-item>
+        <el-form-item label="Variant" prop="variant">
+          <el-input v-model="registerForm.variant" placeholder="请输入模型变体"></el-input>
+        </el-form-item>
+        <el-form-item label="任务类型" prop="task_type">
+          <el-select v-model="registerForm.task_type" placeholder="请选择任务类型" style="width: 100%">
+            <el-option label="目标检测" value="detection"></el-option>
+            <el-option label="图像分割" value="segmentation"></el-option>
+            <el-option label="图像分类" value="classification"></el-option>
+          </el-select>
+        </el-form-item>
+        <el-form-item label="描述" prop="description">
+          <el-input v-model="registerForm.description" type="textarea" :rows="3" placeholder="可选"></el-input>
+        </el-form-item>
+      </el-form>
+      <span slot="footer" class="dialog-footer">
+        <el-button @click="registerDialogVisible = false">取消</el-button>
+        <el-button type="primary" :loading="registering" @click="registerArchitecture">注册</el-button>
+      </span>
+    </el-dialog>
   </div>
 </template>
 
 <script>
-import { FetchArchitectureDetail } from "@/api/models";
+import { CreateArchitecture } from "@/api/models";
+import {
+  fetchCustomModelPackages,
+  uploadCustomModelPackage,
+  retireCustomModelPackage,
+} from "@/api/customModels";
+import { referenceStore, loadArchitectures } from "@/store/referenceStore";
 import { resolveFramework } from "@/utils/trainingFramework";
 
 const FRAMEWORK_FILTERS = [
   { key: "all", label: "全部", engine: "" },
   { key: "pytorch", label: "PyTorch (YOLO)", engine: "ultralytics-yolo" },
   { key: "paddle", label: "Paddle", engine: "paddle-det" },
+  { key: "engine:custom-source", label: "自定义模型", engine: "custom-source" },
 ];
 
 export default {
@@ -106,6 +260,47 @@ export default {
       error: null,
       activeFramework: "all",
       frameworkFilters: FRAMEWORK_FILTERS,
+      packageDialogVisible: false,
+      packageLoading: false,
+      packageError: null,
+      packages: [],
+      packageTotal: 0,
+      packageUploadFile: null,
+      packageUploadError: null,
+      packageUploading: false,
+      retiringPackageId: null,
+      registerDialogVisible: false,
+      selectedPackage: null,
+      registering: false,
+      registerForm: {
+        family: "",
+        variant: "",
+        task_type: "detection",
+        description: "",
+      },
+      registerRules: {
+        family: [{
+          validator: (rule, value, callback) => {
+            if (String(value || '').trim()) {
+              callback();
+              return;
+            }
+            callback(new Error("请输入模型系列"));
+          },
+          trigger: "blur",
+        }],
+        variant: [{
+          validator: (rule, value, callback) => {
+            if (String(value || '').trim()) {
+              callback();
+              return;
+            }
+            callback(new Error("请输入模型变体"));
+          },
+          trigger: "blur",
+        }],
+        task_type: [{ required: true, message: "请选择任务类型", trigger: "change" }],
+      },
     };
   },
   computed: {
@@ -150,18 +345,31 @@ export default {
         const idx = familyOrder.indexOf(name);
         return idx >= 0 ? idx : 999;
       };
+      const naturalCompare = (left, right) => String(left || '').localeCompare(String(right || ''), undefined, {
+        numeric: true,
+        sensitivity: 'base',
+      });
       return Object.entries(map)
         .sort((a, b) => {
           if (a[0] === 'Uncategorized') return 1;
           if (b[0] === 'Uncategorized') return -1;
+          const customA = a[1].some(item => this.isCustomArchitecture(item));
+          const customB = b[1].some(item => this.isCustomArchitecture(item));
+          if (customA || customB) {
+            if (customA !== customB) return customA ? 1 : -1;
+            return naturalCompare(a[0], b[0]);
+          }
           const ra = familyRank(a[0]);
           const rb = familyRank(b[0]);
           if (ra !== rb) return ra - rb;
-          return a[0].localeCompare(b[0]);
+          return naturalCompare(a[0], b[0]);
         })
         .map(([family, items]) => ({
           family,
           items: items.slice().sort((a, b) => {
+            if (this.isCustomArchitecture(a) || this.isCustomArchitecture(b)) {
+              return naturalCompare(a.model_variant, b.model_variant);
+            }
             const ta = taskOrder(a.model_variant);
             const tb = taskOrder(b.model_variant);
             if (ta !== tb) return ta - tb;
@@ -181,6 +389,9 @@ export default {
       const engine = item?.engine || "ultralytics-yolo";
       return resolveFramework(engine).frameworkKey;
     },
+    isCustomArchitecture(item) {
+      return item?.engine === "custom-source";
+    },
     displayFrameworkLabel(item) {
       const engine = item?.engine || "ultralytics-yolo";
       return resolveFramework(engine).frameworkLabel;
@@ -189,20 +400,162 @@ export default {
       this.loading = true;
       this.error = null;
       try {
-        const response = await FetchArchitectureDetail();
-        this.architectures = response;
+        await loadArchitectures({ force: true });
+        this.architectures = referenceStore.architectures;
+        if (referenceStore.error.architectures) {
+          this.error = referenceStore.error.architectures;
+        }
       } catch (error) {
         this.error = error.message || "Failed to load architectures.";
       } finally {
         this.loading = false;
       }
     },
+    openPackageDialog() {
+      this.packageDialogVisible = true;
+      this.loadPackageList();
+    },
+    async loadPackageList() {
+      this.packageLoading = true;
+      this.packageError = null;
+      try {
+        const response = await fetchCustomModelPackages({
+          include_retired: true,
+          skip: 0,
+          limit: 100,
+        });
+        this.packages = Array.isArray(response?.items) ? response.items : [];
+        this.packageTotal = Number(response?.total || this.packages.length);
+      } catch (error) {
+        this.packageError = error.message || "加载自定义模型包失败。";
+      } finally {
+        this.packageLoading = false;
+      }
+    },
+    handlePackageFileChange(file) {
+      this.packageUploadError = null;
+      const name = String(file?.name || file?.raw?.name || "");
+      if (!/\.zip$/i.test(name)) {
+        if (this.$refs.packageUploader) this.$refs.packageUploader.clearFiles();
+        this.packageUploadFile = null;
+        this.packageUploadError = "仅支持 .zip 文件。";
+        return;
+      }
+      this.packageUploadFile = file.raw || file;
+    },
+    handlePackageFileRemove() {
+      this.packageUploadFile = null;
+      this.packageUploadError = null;
+    },
+    handlePackageFileExceed() {
+      this.packageUploadError = "一次只能选择一个 ZIP 文件。";
+    },
+    async uploadPackage() {
+      if (!this.packageUploadFile) return;
+      this.packageUploading = true;
+      this.packageUploadError = null;
+      try {
+        await uploadCustomModelPackage(this.packageUploadFile);
+        this.$message.success("自定义模型包上传成功");
+        if (this.$refs.packageUploader) this.$refs.packageUploader.clearFiles();
+        this.packageUploadFile = null;
+        await this.loadPackageList();
+      } catch (error) {
+        this.packageUploadError = error.message || "上传失败。";
+      } finally {
+        this.packageUploading = false;
+      }
+    },
+    async retirePackage(packageItem) {
+      try {
+        await this.$confirm(
+          "停用后，该模型包不能再用于创建新的架构或训练任务，但历史架构和训练记录不会删除。",
+          "确认停用",
+          { type: "warning" }
+        );
+      } catch (_) {
+        return;
+      }
+      this.retiringPackageId = packageItem.package_id;
+      try {
+        await retireCustomModelPackage(packageItem.package_id);
+        this.$message.success("模型包已停用");
+        await this.loadPackageList();
+      } catch (error) {
+        this.packageError = error.message || "停用模型包失败。";
+      } finally {
+        this.retiringPackageId = null;
+      }
+    },
+    openRegisterDialog(packageItem) {
+      if (packageItem.retired_at) return;
+      this.selectedPackage = packageItem;
+      this.registerForm = {
+        family: "",
+        variant: `${packageItem.name || "model"}-${packageItem.version || "latest"}`,
+        task_type: "detection",
+        description: "",
+      };
+      this.registerDialogVisible = true;
+      this.$nextTick(() => {
+        if (this.$refs.registerForm) this.$refs.registerForm.clearValidate();
+      });
+    },
+    async registerArchitecture() {
+      if (!this.selectedPackage) return;
+      this.$refs.registerForm.validate(async valid => {
+        if (!valid) return;
+        this.registering = true;
+        try {
+          await CreateArchitecture({
+            family: this.registerForm.family.trim(),
+            variant: this.registerForm.variant.trim(),
+            task_type: this.registerForm.task_type,
+            engine: "custom-source",
+            custom_model_package_id: this.selectedPackage.package_id,
+            description: this.registerForm.description.trim() || null,
+          });
+          this.$message.success("自定义模型架构注册成功");
+          this.registerDialogVisible = false;
+          this.selectedPackage = null;
+          await this.fetchArchitectures();
+        } catch (error) {
+          this.$message.error(error.message || "注册架构失败。");
+        } finally {
+          this.registering = false;
+        }
+      });
+    },
+    resetPackageUpload() {
+      this.packageUploadFile = null;
+      this.packageUploadError = null;
+      if (this.$refs.packageUploader) this.$refs.packageUploader.clearFiles();
+    },
+    packageName(packageItem) {
+      return `${packageItem?.name || '-'}@${packageItem?.version || '-'}`;
+    },
+    formatEntrypoint(packageItem) {
+      const moduleName = packageItem?.entrypoint_module;
+      const className = packageItem?.entrypoint_class;
+      if (!moduleName && !className) return '-';
+      return [moduleName, className].filter(Boolean).join('.') || '-';
+    },
+    formatPackageDate(value) {
+      if (!value) return '-';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString();
+    },
+    truncateHash(value) {
+      if (!value) return '-';
+      return value.length > 12 ? `${value.slice(0, 12)}...` : value;
+    },
     truncate(str){
       if(!str) return '-';
       return str.length > 25 ? str.slice(0,22)+'...' : str;
     },
-    formatVariant(v){
+    formatVariant(v, item){
       if(!v) return '';
+      if (this.isCustomArchitecture(item)) return String(v);
       return v
         .replace(/^rtdetr-/i, 'RT-DETR-')
         .replace(/^ppyoloe/i, 'PP-YOLOE')
@@ -278,6 +631,60 @@ export default {
     display: flex;
     align-items: center;
     gap: 16px;
+}
+
+.package-toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.package-upload-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.package-upload-error {
+  margin: -8px 0 14px;
+  color: var(--color-danger, #f56c6c);
+  font-size: 0.85rem;
+}
+
+.package-state {
+  min-height: 180px;
+  padding: 24px;
+}
+
+.package-table {
+  width: 100%;
+}
+
+.package-name {
+  color: var(--text-main);
+  font-weight: 600;
+}
+
+.package-id {
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  margin-top: 3px;
+}
+
+.selected-package {
+  margin-bottom: 20px;
+  padding: 12px 14px;
+  background: var(--bg-body);
+  border: 1px solid var(--border-light);
+  border-radius: var(--radius-md);
+  color: var(--text-main);
+  line-height: 1.8;
+}
+
+.selected-package span {
+  color: var(--text-secondary);
 }
 
 .arch-filter-bar {

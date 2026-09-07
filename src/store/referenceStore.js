@@ -32,6 +32,7 @@ export const referenceStore = Vue.observable({
 });
 
 let datasetLoadPromise = null;
+let architectureLoadPromise = null;
 
 function hydrateProjectsWithDatasets() {
   if (!Array.isArray(referenceStore.projects) || !Array.isArray(referenceStore.datasets)) return;
@@ -79,20 +80,27 @@ export async function loadDatasets({ force = false } = {}) {
 }
 
 export async function loadArchitectures({ force = false } = {}) {
-  if (referenceStore.loading.architectures) return;
-  if (referenceStore.loaded.architectures && !force) return;
+  if (referenceStore.loaded.architectures && !force) return referenceStore.architectures;
+  if (referenceStore.loading.architectures && architectureLoadPromise) return architectureLoadPromise;
+
   referenceStore.loading.architectures = true;
   referenceStore.error.architectures = '';
-  try {
-    const list = await FetchArchitectureDetail();
-    referenceStore.architectures = Array.isArray(list) ? list : [];
-    referenceStore.loaded.architectures = true;
-  } catch (e) {
-    referenceStore.architectures = [];
-    referenceStore.error.architectures = toErrorMessage(e);
-  } finally {
-    referenceStore.loading.architectures = false;
-  }
+  architectureLoadPromise = (async () => {
+    try {
+      const list = await FetchArchitectureDetail();
+      referenceStore.architectures = Array.isArray(list) ? list : [];
+      referenceStore.loaded.architectures = true;
+    } catch (e) {
+      referenceStore.architectures = [];
+      referenceStore.error.architectures = toErrorMessage(e);
+    } finally {
+      referenceStore.loading.architectures = false;
+      architectureLoadPromise = null;
+    }
+    return referenceStore.architectures;
+  })();
+
+  return architectureLoadPromise;
 }
 
 export async function loadProjects({ force = false } = {}) {
