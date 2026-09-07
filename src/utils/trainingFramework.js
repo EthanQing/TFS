@@ -1,6 +1,7 @@
 const ENGINE_FRAMEWORK_MAP = {
   "ultralytics-yolo": { frameworkKey: "pytorch", frameworkLabel: "PyTorch" },
   "paddle-det": { frameworkKey: "paddle", frameworkLabel: "Paddle" },
+  "custom-source": { frameworkKey: "engine:custom-source", frameworkLabel: "自定义模型" },
 };
 
 function normalizeEngine(engine) {

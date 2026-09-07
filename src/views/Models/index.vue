@@ -226,9 +226,22 @@ export default {
   methods: {
     jobFramework(job) {
       if (job?.framework_key) {
+        const engine = job.engine || job.architecture?.engine;
+        let resolved;
+        if (engine) {
+          resolved = resolveFramework(engine);
+        } else if (String(job.framework_key).startsWith("engine:")) {
+          resolved = resolveFramework(String(job.framework_key).slice("engine:".length));
+        } else if (job.framework_key === "paddle") {
+          resolved = resolveFramework("paddle-det");
+        } else if (job.framework_key === "pytorch") {
+          resolved = resolveFramework("ultralytics-yolo");
+        } else {
+          resolved = resolveFramework("");
+        }
         return {
           frameworkKey: job.framework_key,
-          frameworkLabel: job.framework_label || (job.framework_key === "paddle" ? "Paddle" : "PyTorch"),
+          frameworkLabel: job.framework_label || resolved.frameworkLabel,
         };
       }
       return resolveFramework(job?.engine || job?.architecture?.engine || job?.framework_key || "");

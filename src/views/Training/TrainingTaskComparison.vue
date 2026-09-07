@@ -281,7 +281,7 @@ export default {
                 .join(' / ');
             return {
                 ok: false,
-                message: `Paddle 与 PyTorch 模型的指标不同，无法进行对比。当前选择包含：${labels}`,
+                message: `仅支持同框架任务对比，当前选择包含不同框架：${labels}`,
                 groups,
             };
         },
@@ -495,7 +495,7 @@ export default {
                 this.$message.success(`已加载对比数据`);
             } catch (error) {
                 if (Number(error?.status) === 409) {
-                    this.$message.error('Paddle 与 PyTorch 模型的指标不同，无法进行对比。');
+                    this.$message.error('仅支持同框架任务对比。');
                 } else {
                     this.$message.error('对比失败: ' + error.message);
                 }

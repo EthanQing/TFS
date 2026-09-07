@@ -50,6 +50,22 @@ export async function FetchArchitectureDetail({ engine } = {}) {
     }
 }
 
+// CreateArchitecture 创建架构信息
+export async function CreateArchitecture(payload = {}) {
+    const response = await fetch(`${API_BASE}/api/v3/architectures`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+    });
+    const data = await safeJson(response);
+    if (!response.ok) {
+        throw new Error(toErrorMessage(data, response));
+    }
+    return data;
+}
+
 
 // fetchModelVersionsByRunId ???? run_id ????????
 export async function fetchModelVersionsByRunId(runId, page = 1, pageSize = 20) {

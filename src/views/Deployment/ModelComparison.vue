@@ -1220,7 +1220,11 @@ export default {
             return null;
         },
         getFrameworkInfo(row) {
-            return resolveFramework(row?.engine || row?.architecture?.engine);
+            const resolved = resolveFramework(row?.engine || row?.architecture?.engine);
+            return {
+                frameworkKey: row?.framework_key || resolved.frameworkKey,
+                frameworkLabel: row?.framework_label || resolved.frameworkLabel,
+            };
         },
         getFrameworkKey(row) {
             return row?.framework_key || this.getFrameworkInfo(row).frameworkKey;
@@ -1245,7 +1249,7 @@ export default {
                     return "仅支持同数据集任务对比";
                 }
                 if (!isFrameworkCompatible(baseFramework, this.getFrameworkInfo(row))) {
-                    return "仅支持同框架任务对比（Paddle 仅对 Paddle，PyTorch 仅对 PyTorch）";
+                    return "仅支持同框架任务对比";
                 }
             }
             return null;
