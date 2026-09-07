@@ -173,7 +173,7 @@
       </div>
     </template>
 
-    <template v-else>
+    <template v-else-if="isUltralyticsEngine">
       <section class="settings-section settings-section--catalog">
         <div class="panel-top">
           <div>
@@ -610,6 +610,116 @@
         </div>
       </section>
     </template>
+
+    <template v-else-if="isCustomSourceEngine">
+      <section class="settings-section settings-section--catalog">
+        <div class="panel-top">
+          <div>
+            <div class="settings-section__title">自定义模型</div>
+            <div class="settings-section__subtitle">{{ frameworkDisplayName }} · {{ normalizedEngine }}</div>
+          </div>
+          <div class="dataset-chip" v-if="selectedProject">
+            <span class="label">数据集</span>
+            <span class="value">{{ datasetLabel }}</span>
+          </div>
+        </div>
+
+        <div class="arch-section">
+          <div class="section-title">{{ sectionTitle }}</div>
+          <div v-if="archLoading" class="arch-state">
+            <i class="el-icon-loading"></i>
+            <span>加载架构中...</span>
+          </div>
+          <div v-else-if="archError" class="arch-state error">
+            <i class="el-icon-warning"></i>
+            <span>{{ archError }}</span>
+            <el-button size="mini" type="primary" @click="reloadArchitectures" style="margin-left: 10px">重试</el-button>
+          </div>
+          <div v-else-if="architectureGroups.length" class="arch-tabbed">
+            <div class="family-tabs">
+              <button v-for="group in architectureGroups" :key="group.family" type="button"
+                :class="['family-tab', { active: selectedFamily === group.family }]"
+                @click="onSelectFamily(group.family)">
+                {{ group.family }}
+                <span class="tab-count">{{ group.items.length }}</span>
+              </button>
+            </div>
+            <div class="variant-chips">
+              <button v-for="arch in selectedFamilyItems" :key="arch.arch_id || arch.model_variant" type="button"
+                :class="['arch-chip', { active: isSelectedArchitecture(arch), disabled: !isCustomArchitectureSelectable(arch) }]"
+                :disabled="!isCustomArchitectureSelectable(arch)"
+                :title="customArchitectureStatusText(arch)"
+                @click="onSelectArchitecture(arch)">
+                <span>{{ formatVariantShort(arch.model_variant) }}</span>
+                <small v-if="!isCustomArchitectureSelectable(arch)" class="arch-chip-status">
+                  {{ customArchitectureStatusText(arch) }}
+                </small>
+              </button>
+            </div>
+          </div>
+          <div v-else class="arch-state">
+            <i class="el-icon-info"></i>
+            <span>暂无与当前项目任务类型匹配的自定义模型架构</span>
+          </div>
+          <div class="arch-state" :class="{ error: customPackagesError }">
+            <i :class="customPackagesLoading ? 'el-icon-loading' : 'el-icon-info'"></i>
+            <span>{{ customPackageStatusSummary }}</span>
+            <el-button v-if="customPackagesError" size="mini" type="primary" @click="reloadCustomModelPackages"
+              style="margin-left: 10px">重试</el-button>
+          </div>
+        </div>
+      </section>
+
+      <section class="settings-section">
+        <div class="settings-section__header">
+          <div>
+            <div class="settings-section__title">训练参数</div>
+            <div class="settings-section__subtitle">配置 custom-source Trainer 使用的公共训练参数。</div>
+          </div>
+        </div>
+        <div class="advanced-grid-preview">
+          <div class="field-row">
+            <div class="field-label">训练轮次</div>
+            <el-input v-model="epochs" size="small" placeholder="100" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">Batch Size</div>
+            <el-input v-model="batchSize" size="small" placeholder="16" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">图像尺寸</div>
+            <el-input v-model="imgSize" size="small" placeholder="640" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">学习率</div>
+            <el-input v-model="learningRate" size="small" placeholder="0.01" class="field-input"></el-input>
+          </div>
+          <div class="field-row">
+            <div class="field-label">优化器</div>
+            <el-select v-model="optimizer" size="small" placeholder="请选择优化器">
+              <el-option v-for="item in options" :key="item.value" :label="item.label" :value="item.value"></el-option>
+            </el-select>
+          </div>
+          <div class="field-row">
+            <div class="field-label">Workers</div>
+            <el-input v-model="workers" size="small" placeholder="8" class="field-input"></el-input>
+          </div>
+          <div class="field-row wide">
+            <div class="field-label">设备</div>
+            <el-input v-model="selectedDevice" size="small" placeholder="例: auto、cpu、0 或 cuda:0"
+              class="field-input"></el-input>
+            <div class="field-hint">自定义模型只支持单个设备，不支持逗号分隔的多 GPU。</div>
+          </div>
+          <div class="field-row wide">
+            <div class="field-label">自定义训练参数（JSON）</div>
+            <el-input v-model="customArgsText" type="textarea" :rows="7" resize="vertical"
+              placeholder='例如：{"dropout": 0.2}' class="field-input"></el-input>
+            <div v-if="customArgsError" class="upload-error">{{ customArgsError }}</div>
+            <div v-else class="field-hint">请输入 custom_args 对象本身，提交前会由后端校验并规范化。</div>
+          </div>
+        </div>
+      </section>
+    </template>
   </div>
 </template>
 
@@ -620,6 +730,7 @@ import {
   fetchTrainingLossWeightOptions,
   uploadPretrainedWeights,
 } from "@/api/training";
+import { fetchCustomModelPackages } from "@/api/customModels";
 
 const AUGMENTATION_GROUP_ORDER = [
   "color",
@@ -706,6 +817,7 @@ export default {
       paddleVersion: PADDLE_VERSION_OPTIONS[0].value,
       selectedDevice: "0",
       batchSize: "16",
+      workers: "8",
       options: [
         { value: "Auto", label: "Auto" },
         { value: "Adam", label: "Adam" },
@@ -796,6 +908,13 @@ export default {
       configPath: "",
       evalDuringTrain: true,
       evalInterval: 1,
+      customArgsText: "{}",
+      customArgsError: "",
+      customPackages: {},
+      customPackagesLoading: false,
+      customPackagesLoaded: false,
+      customPackagesError: "",
+      customPackagesRequestId: 0,
     };
   },
   computed: {
@@ -808,21 +927,79 @@ export default {
     isPaddleEngine() {
       return this.normalizedEngine === "paddle-det";
     },
+    isCustomSourceEngine() {
+      return this.normalizedEngine === "custom-source";
+    },
     frameworkDisplayName() {
       if (this.isPaddleEngine) return "PaddleDetection";
       if (this.isUltralyticsEngine) return "Ultralytics YOLO";
+      if (this.isCustomSourceEngine) return "自定义模型";
       return this.normalizedEngine || "Unknown Engine";
     },
     batchSizeHint() {
       if (this.isUltralyticsEngine) {
         return "设置为 -1 可开启批次大小自适应（仅单卡 Ultralytics 训练支持）";
       }
+      if (this.isCustomSourceEngine) return "自定义模型需要填写正整数 batch size，不支持自动 batch。";
       return "PaddleDetection 需要固定正整数 batch size。";
+    },
+    customConfigValidity() {
+      if (!this.isCustomSourceEngine) return { valid: true, message: "" };
+      if (this.customPackagesError) {
+        return { valid: false, message: this.customPackagesError };
+      }
+      if (this.customPackagesLoading || !this.customPackagesLoaded) {
+        return { valid: false, message: "正在加载模型包状态，请稍候。" };
+      }
+      if (!this.selectedArchitectureId || !this.selectedModel) {
+        return { valid: false, message: "请选择一个可用的自定义模型架构。" };
+      }
+      const selectedArchitecture = this.findArchitectureById(this.selectedArchitectureId);
+      if (!selectedArchitecture || !this.isCustomArchitectureSelectable(selectedArchitecture)) {
+        return { valid: false, message: this.customArchitectureStatusText(selectedArchitecture) };
+      }
+      if (this.customArgsError) {
+        return { valid: false, message: this.customArgsError };
+      }
+      if (!this.isPositiveInteger(this.epochs)) {
+        return { valid: false, message: "训练轮次必须是正整数。" };
+      }
+      if (!this.isPositiveInteger(this.batchSize)) {
+        return { valid: false, message: "自定义模型的 Batch Size 必须是正整数。" };
+      }
+      if (!this.isPositiveInteger(this.imgSize)) {
+        return { valid: false, message: "图像尺寸必须是正整数。" };
+      }
+      if (!this.isPositiveNumber(this.learningRate)) {
+        return { valid: false, message: "学习率必须是大于 0 的数字。" };
+      }
+      if (!this.isNonNegativeInteger(this.workers)) {
+        return { valid: false, message: "Workers 必须是非负整数。" };
+      }
+      const device = String(this.selectedDevice || "").trim();
+      if (!device) return { valid: false, message: "请填写设备。" };
+      if (device.includes(",")) return { valid: false, message: "自定义模型不支持多 GPU 设备选择。" };
+      if (!String(this.optimizer || "").trim()) return { valid: false, message: "请选择优化器。" };
+      return { valid: true, message: "" };
+    },
+    customPackageStatusSummary() {
+      if (this.customPackagesError) return this.customPackagesError;
+      if (this.customPackagesLoading) return "正在加载模型包状态...";
+      if (!this.customPackagesLoaded) return "等待加载模型包状态。";
+      return "仅可选择模型包仍处于 active 状态的架构。";
     },
     datasetLabel() {
       return this.selectedProject?.dataset?.dataset_name || "No standard dataset linked";
     },
     sectionTitle() {
+      if (this.isCustomSourceEngine) {
+        const labels = {
+          detection: "检测架构",
+          segmentation: "分割架构",
+          classification: "分类架构",
+        };
+        return labels[this.normalizeTaskType(this.taskType)] || "自定义模型架构";
+      }
       return this.taskType === 'segmentation' ? '分割架构' : '检测架构';
     },
     archLoading() {
@@ -842,11 +1019,11 @@ export default {
         return engine === this.normalizedEngine;
       });
 
+      const targetTaskType = this.normalizeTaskType(this.taskType);
       const detected = currentEngineArchitectures.filter((it) => {
-        const tt = String(it?.task_type || "").toLowerCase();
-        // Backend usually returns 'detection' or 'segmentation'
-        // If empty, assume detection for BC
-        const target = this.taskType === 'segmentation' ? 'segmentation' : 'detection';
+        const tt = this.normalizeTaskType(it?.task_type);
+        if (this.isCustomSourceEngine) return !!targetTaskType && tt === targetTaskType;
+        const target = targetTaskType || "detection";
         return tt === target || (!tt && target === 'detection');
       });
       const map = {};
@@ -854,6 +1031,20 @@ export default {
         const fam = it.model_family || it.family || "Uncategorized";
         (map[fam] = map[fam] || []).push(it);
       });
+
+      if (this.isCustomSourceEngine) {
+        const naturalCompare = (left, right) => String(left || "").localeCompare(
+          String(right || ""),
+          undefined,
+          { numeric: true, sensitivity: "base" }
+        );
+        return Object.entries(map)
+          .sort((a, b) => naturalCompare(a[0], b[0]))
+          .map(([family, arr]) => ({
+            family,
+            items: arr.slice().sort((a, b) => naturalCompare(a.model_variant, b.model_variant)),
+          }));
+      }
 
       const sizeOrder = { t: 0, n: 1, s: 2, m: 3, b: 4, l: 5, x: 6, c: 7, e: 8 };
       const sizeRank = (variant = "") => {
@@ -1048,14 +1239,14 @@ export default {
       },
       immediate: true
     },
-    taskType(newType) {
-      if (newType) {
-        this.advancedSettingsExpanded = false;
-        this.resetArchitectureSelection();
-        this.resetAugmentationState();
-        this.resetLossWeightState();
-        this.initializeDefaultArchitecture();
-      }
+    taskType() {
+      this.advancedSettingsExpanded = false;
+      const hadSelection = !!(this.selectedModel || this.selectedArchitectureId);
+      this.resetArchitectureSelection({ notify: hadSelection });
+      this.resetAugmentationState();
+      this.resetLossWeightState();
+      this.initializeDefaultArchitecture();
+      this.emitConfigChange();
     },
     engine() {
       this.advancedSettingsExpanded = false;
@@ -1066,7 +1257,11 @@ export default {
       this.configPath = "";
       this.evalDuringTrain = true;
       this.evalInterval = 1;
+      this.customArgsText = "{}";
+      this.customArgsError = "";
+      this.resetCustomPackageState();
       this.initializeDefaultArchitecture();
+      if (this.isCustomSourceEngine) this.loadCustomModelPackages();
       this.emitConfigChange();
     },
     epochs() {
@@ -1099,6 +1294,9 @@ export default {
     selectedDevice() {
       this.emitConfigChange();
     },
+    workers() {
+      this.emitConfigChange();
+    },
     optimizer() {
       this.emitConfigChange();
     },
@@ -1128,9 +1326,36 @@ export default {
     },
     evalInterval() {
       this.emitConfigChange();
+    },
+    customArgsText() {
+      this.updateCustomArgsState();
     }
   },
   methods: {
+    normalizeTaskType(value) {
+      const normalized = String(value || "").trim().toLowerCase();
+      const aliases = {
+        detect: "detection",
+        detection: "detection",
+        segment: "segmentation",
+        segmentation: "segmentation",
+        classify: "classification",
+        classification: "classification",
+      };
+      return aliases[normalized] || "";
+    },
+    isPositiveInteger(value) {
+      const text = String(value ?? "").trim();
+      return /^\d+$/.test(text) && Number(text) > 0;
+    },
+    isNonNegativeInteger(value) {
+      const text = String(value ?? "").trim();
+      return /^\d+$/.test(text) && Number(text) >= 0;
+    },
+    isPositiveNumber(value) {
+      const number = Number(value);
+      return Number.isFinite(number) && number > 0;
+    },
     resetRuntimeVersions() {
       this.torchVersion = TORCH_VERSION_OPTIONS[0].value;
       this.ultralyticsVersion = ULTRALYTICS_VERSION_OPTIONS[0].value;
@@ -1146,6 +1371,146 @@ export default {
     reloadArchitectures() {
       loadArchitectures({ force: true });
     },
+    resetCustomPackageState() {
+      this.customPackagesRequestId += 1;
+      this.customPackages = {};
+      this.customPackagesLoading = false;
+      this.customPackagesLoaded = false;
+      this.customPackagesError = "";
+    },
+    async reloadCustomModelPackages() {
+      await this.loadCustomModelPackages({ force: true });
+    },
+    async loadCustomModelPackages({ force = false } = {}) {
+      if (!this.isCustomSourceEngine) return;
+      if (this.customPackagesLoading) return;
+      if (this.customPackagesLoaded && !force) return;
+
+      const requestId = this.customPackagesRequestId + 1;
+      this.customPackagesRequestId = requestId;
+      this.customPackagesLoading = true;
+      this.customPackagesLoaded = false;
+      this.customPackagesError = "";
+      try {
+        const pageSize = 100;
+        let skip = 0;
+        let total = null;
+        let items = [];
+        let hasNextPage = true;
+        while (hasNextPage) {
+          const response = await fetchCustomModelPackages({
+            include_retired: true,
+            skip,
+            limit: pageSize,
+          });
+          if (requestId !== this.customPackagesRequestId || !this.isCustomSourceEngine) return;
+
+          if (Array.isArray(response)) {
+            items = response;
+            hasNextPage = false;
+            continue;
+          }
+
+          const pageItems = Array.isArray(response?.items) ? response.items : [];
+          items = items.concat(pageItems);
+          const responseTotal = Number(response?.total);
+          total = Number.isFinite(responseTotal) ? responseTotal : total;
+          if (
+            !pageItems.length ||
+            pageItems.length < pageSize ||
+            (total != null && items.length >= total)
+          ) {
+            hasNextPage = false;
+            continue;
+          }
+          skip += pageItems.length;
+        }
+
+        this.customPackages = items.reduce((map, item) => {
+          const id = item?.package_id ?? item?.id;
+          if (id != null) map[String(id)] = item;
+          return map;
+        }, {});
+        this.customPackagesLoaded = true;
+        this.ensureCustomArchitectureSelection();
+      } catch (error) {
+        if (requestId !== this.customPackagesRequestId || !this.isCustomSourceEngine) return;
+        this.customPackages = {};
+        this.customPackagesError = error?.message || "加载模型包状态失败";
+        this.resetArchitectureSelection({ notify: true });
+      } finally {
+        if (requestId === this.customPackagesRequestId && this.isCustomSourceEngine) {
+          this.customPackagesLoading = false;
+          this.emitConfigChange();
+        }
+      }
+    },
+    getCustomPackageId(arch) {
+      if (!arch || typeof arch !== "object") return null;
+      return arch.custom_model_package_id ?? arch.customModelPackageId ?? null;
+    },
+    getCustomPackageStatus(arch) {
+      if (!this.isCustomSourceEngine) return "active";
+      if (this.customPackagesError) return "error";
+      if (this.customPackagesLoading || !this.customPackagesLoaded) return "loading";
+      const packageId = this.getCustomPackageId(arch);
+      if (packageId == null || String(packageId).trim() === "") return "unknown";
+      const packageInfo = this.customPackages[String(packageId)];
+      if (!packageInfo) return "unknown";
+      return packageInfo.retired_at == null ? "active" : "retired";
+    },
+    isCustomArchitectureSelectable(arch) {
+      return !this.isCustomSourceEngine || this.getCustomPackageStatus(arch) === "active";
+    },
+    customArchitectureStatusText(arch) {
+      const status = this.getCustomPackageStatus(arch);
+      if (status === "retired") return "模型包已停用";
+      if (status === "loading") return "模型包状态加载中";
+      if (status === "error") return "模型包状态加载失败";
+      if (status === "unknown") return "无法确认模型包状态";
+      return "可用";
+    },
+    ensureCustomArchitectureSelection() {
+      if (!this.isCustomSourceEngine) return;
+      if (this.selectedModel) {
+        const selected = this.findArchitectureById(this.selectedArchitectureId);
+        if (selected && this.isCustomArchitectureSelectable(selected)) return;
+        this.resetArchitectureSelection({ notify: true });
+      }
+      this.initializeDefaultArchitecture();
+    },
+    updateCustomArgsState() {
+      if (!this.isCustomSourceEngine) return;
+      try {
+        const value = JSON.parse(this.customArgsText);
+        if (!value || Array.isArray(value) || typeof value !== "object") {
+          throw new Error("custom_args 必须是 JSON object，不能是数组、字符串、数字或 null。");
+        }
+        this.customArgsError = "";
+      } catch (error) {
+        this.customArgsError = this.formatCustomArgsError(error);
+      }
+      this.emitConfigChange();
+    },
+    parseCustomArgs() {
+      try {
+        const value = JSON.parse(this.customArgsText);
+        if (!value || Array.isArray(value) || typeof value !== "object") {
+          throw new Error("custom_args 必须是 JSON object，不能是数组、字符串、数字或 null。");
+        }
+        this.customArgsError = "";
+        return value;
+      } catch (error) {
+        this.customArgsError = this.formatCustomArgsError(error);
+        return null;
+      }
+    },
+    formatCustomArgsError(error) {
+      if (error?.name === "SyntaxError") {
+        return `custom_args 不是合法 JSON：${error.message || "JSON syntax error"}`;
+      }
+      return error?.message || "custom_args 必须是合法 JSON object。";
+    },
     normalizeArchitectureId(value) {
       return String(value ?? "").trim();
     },
@@ -1156,10 +1521,18 @@ export default {
     isCurrentArchitecture(architectureId) {
       return this.normalizeArchitectureId(architectureId) === this.normalizedSelectedArchitectureId;
     },
-    resetArchitectureSelection() {
+    resetArchitectureSelection({ notify = false } = {}) {
       this.selectedModel = null;
       this.selectedArchitectureId = null;
       this.selectedFamily = null;
+      if (notify) {
+        this.$emit("model-selected", {
+          model: null,
+          architecture_id: null,
+          engine: this.normalizedEngine,
+          architecture: null,
+        });
+      }
     },
     async handlePretrainFileChange(file) {
       if (this.pretrainUploadDisabled) {
@@ -1195,7 +1568,9 @@ export default {
     },
     emitModelSelected() {
       if (!this.selectedModel) return;
-      const architecture = this.findArchitectureByVariant(this.selectedModel);
+      const architecture = this.isCustomSourceEngine
+        ? this.findArchitectureById(this.selectedArchitectureId)
+        : this.findArchitectureByVariant(this.selectedModel);
       this.$emit("model-selected", {
         model: this.selectedModel,
         architecture_id: this.selectedArchitectureId || null,
@@ -1214,22 +1589,44 @@ export default {
       }
       return null;
     },
+    findArchitectureById(architectureId) {
+      const target = this.normalizeArchitectureId(architectureId);
+      if (!target) return null;
+      for (const group of this.architectureGroups) {
+        const found = (group.items || []).find(
+          (item) => this.normalizeArchitectureId(this.getArchitectureId(item)) === target
+        );
+        if (found) return found;
+      }
+      return null;
+    },
+    isSelectedArchitecture(arch) {
+      return this.normalizeArchitectureId(this.getArchitectureId(arch)) ===
+        this.normalizedSelectedArchitectureId;
+    },
     initializeDefaultArchitecture() {
       if (this.archLoading) return;
       if (!this.architectureGroups.length) {
-        this.resetArchitectureSelection();
+        this.resetArchitectureSelection({ notify: !!this.selectedModel });
         this.resetAugmentationState();
         this.resetLossWeightState();
         return;
       }
       if (this.selectedModel) {
-        const matched = this.findArchitectureByVariant(this.selectedModel);
-        if (matched) {
+        const matched = this.isCustomSourceEngine
+          ? this.findArchitectureById(this.selectedArchitectureId)
+          : this.findArchitectureByVariant(this.selectedModel);
+        if (matched && this.isCustomArchitectureSelectable(matched)) {
           this.selectArchitecture(matched);
           return;
         }
+        this.resetArchitectureSelection({ notify: true });
       }
-      const first = this.architectureGroups?.[0]?.items?.[0];
+      let first = null;
+      for (const group of this.architectureGroups) {
+        first = (group.items || []).find((arch) => this.isCustomArchitectureSelectable(arch));
+        if (first) break;
+      }
       if (first) this.selectArchitecture(first);
     },
     onSelectFamily(family) {
@@ -1240,6 +1637,7 @@ export default {
     },
     selectArchitecture(arch, { forceReload = false } = {}) {
       if (!arch) return;
+      if (this.isCustomSourceEngine && !this.isCustomArchitectureSelectable(arch)) return;
       const nextFamily = arch?.model_family || arch?.family || this.selectedFamily;
       const nextArchitectureId = this.getArchitectureId(arch);
       const nextModel = arch?.model_variant || null;
@@ -1714,6 +2112,26 @@ export default {
       );
     },
     emitConfigChange() {
+      if (this.isCustomSourceEngine) {
+        const parsedCustomArgs = this.parseCustomArgs();
+        const customConfig = {
+          engine: this.normalizedEngine,
+          epochs: Number(this.epochs),
+          batch_size: Number(this.batchSize),
+          image_size: Number(this.imgSize),
+          learning_rate: Number(this.learningRate),
+          optimizer: String(this.optimizer || "").trim(),
+          workers: Number(this.workers),
+          device: this.getDeviceValue(),
+          use_pretrained: false,
+          dataset_name: this.selectedProject?.dataset?.dataset_name || "",
+          framework_config: parsedCustomArgs ? { custom_args: parsedCustomArgs } : null,
+        };
+        this.$emit("config-changed", customConfig);
+        this.$emit("config-validity-changed", this.customConfigValidity);
+        return;
+      }
+
       const augmentation = this.isUltralyticsEngine ? this.buildAugmentationPayload() : null;
       const lossWeights = this.isUltralyticsEngine ? this.buildLossWeightsPayload() : null;
       const parsedImageSize = parseInt(this.imgSize, 10) || 640;
@@ -1748,6 +2166,7 @@ export default {
       }
 
       this.$emit("config-changed", configData);
+      this.$emit("config-validity-changed", { valid: true, message: "" });
     },
     getDeviceValue() {
       const val = String(this.selectedDevice || "").trim();
@@ -1756,6 +2175,7 @@ export default {
   },
   mounted() {
     loadArchitectures();
+    if (this.isCustomSourceEngine) this.loadCustomModelPackages();
     this.$nextTick(() => {
       this.initializeDefaultArchitecture();
       this.emitConfigChange();
@@ -1974,6 +2394,23 @@ export default {
   box-shadow: 0 4px 12px rgba(79, 99, 199, 0.18);
 }
 
+.arch-chip.disabled,
+.arch-chip.disabled:hover {
+  border-color: #e4e7ee;
+  background: #f1f2f5;
+  color: #9aa2b1;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.arch-chip-status {
+  display: block;
+  margin-top: 2px;
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
@@ -2122,6 +2559,12 @@ export default {
   text-transform: uppercase;
   letter-spacing: 1px;
   color: #6a7482;
+}
+
+.field-hint {
+  font-size: 11px;
+  color: #8a94a3;
+  line-height: 1.5;
 }
 
 .field-input ::v-deep .el-input__inner {

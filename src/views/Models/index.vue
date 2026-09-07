@@ -114,8 +114,8 @@
                     </span>
                     <el-dropdown-menu slot="dropdown">
                         <el-dropdown-item command="view">查看详情</el-dropdown-item>
-                        <el-dropdown-item command="export" divided :disabled="jobFrameworkKey(job) === 'paddle'">
-                          导出模型<span v-if="jobFrameworkKey(job) === 'paddle'">（暂不支持）</span>
+                        <el-dropdown-item command="export" divided :disabled="isExportUnsupported(job)">
+                          导出模型<span v-if="isExportUnsupported(job)">（暂不支持）</span>
                         </el-dropdown-item>
                         <el-dropdown-item command="delete" divided class="text-danger">删除</el-dropdown-item>
                     </el-dropdown-menu>
@@ -157,6 +157,7 @@ import { resolveFramework } from "@/utils/trainingFramework";
 const FRAMEWORK_TABS = [
   { key: "pytorch", label: "PyTorch (YOLO)", shortLabel: "PyTorch", engine: "ultralytics-yolo" },
   { key: "paddle", label: "Paddle", shortLabel: "Paddle", engine: "paddle-det" },
+  { key: "engine:custom-source", label: "自定义模型", shortLabel: "自定义模型", engine: "custom-source" },
 ];
 
 export default {
@@ -240,7 +241,9 @@ export default {
           resolved = resolveFramework("");
         }
         return {
-          frameworkKey: job.framework_key,
+          frameworkKey: job.framework_key === "custom-source"
+            ? resolved.frameworkKey
+            : job.framework_key,
           frameworkLabel: job.framework_label || resolved.frameworkLabel,
         };
       }
@@ -251,6 +254,10 @@ export default {
     },
     jobFrameworkLabel(job) {
       return job?.framework_label || this.jobFramework(job).frameworkLabel;
+    },
+    isExportUnsupported(job) {
+      const frameworkKey = this.jobFrameworkKey(job);
+      return frameworkKey === "paddle" || frameworkKey === "engine:custom-source";
     },
     statusClass(status){
       if(!status) return 'status-pending';
@@ -277,8 +284,13 @@ export default {
       if (command === "view") this.ShowModelDetail(jobId);
       else if (command === "export") {
         const job = this.trainingJobs.find(item => String(item.job_id) === String(jobId));
-        if (this.jobFrameworkKey(job) === "paddle") {
-          this.$message.warning("Paddle 模型导出暂不支持。");
+        if (this.isExportUnsupported(job)) {
+          const frameworkKey = this.jobFrameworkKey(job);
+          this.$message.warning(
+            frameworkKey === "engine:custom-source"
+              ? "自定义模型导出暂不支持。"
+              : "Paddle 模型导出暂不支持。"
+          );
         } else {
           this.$message.info("Export feature coming soon");
         }

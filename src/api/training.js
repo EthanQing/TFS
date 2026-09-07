@@ -281,20 +281,24 @@ export async function createTrainingJob(trainParameters) {
       throw new Error("无法解析 architecture_id（请重新选择模型架构）");
     }
 
+    const isCustomSource = normStr(tp.engine).toLowerCase() === "custom-source";
     const params = {
       epochs: Number(tp.epochs ?? 100) || 100,
       batch_size: tp.batch_size != null ? Number(tp.batch_size) : 16,
       image_size: Number(tp.image_size ?? tp.input_size ?? tp.img_size ?? tp.imgsz ?? 640) || 640,
       learning_rate: Number(tp.learning_rate ?? 0.01) || 0.01,
-      lr_scheduler: normStr(tp.lr_scheduler || "linear").toLowerCase() || "linear",
-      patience: Number(tp.patience ?? 50) || 50,
       device: normStr(tp.device || "auto") || "auto",
       workers: Number(tp.workers ?? 8) || 8,
       use_pretrained: tp.use_pretrained !== undefined ? !!tp.use_pretrained : true,
       optimizer: normStr(tp.optimizer || "AdamW") || "AdamW",
     };
 
-    if (tp.augmentation && typeof tp.augmentation === "object") {
+    if (!isCustomSource) {
+      params.lr_scheduler = normStr(tp.lr_scheduler || "linear").toLowerCase() || "linear";
+      params.patience = Number(tp.patience ?? 50) || 50;
+    }
+
+    if (!isCustomSource && tp.augmentation && typeof tp.augmentation === "object") {
       const augmentation = {};
       Object.entries(tp.augmentation).forEach(([key, value]) => {
         if (value === "" || value === null || value === undefined) return;
@@ -305,7 +309,7 @@ export async function createTrainingJob(trainParameters) {
       }
     }
 
-    if (tp.loss_weights && typeof tp.loss_weights === "object") {
+    if (!isCustomSource && tp.loss_weights && typeof tp.loss_weights === "object") {
       const lossWeights = {};
       Object.entries(tp.loss_weights).forEach(([key, value]) => {
         if (value === "" || value === null || value === undefined) return;
@@ -343,10 +347,15 @@ export async function createTrainingJob(trainParameters) {
       "optimizer",
       "augmentation",
       "loss_weights",
+      "framework_config",
     ]);
     const additional = {};
+    if (tp.framework_config && typeof tp.framework_config === "object" && !Array.isArray(tp.framework_config)) {
+      additional.framework_config = tp.framework_config;
+    }
     Object.keys(tp).forEach((k) => {
       if (known.has(k)) return;
+      if (isCustomSource) return;
       additional[k] = tp[k];
     });
     if (Object.keys(additional).length) params.additional_params = additional;

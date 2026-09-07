@@ -54,10 +54,11 @@
 
       <div class="step-panel">
         <Official
-          :task-type="currentTab"
+          :task-type="officialTaskType"
           :engine="engine"
           @model-selected="handleModelSelected"
           @config-changed="handleConfigChanged"
+          @config-validity-changed="handleConfigValidityChanged"
           :selected-project="selectedProject"
         />
       </div>
@@ -83,6 +84,8 @@
 
 <script>
 import { createTrainingJob } from "@/api/training";
+import { validateFrameworkConfig } from "@/api/frameworks";
+import { resolveFramework } from "@/utils/trainingFramework";
 import Official from "@/views/Models/Official.vue";
 
 export default {
@@ -107,6 +110,8 @@ export default {
       currentTab: 'detection',
       selectedProject: null,
       selectedModel: null,
+      customConfigValid: false,
+      customConfigMessage: "",
       isAdding: false,
       trainParams: {
         project_id: null,
@@ -148,8 +153,7 @@ export default {
     },
     engineDisplayName() {
       if (this.frameworkLabel) return this.frameworkLabel;
-      if (this.normalizedEngine === "paddle-det") return "Paddle";
-      return "PyTorch (YOLO)";
+      return resolveFramework(this.normalizedEngine).frameworkLabel;
     },
     projectName() {
       return this.selectedProject?.project_name || "No project selected";
@@ -162,13 +166,26 @@ export default {
     modelName() {
       return this.selectedModel ? this.formatModelLabel(this.selectedModel) : "Select a model";
     },
+    isCustomSourceEngine() {
+      return this.normalizedEngine === "custom-source";
+    },
+    officialTaskType() {
+      if (!this.isCustomSourceEngine) return this.currentTab;
+      return this.normalizeTaskType(
+        this.selectedProject?.task_type || this.selectedProject?.dataset?.dataset_type
+      );
+    },
     canSubmit() {
-      return !!(this.selectedProject && this.selectedModel && this.trainParams.dataset_name);
+      const baseValid = !!(this.selectedProject && this.selectedModel && this.trainParams.dataset_name);
+      return baseValid && (!this.isCustomSourceEngine || this.customConfigValid);
     },
     footerMessage() {
       if (!this.selectedProject) return "选择一个项目以继续。";
       if (!this.selectedModel) return "选择一个模型架构以启用训练。";
       if (!this.trainParams.dataset_name) return "该项目未关联标准数据集。";
+      if (this.isCustomSourceEngine && !this.customConfigValid) {
+        return this.customConfigMessage || "请完成自定义模型配置。";
+      }
       return "准备添加训练任务。";
     }
   },
@@ -181,17 +198,38 @@ export default {
         .replace(/^picodet/i, "PicoDet")
         .replace(/^yolo/i, "YOLO");
     },
+    normalizeTaskType(value) {
+      const normalized = String(value || "").trim().toLowerCase();
+      const aliases = {
+        detect: "detection",
+        detection: "detection",
+        segment: "segmentation",
+        segmentation: "segmentation",
+        classify: "classification",
+        classification: "classification",
+      };
+      return aliases[normalized] || "";
+    },
+    clearSelectedModel() {
+      this.selectedModel = null;
+      this.trainParams.model_architecture = "";
+      this.trainParams.architecture_id = null;
+      this.trainParams.framework_config = null;
+    },
     handleModelSelected(modelData) {
+      if (!modelData || !modelData.model) {
+        this.clearSelectedModel();
+        return;
+      }
       const modelEngine = String(modelData?.engine || this.engine || "").trim().toLowerCase();
       if (modelEngine && modelEngine !== this.normalizedEngine) {
         this.$message.error("所选架构与当前框架不一致，请重新选择。");
-        this.selectedModel = null;
-        this.trainParams.architecture_id = null;
+        this.clearSelectedModel();
         return;
       }
       this.selectedModel = modelData.model;
       this.trainParams.model_architecture = modelData.model;
-      this.trainParams.architecture_id = modelData.architecture_id || null;
+      this.trainParams.architecture_id = modelData.architecture_id ?? null;
       this.trainParams.engine = modelEngine || this.normalizedEngine;
       console.log("Training modal - selected model:", modelData);
     },
@@ -201,6 +239,11 @@ export default {
         this.trainParams.dataset_name = this.selectedProject.dataset.dataset_name;
       }
       console.log("Training modal - config updated:", configData);
+    },
+    handleConfigValidityChanged(payload) {
+      if (!this.isCustomSourceEngine) return;
+      this.customConfigValid = !!payload?.valid;
+      this.customConfigMessage = payload?.message || "";
     },
     async addTrainingTask() {
       if (!this.selectedProject) {
@@ -219,14 +262,48 @@ export default {
         this.$message.error("训练配置与当前框架不一致，请重新选择模型架构。");
         return;
       }
+      if (this.isCustomSourceEngine && !this.customConfigValid) {
+        this.$message.error(this.customConfigMessage || "请完成自定义模型配置。");
+        return;
+      }
       this.isAdding = true;
       try {
-        const trainingData = {
-          ...this.trainParams,
-          project_id: this.selectedProject.project_id,
-          project_name: this.selectedProject.project_name,
-          model_architecture: this.selectedModel
-        };
+        let trainingData;
+        if (this.isCustomSourceEngine) {
+          const frameworkConfig = this.trainParams.framework_config;
+          if (!frameworkConfig || typeof frameworkConfig !== "object" || Array.isArray(frameworkConfig)) {
+            throw new Error("自定义模型配置无效，请重新填写 custom_args JSON。");
+          }
+          const validation = await validateFrameworkConfig("custom-source", frameworkConfig);
+          const normalizedConfig = validation?.normalized_config;
+          if (!normalizedConfig || typeof normalizedConfig !== "object" || Array.isArray(normalizedConfig)) {
+            throw new Error("后端未返回有效的 normalized_config。");
+          }
+          trainingData = {
+            project_id: this.selectedProject.project_id,
+            project_name: this.selectedProject.project_name,
+            dataset_name: this.trainParams.dataset_name,
+            architecture_id: this.trainParams.architecture_id,
+            model_architecture: this.selectedModel,
+            engine: this.normalizedEngine,
+            epochs: this.trainParams.epochs,
+            batch_size: this.trainParams.batch_size,
+            image_size: this.trainParams.image_size ?? this.trainParams.img_size,
+            learning_rate: this.trainParams.learning_rate,
+            optimizer: this.trainParams.optimizer,
+            workers: this.trainParams.workers,
+            device: this.trainParams.device,
+            use_pretrained: false,
+            framework_config: normalizedConfig,
+          };
+        } else {
+          trainingData = {
+            ...this.trainParams,
+            project_id: this.selectedProject.project_id,
+            project_name: this.selectedProject.project_name,
+            model_architecture: this.selectedModel
+          };
+        }
         console.log("Submitting training job:", trainingData);
         const result = await createTrainingJob(trainingData);
         this.$message.success("Training job added successfully (status pending).");
@@ -235,17 +312,34 @@ export default {
         this.$emit("close");
       } catch (error) {
         console.error("Failed to add training job:", error);
-        this.$message.error("Failed to add training job: " + (error.message || "Unknown error"));
+        this.$message.error(
+          this.isCustomSourceEngine
+            ? (error.message || "创建自定义模型训练任务失败")
+            : "Failed to add training job: " + (error.message || "Unknown error")
+        );
       } finally {
         this.isAdding = false;
       }
     },
     updateProjectInfo(project) {
       if (!project) return;
+      const previousProjectId = this.selectedProject?.project_id;
+      const previousTaskType = this.normalizeTaskType(
+        this.selectedProject?.task_type || this.selectedProject?.dataset?.dataset_type
+      );
+      const nextTaskType = this.normalizeTaskType(project.task_type || project.dataset?.dataset_type);
       this.selectedProject = project;
       this.trainParams.project_id = project.project_id;
       this.trainParams.project_name = project.project_name || "";
       this.trainParams.dataset_name = project?.dataset?.dataset_name || "";
+      if (
+        (previousProjectId != null && String(previousProjectId) !== String(project.project_id)) ||
+        (previousTaskType && nextTaskType && previousTaskType !== nextTaskType)
+      ) {
+        this.clearSelectedModel();
+        this.customConfigValid = false;
+        this.customConfigMessage = "项目任务类型已变化，请重新选择模型架构。";
+      }
 
       console.log("Training modal - project selected:", project);
     }
@@ -276,10 +370,10 @@ export default {
   },
   watch: {
     engine() {
-      this.selectedModel = null;
-      this.trainParams.model_architecture = "";
-      this.trainParams.architecture_id = null;
+      this.clearSelectedModel();
       this.trainParams.engine = this.normalizedEngine;
+      this.customConfigValid = false;
+      this.customConfigMessage = "";
     },
     project: {
       handler(p) {
