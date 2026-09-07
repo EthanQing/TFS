@@ -259,7 +259,12 @@ export default {
       return s === "running" || s === "queued";
     },
     canResume() {
-      return normalizeStatus(this.status) === "cancelled" && supportsResumeTraining(this.engine);
+      const status = normalizeStatus(this.status);
+
+      return (
+        (status === "cancelled" || status === "failed") &&
+        supportsResumeTraining(this.engine)
+      );
     },
     canQualifyModel() {
       return normalizeStatus(this.status) === "completed" && supportsQualification(this.engine);

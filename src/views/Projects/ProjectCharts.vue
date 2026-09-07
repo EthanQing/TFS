@@ -214,11 +214,35 @@ export default {
         }
       },
       immediate: true
+    },
+    "$route.path"() {
+      this.enforcePreviewCapability();
     }
   },
   methods: {
     setActiveTab(tab) {
       this.activeTab = tab;
+    },
+    enforcePreviewCapability() {
+      if (!this.$route.path.includes("/projectscharts/previewpart")) {
+        return;
+      }
+
+      if (supportsInference(this.modelEngine)) {
+        return;
+      }
+
+      this.activeTab = "train";
+      const navigation = this.$router.replace({
+        path: "/projectscharts/trainpart",
+        query: {
+          ...this.$route.query,
+          jobId: this.jobId,
+        },
+      });
+      if (navigation && typeof navigation.catch === "function") {
+        navigation.catch(() => {});
+      }
     },
     goBackToProjectDetail() {
       const pid = this.$route.query.projectId || (this.trainJobInfo && (this.trainJobInfo.project_id || this.trainJobInfo.project?.project_id));
@@ -254,19 +278,7 @@ export default {
           currentJob = jobsResponse.value.find(job => String(job.job_id) === String(jobId)) || null;
           if (currentJob) this.trainJobInfo = currentJob;
         }
-
-        if (this.$route.path.includes("/projectscharts/previewpart") && !supportsInference(
-          currentJob?.engine || currentJob?.architecture?.engine
-        )) {
-          this.activeTab = "train";
-          const navigation = this.$router.replace({
-            path: "/projectscharts/trainpart",
-            query: { ...this.$route.query, jobId },
-          });
-          if (navigation && typeof navigation.catch === "function") {
-            navigation.catch(() => {});
-          }
-        }
+        this.enforcePreviewCapability();
 
         if (parametersResponse.status === "fulfilled" && parametersResponse.value) {
           this.trainJobParameters = parametersResponse.value;

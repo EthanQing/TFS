@@ -118,7 +118,7 @@
                 <el-button v-else-if="model.status === 'running'" type="danger" size="mini"
                   :loading="stoppingJobs && stoppingJobs[model.job_id]" class="action-btn"
                   @click.stop="stopJob(model.job_id)">停止</el-button>
-                <el-button v-else-if="['cancelled'].includes((model.status || '').toLowerCase()) && supportsResumeTraining(modelEngine(model))" type="primary"
+                <el-button v-else-if="canResumeModel(model)" type="primary"
                   size="mini" :loading="startingJobs && startingJobs[model.job_id]" class="action-btn"
                   @click.stop="resumeJob(model.job_id)">继续</el-button>
                 <el-dropdown trigger="click" @command="handlePDCommand($event, model.job_id)">
@@ -466,7 +466,7 @@ export default {
     async resumeJob(jobId) {
       if (!jobId) return;
       const model = this.findProjectModel(jobId);
-      if (!supportsResumeTraining(this.modelEngine(model))) return;
+      if (!this.canResumeModel(model)) return;
       this.$set(this.startingJobs, jobId, true);
       try {
         await this.$confirm('确定要继续之前的训练吗？这将从上次保存的检查点继续训练。', '确认继续', { type: 'info' });
@@ -514,6 +514,14 @@ export default {
     },
     modelEngine(model) {
       return normalizeModelEngine(model?.engine || model?.architecture?.engine);
+    },
+    canResumeModel(model) {
+      const status = String(model?.status || '').trim().toLowerCase();
+
+      return (
+        (status === 'cancelled' || status === 'failed') &&
+        supportsResumeTraining(this.modelEngine(model))
+      );
     },
     isPaddleModel(model) {
       return this.modelFrameworkKey(model) === 'paddle';
