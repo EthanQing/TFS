@@ -81,7 +81,16 @@ export async function loadDatasets({ force = false } = {}) {
 
 export async function loadArchitectures({ force = false } = {}) {
   if (referenceStore.loaded.architectures && !force) return referenceStore.architectures;
-  if (referenceStore.loading.architectures && architectureLoadPromise) return architectureLoadPromise;
+  if (referenceStore.loading.architectures && architectureLoadPromise) {
+    if (!force) return architectureLoadPromise;
+
+    const pendingPromise = architectureLoadPromise;
+    await pendingPromise;
+
+    if (architectureLoadPromise && architectureLoadPromise !== pendingPromise) {
+      return architectureLoadPromise;
+    }
+  }
 
   referenceStore.loading.architectures = true;
   referenceStore.error.architectures = '';

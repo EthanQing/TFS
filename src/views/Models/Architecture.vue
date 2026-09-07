@@ -54,7 +54,7 @@
       </div>
 
       <div v-else class="family-groups">
-        <section class="family-group" v-for="group in groupedList" :key="group.family">
+        <section class="family-group" v-for="group in groupedList" :key="group.key">
           <header class="family-header">
             <div class="family-title">{{ group.family }}</div>
             <div class="family-count">{{ group.items.length }} variants</div>
@@ -324,7 +324,12 @@ export default {
       const map = {};
       this.filteredArchitectures.forEach(it => {
         const fam = it.model_family || 'Uncategorized';
-        (map[fam] = map[fam] || []).push(it);
+        const isCustom = this.isCustomArchitecture(it);
+        const key = `${isCustom ? 'custom' : 'builtin'}:${fam}`;
+        if (!map[key]) {
+          map[key] = { key, family: fam, isCustom, items: [] };
+        }
+        map[key].items.push(it);
       });
       const sizeOrder = { t:0, n:1, s:2, m:3, b:4, l:5, x:6, c:7, e:8 };
       const taskOrder = (variant='') => {
@@ -350,24 +355,26 @@ export default {
         sensitivity: 'base',
       });
       return Object.entries(map)
+        .map(([, group]) => group)
         .sort((a, b) => {
-          if (a[0] === 'Uncategorized') return 1;
-          if (b[0] === 'Uncategorized') return -1;
-          const customA = a[1].some(item => this.isCustomArchitecture(item));
-          const customB = b[1].some(item => this.isCustomArchitecture(item));
-          if (customA || customB) {
-            if (customA !== customB) return customA ? 1 : -1;
-            return naturalCompare(a[0], b[0]);
+          if (this.activeFramework === 'all' && a.isCustom !== b.isCustom) {
+            return a.isCustom ? 1 : -1;
           }
-          const ra = familyRank(a[0]);
-          const rb = familyRank(b[0]);
+          if (a.family === 'Uncategorized') return 1;
+          if (b.family === 'Uncategorized') return -1;
+          if (a.isCustom || b.isCustom) {
+            return naturalCompare(a.family, b.family);
+          }
+          const ra = familyRank(a.family);
+          const rb = familyRank(b.family);
           if (ra !== rb) return ra - rb;
-          return naturalCompare(a[0], b[0]);
+          return naturalCompare(a.family, b.family);
         })
-        .map(([family, items]) => ({
-          family,
-          items: items.slice().sort((a, b) => {
-            if (this.isCustomArchitecture(a) || this.isCustomArchitecture(b)) {
+        .map((group) => ({
+          key: group.key,
+          family: group.family,
+          items: group.items.slice().sort((a, b) => {
+            if (group.isCustom) {
               return naturalCompare(a.model_variant, b.model_variant);
             }
             const ta = taskOrder(a.model_variant);
