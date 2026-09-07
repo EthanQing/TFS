@@ -450,8 +450,10 @@ export default {
             FetchTrainingRunArtifacts(runId),
           ]);
           this.report = this.buildCustomReport(job, metrics, artifacts);
-        } else {
+        } else if (engine === "ultralytics-yolo" || engine === "paddle-det") {
           this.report = await FetchTrainingReport(runId);
+        } else {
+          throw new Error("无法确认训练引擎，无法安全加载训练报告，请重试。");
         }
         if (normalizeStatus(this.report?.basic?.status) !== "completed") {
           this.unavailable = true;
@@ -561,6 +563,11 @@ export default {
     async downloadDocx() {
       if (!this.runId) {
         this.$message.warning("缺少训练任务 ID");
+        return;
+      }
+      const engine = normalizeStatus(this.report?.basic?.engine);
+      if (engine !== "ultralytics-yolo" && engine !== "paddle-det") {
+        this.$message.warning("当前训练引擎不支持 DOCX 报告导出。");
         return;
       }
       this.exportingDocx = true;
