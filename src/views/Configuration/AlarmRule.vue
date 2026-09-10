@@ -1,1003 +1,847 @@
 <template>
-    <div class="alarm-rule-container">
-        <!-- 顶部标题 -->
-        <div class="top">
-            <h3>告警规则</h3>
-            <el-button
-                type="primary"
-                class="custom-primary-btn"
-                @click="dialogFormVisible = true"
-            >
-                + 新建规则
-            </el-button>
-        </div>
-
-        <!-- 主内容区域 -->
-        <div class="content-wrapper">
-            <!-- 左侧：规则配置 -->
-            <div class="config-section section-card">
-                <h4 class="section-title">
-                    <i class="el-icon-setting"></i>
-                    规则配置
-                </h4>
-
-                <div class="filter-area">
-                    <el-input
-                        v-model="searchText"
-                        placeholder="搜索规则..."
-                        clearable
-                        class="search-input"
-                    >
-                        <i slot="prefix" class="el-icon-search"></i>
-                    </el-input>
-                </div>
-
-                <div class="rules-container">
-                    <div
-                        v-for="rule in filteredRules"
-                        :key="rule.id"
-                        class="rule-item"
-                        :class="{ 'active': selectedRule && selectedRule.id === rule.id, 'enabled': rule.enabled }"
-                        @click="selectRule(rule)"
-                    >
-                        <div class="rule-header">
-                            <div class="rule-info">
-                                <span class="rule-name">{{ rule.name }}</span>
-                                <el-tag
-                                    :type="rule.severity === '严重' ? 'danger' : rule.severity === '警告' ? 'warning' : 'info'"
-                                    size="small"
-                                    class="severity-tag"
-                                >
-                                    {{ rule.severity }}
-                                </el-tag>
-                            </div>
-                            <el-switch
-                                v-model="rule.enabled"
-                                @change="handleRuleToggle(rule)"
-                                :active-color="'#10b981'"
-                                :inactive-color="'#ccc'"
-                            ></el-switch>
-                        </div>
-                        <div class="rule-condition">
-                            {{ rule.condition }}
-                        </div>
-                        <div class="rule-stats">
-                            <span class="stat">
-                                <i class="el-icon-bell"></i>
-                                触发: {{ rule.triggerCount }}
-                            </span>
-                            <span class="stat">
-                                <i class="el-icon-date"></i>
-                                {{ rule.lastTrigger }}
-                            </span>
-                        </div>
-                    </div>
-
-                    <div v-if="filteredRules.length === 0" class="empty-state">
-                        <i class="el-icon-document-copy"></i>
-                        <p>暂无规则</p>
-                    </div>
-                </div>
-            </div>
-
-            <!-- 右侧：告警内容 -->
-            <div class="right-section">
-                <!-- 活跃告警列表 -->
-                <div class="alerts-section section-card">
-                    <h4 class="section-title">
-                        <i class="el-icon-bell-outline"></i>
-                        活跃告警列表
-                        <el-badge :value="activeAlerts.length" class="badge-count"></el-badge>
-                    </h4>
-
-                    <div class="alerts-container">
-                        <div
-                            v-for="alert in activeAlerts"
-                            :key="alert.id"
-                            class="alert-item"
-                            :class="alert.severity"
-                        >
-                            <div class="alert-severity">
-                                <i class="el-icon-warning-outline"></i>
-                            </div>
-                            <div class="alert-content">
-                                <div class="alert-header">
-                                    <span class="alert-title">{{ alert.ruleName }}</span>
-                                    <el-tag
-                                        :type="alert.severity === '严重' ? 'danger' : alert.severity === '警告' ? 'warning' : 'info'"
-                                        size="mini"
-                                    >
-                                        {{ alert.severity }}
-                                    </el-tag>
-                                </div>
-                                <div class="alert-message">{{ alert.message }}</div>
-                                <div class="alert-meta">
-                                    <span class="meta-item">
-                                        <i class="el-icon-date"></i>
-                                        {{ alert.triggerTime }}
-                                    </span>
-                                    <span class="meta-item">
-                                        <i class="el-icon-info"></i>
-                                        {{ alert.metric }}: {{ alert.value }}
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="alert-actions">
-                                <el-button
-                                    type="text"
-                                    size="small"
-                                    @click="handleDismissAlert(alert)"
-                                >
-                                    关闭
-                                </el-button>
-                            </div>
-                        </div>
-
-                        <div v-if="activeAlerts.length === 0" class="empty-alert-state">
-                            <i class="el-icon-success"></i>
-                            <p>暂无活跃告警</p>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 告警历史 -->
-                <div class="history-section section-card">
-                    <h4 class="section-title">
-                        <i class="el-icon-document"></i>
-                        告警历史
-                    </h4>
-
-                    <div class="history-filter">
-                        <el-select
-                            v-model="historyFilter.severity"
-                            placeholder="选择严重级别"
-                            clearable
-                            class="filter-select"
-                        >
-                            <el-option label="全部" value=""></el-option>
-                            <el-option label="严重" value="严重"></el-option>
-                            <el-option label="警告" value="警告"></el-option>
-                            <el-option label="信息" value="信息"></el-option>
-                        </el-select>
-                        <el-date-picker
-                            v-model="historyFilter.dateRange"
-                            type="daterange"
-                            range-separator="至"
-                            start-placeholder="开始日期"
-                            end-placeholder="结束日期"
-                            class="filter-date"
-                        ></el-date-picker>
-                    </div>
-
-                    <div class="history-container">
-                        <div
-                            v-for="(item, index) in filteredHistory"
-                            :key="index"
-                            class="history-item"
-                            :class="item.severity"
-                        >
-                            <div class="history-time">
-                                {{ item.time }}
-                            </div>
-                            <div class="history-content">
-                                <div class="history-title">{{ item.ruleName }}</div>
-                                <div class="history-message">{{ item.message }}</div>
-                                <div class="history-stats">
-                                    <span class="stat">
-                                        <i class="el-icon-time"></i>
-                                        持续时间: {{ item.duration }}
-                                    </span>
-                                    <span class="stat">
-                                        <i class="el-icon-data-analysis"></i>
-                                        触发值: {{ item.value }}
-                                    </span>
-                                </div>
-                            </div>
-                            <div class="history-status">
-                                <el-tag
-                                    :type="item.status === '已解决' ? 'success' : 'warning'"
-                                    size="small"
-                                >
-                                    {{ item.status }}
-                                </el-tag>
-                            </div>
-                        </div>
-
-                        <div v-if="filteredHistory.length === 0" class="empty-history-state">
-                            <i class="el-icon-document"></i>
-                            <p>暂无告警历史</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 新建规则对话框 -->
-        <el-dialog title="新建告警规则" :visible.sync="dialogFormVisible" width="650px">
-            <el-form :model="newRuleForm" :rules="rules" ref="formRef" label-width="100px">
-                <el-form-item label="规则名称" prop="name">
-                    <el-input v-model="newRuleForm.name" placeholder="请输入规则名称"></el-input>
-                </el-form-item>
-                <el-form-item label="监控指标" prop="metric">
-                    <el-select v-model="newRuleForm.metric" placeholder="选择监控指标">
-                        <el-option label="损失值" value="loss"></el-option>
-                        <el-option label="精确度" value="accuracy"></el-option>
-                        <el-option label="mAP" value="mAP"></el-option>
-                        <el-option label="GPU内存" value="gpu_memory"></el-option>
-                        <el-option label="CPU使用率" value="cpu_usage"></el-option>
-                    </el-select>
-                </el-form-item>
-                <el-form-item label="告警条件" prop="operator">
-                    <el-select v-model="newRuleForm.operator" placeholder="选择条件">
-                        <el-option label="大于" value=">"></el-option>
-                        <el-option label="小于" value="<"></el-option>
-                        <el-option label="等于" value="=="></el-option>
-                        <el-option label="大于等于" value=">="></el-option>
-                        <el-option label="小于等于" value="<="></el-option>
-                    </el-select>
-                </el-form-item>
-                <el-form-item label="阈值" prop="threshold">
-                    <el-input-number
-                        v-model="newRuleForm.threshold"
-                        placeholder="请输入阈值"
-                        :min="0"
-                        :max="100"
-                    ></el-input-number>
-                </el-form-item>
-                <el-form-item label="严重级别" prop="severity">
-                    <el-select v-model="newRuleForm.severity" placeholder="选择严重级别">
-                        <el-option label="严重" value="严重"></el-option>
-                        <el-option label="警告" value="警告"></el-option>
-                        <el-option label="信息" value="信息"></el-option>
-                    </el-select>
-                </el-form-item>
-                <el-form-item label="通知方式" prop="notification">
-                    <el-checkbox-group v-model="newRuleForm.notification">
-                        <el-checkbox label="邮件" value="email"></el-checkbox>
-                        <el-checkbox label="短信" value="sms"></el-checkbox>
-                        <el-checkbox label="系统消息" value="system"></el-checkbox>
-                    </el-checkbox-group>
-                </el-form-item>
-                <el-form-item label="规则描述" prop="description">
-                    <el-input
-                        v-model="newRuleForm.description"
-                        type="textarea"
-                        placeholder="请输入规则描述"
-                        rows="3"
-                    ></el-input>
-                </el-form-item>
-            </el-form>
-            <div slot="footer" class="dialog-footer">
-                <el-button @click="dialogFormVisible = false">取 消</el-button>
-                <el-button type="primary" @click="handleCreateRule">创 建</el-button>
-            </div>
-        </el-dialog>
+  <div class="alarm">
+    <header>
+      <h3>告警规则</h3>
+      <el-button :disabled="!!busy" :loading="loadingAny" @click="bootstrap">
+        刷新
+      </el-button>
+      <el-button
+        :loading="busy === 'eval'"
+        :disabled="loadingAny || (!!busy && busy !== 'eval')"
+        @click="evaluate"
+      >
+        立即评估
+      </el-button>
+      <el-button
+        type="primary"
+        :disabled="!canCreate || !!busy || loadingAny"
+        @click="openCreate"
+      >
+        新建规则
+      </el-button>
+      <span v-if="catalogLoaded && rulesLoaded && !canCreate">
+        所有告警规则类型均已配置
+      </span>
+    </header>
+    <el-alert
+      v-for="error in errorMessages"
+      :key="error"
+      type="error"
+      :closable="false"
+      :title="error"
+      show-icon
+    />
+    <div v-loading="loading.summary" class="summary">
+      <span>
+        活跃总数 {{ summary.active_total == null ? "-" : summary.active_total }}
+      </span>
+      <span v-for="severity in severities" :key="severity.value">
+        {{ severity.label }}
+        {{
+          summary.by_severity && summary.by_severity[severity.value] != null
+            ? summary.by_severity[severity.value]
+            : "-"
+        }}
+      </span>
     </div>
+    <main>
+      <section class="config-section">
+        <h4>规则配置</h4>
+        <el-input v-model="search" placeholder="搜索规则" clearable />
+        <div v-loading="loading.rules">
+          <article
+            v-for="rule in filteredRules"
+            :key="rule.rule_id"
+            :class="{ selected: selected && selected.rule_id === rule.rule_id }"
+            @click="selected = rule"
+          >
+            <b>{{ rule.name }}</b>
+            <el-tag :type="severityTagType(rule.severity)" size="small">
+              {{ severityLabel(rule.severity) }}
+            </el-tag>
+            <el-switch
+              :value="rule.enabled"
+              :disabled="!!busy || loadingAny"
+              @click.native.stop
+              @change="(value) => toggle(rule, value)"
+            />
+            <p>
+              {{ ruleTypeLabel(rule.rule_type) }} · 冷却
+              {{ rule.cooldown_seconds }} 秒
+            </p>
+            <p v-if="rule.rule_type === 'training_run_stale'">
+              心跳超时：{{ stale(rule) }} 秒
+            </p>
+            <small>
+              {{ rule.description || ruleTypeDescription(rule.rule_type) }}
+            </small>
+            <div>
+              <el-button
+                type="text"
+                :disabled="!!busy || loadingAny"
+                @click.stop="openEdit(rule)"
+              >
+                编辑
+              </el-button>
+              <el-button
+                type="text"
+                :disabled="!!busy || loadingAny"
+                @click.stop="remove(rule)"
+              >
+                删除
+              </el-button>
+            </div>
+          </article>
+          <el-empty
+            v-if="!loading.rules && !errors.rules && !filteredRules.length"
+            description="暂无规则"
+          />
+        </div>
+      </section>
+      <aside>
+        <section>
+          <h4>
+            活跃告警
+            <el-badge
+              :value="summary.active_total == null ? '-' : summary.active_total"
+            />
+          </h4>
+          <div v-loading="loading.active">
+            <article v-for="alert in active" :key="alert.alert_id">
+              <b>{{ alert.title }}</b>
+              <el-tag :type="severityTagType(alert.severity)" size="small">
+                {{ severityLabel(alert.severity) }}
+              </el-tag>
+              <p>{{ alert.message }}</p>
+              <small>
+                任务：{{ alert.source_id || "-" }} · 触发次数：{{
+                  alert.trigger_count
+                }}
+                · 最近触发：{{ formatDateTime(alert.last_triggered_at) }}
+              </small>
+              <p v-if="alert.acked_at">
+                已确认 · {{ alert.acked_by || "-" }} ·
+                {{ formatDateTime(alert.acked_at) }}
+              </p>
+              <el-button
+                v-else
+                size="mini"
+                :loading="busy === alert.alert_id"
+                :disabled="!!busy || loading.active"
+                @click="ack(alert)"
+              >
+                确认已知晓
+              </el-button>
+            </article>
+            <el-empty
+              v-if="!loading.active && !errors.active && !active.length"
+              description="暂无活跃告警"
+            />
+          </div>
+          <el-pagination
+            layout="prev,pager,next,total"
+            :page-size="activePageSize"
+            :current-page="activePage"
+            :total="activeTotal"
+            @current-change="
+              (page) => {
+                activePage = page;
+                loadActive();
+              }
+            "
+          />
+        </section>
+        <section>
+          <h4>告警历史</h4>
+          <div class="filters">
+            <el-select
+              v-model="filter.severity"
+              clearable
+              placeholder="严重级别"
+              @change="filterHistory"
+            >
+              <el-option
+                v-for="severity in severities"
+                :key="severity.value"
+                :label="severity.label"
+                :value="severity.value"
+              />
+            </el-select>
+            <el-select
+              v-model="filter.ruleType"
+              clearable
+              placeholder="规则类型"
+              @change="filterHistory"
+            >
+              <el-option
+                v-for="type in types"
+                :key="type.rule_type"
+                :label="type.name || type.rule_type"
+                :value="type.rule_type"
+              />
+            </el-select>
+            <el-input
+              v-model="filter.sourceId"
+              clearable
+              placeholder="Training Run ID"
+              @keyup.enter.native="filterHistory"
+              @clear="filterHistory"
+            />
+            <el-button icon="el-icon-search" @click="filterHistory">
+              查询
+            </el-button>
+          </div>
+          <div v-loading="loading.history">
+            <article v-for="alert in history" :key="alert.alert_id">
+              <b>{{ alert.title }}</b>
+              <el-tag :type="severityTagType(alert.severity)" size="small">
+                {{ severityLabel(alert.severity) }}
+              </el-tag>
+              <p>{{ alert.message }}</p>
+              <small>
+                任务：{{ alert.source_id || "-" }} · 触发
+                {{ alert.trigger_count }} 次
+              </small>
+              <p class="timestamps">
+                首次：{{ formatDateTime(alert.first_triggered_at) }} · 最近：{{
+                  formatDateTime(alert.last_triggered_at)
+                }}
+                · 恢复：{{ formatDateTime(alert.resolved_at) }}
+              </p>
+              <small v-if="alert.acked_by">确认人：{{ alert.acked_by }}</small>
+            </article>
+            <el-empty
+              v-if="!loading.history && !errors.history && !history.length"
+              description="暂无告警历史"
+            />
+          </div>
+          <el-pagination
+            layout="prev,pager,next,total"
+            :page-size="historyPageSize"
+            :current-page="historyPage"
+            :total="historyTotal"
+            @current-change="
+              (page) => {
+                historyPage = page;
+                loadHistory();
+              }
+            "
+          />
+        </section>
+      </aside>
+    </main>
+    <el-dialog
+      :title="mode === 'create' ? '新建规则' : '编辑规则'"
+      :visible.sync="dialog"
+      width="650px"
+      :before-close="closeDialog"
+      :close-on-click-modal="!busy"
+      :close-on-press-escape="!busy"
+      :show-close="!busy"
+    >
+      <el-form
+        ref="form"
+        :model="form"
+        :rules="rules"
+        :disabled="!!busy"
+        label-width="110px"
+      >
+        <el-form-item label="规则类型" prop="rule_type">
+          <el-select
+            v-if="mode === 'create'"
+            v-model="form.rule_type"
+            @change="defaults"
+          >
+            <el-option
+              v-for="type in types"
+              :key="type.rule_type"
+              :label="type.name || type.rule_type"
+              :value="type.rule_type"
+              :disabled="existing.includes(type.rule_type)"
+            />
+          </el-select>
+          <el-input v-else :value="ruleTypeLabel(form.rule_type)" disabled />
+        </el-form-item>
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="form.name" />
+        </el-form-item>
+        <el-form-item label="描述">
+          <el-input v-model="form.description" type="textarea" />
+        </el-form-item>
+        <el-form-item label="严重级别" prop="severity">
+          <el-select v-model="form.severity">
+            <el-option
+              v-for="severity in severities"
+              :key="severity.value"
+              :label="severity.label"
+              :value="severity.value"
+            />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="启用">
+          <el-switch v-model="form.enabled" />
+        </el-form-item>
+        <el-form-item label="冷却时间" prop="cooldown_seconds">
+          <el-input-number
+            v-model="form.cooldown_seconds"
+            :min="0"
+            :max="86400"
+            :precision="0"
+          />
+          秒
+          <div class="help">同一活跃告警再次触发时的最小更新时间间隔</div>
+        </el-form-item>
+        <el-form-item
+          v-if="form.rule_type === 'training_run_stale'"
+          label="心跳超时"
+          prop="stale_after_seconds"
+        >
+          <el-input-number
+            v-model="form.stale_after_seconds"
+            :min="1"
+            :max="86400"
+            :precision="0"
+            :placeholder="staleDefault"
+            @change="staleChanged = true"
+          />
+          秒
+          <div class="help">{{ staleDescription }}</div>
+        </el-form-item>
+      </el-form>
+      <span slot="footer">
+        <el-button :disabled="!!busy" @click="dialog = false">取消</el-button>
+        <el-button
+          type="primary"
+          :loading="busy === 'save'"
+          :disabled="loadingAny || (!!busy && busy !== 'save')"
+          @click="save"
+        >
+          保存
+        </el-button>
+      </span>
+    </el-dialog>
+  </div>
 </template>
-
 <script>
+import * as api from "@/api/alarms";
 export default {
-    name: 'AlarmRule',
-    data() {
-        return {
-            searchText: '',
-            selectedRule: null,
-            dialogFormVisible: false,
-            historyFilter: {
-                severity: '',
-                dateRange: null
-            },
-            rules: {
-                name: [{ required: true, message: '请输入规则名称', trigger: 'blur' }],
-                metric: [{ required: true, message: '请选择监控指标', trigger: 'change' }],
-                operator: [{ required: true, message: '请选择告警条件', trigger: 'change' }],
-                threshold: [{ required: true, message: '请输入阈值', trigger: 'blur' }],
-                severity: [{ required: true, message: '请选择严重级别', trigger: 'change' }],
-                notification: [{ required: true, message: '请选择通知方式', trigger: 'change' }],
-                description: [{ required: true, message: '请输入规则描述', trigger: 'blur' }]
-            },
-            newRuleForm: {
-                name: '',
-                metric: '',
-                operator: '',
-                threshold: 0,
-                severity: '',
-                notification: [],
-                description: ''
-            },
-            rulesList: [
-                {
-                    id: 1,
-                    name: '损失值异常告警',
-                    severity: '严重',
-                    condition: 'loss > 1.5',
-                    enabled: true,
-                    triggerCount: 5,
-                    lastTrigger: '2小时前'
-                },
-                {
-                    id: 2,
-                    name: '精确度下降',
-                    severity: '警告',
-                    condition: 'accuracy < 0.85',
-                    enabled: true,
-                    triggerCount: 3,
-                    lastTrigger: '4小时前'
-                },
-                {
-                    id: 3,
-                    name: 'mAP指标预警',
-                    severity: '信息',
-                    condition: 'mAP < 0.75',
-                    enabled: false,
-                    triggerCount: 1,
-                    lastTrigger: '1天前'
-                },
-                {
-                    id: 4,
-                    name: 'GPU内存溢出',
-                    severity: '严重',
-                    condition: 'gpu_memory > 90%',
-                    enabled: true,
-                    triggerCount: 12,
-                    lastTrigger: '30分钟前'
-                },
-                {
-                    id: 5,
-                    name: '训练速度下降',
-                    severity: '警告',
-                    condition: 'training_speed < 50',
-                    enabled: true,
-                    triggerCount: 2,
-                    lastTrigger: '6小时前'
-                }
-            ],
-            activeAlerts: [
-                {
-                    id: 1,
-                    ruleName: '损失值异常告警',
-                    severity: '严重',
-                    message: '模型在第100个epoch时损失值异常增高',
-                    triggerTime: '2026-01-16 14:32:00',
-                    metric: 'loss',
-                    value: '1.87'
-                },
-                {
-                    id: 2,
-                    ruleName: 'GPU内存溢出',
-                    severity: '严重',
-                    message: 'GPU内存使用率超过阈值',
-                    triggerTime: '2026-01-16 14:25:00',
-                    metric: 'gpu_memory',
-                    value: '94%'
-                },
-                {
-                    id: 3,
-                    ruleName: '精确度下降',
-                    severity: '警告',
-                    message: '验证集精确度下降到0.82',
-                    triggerTime: '2026-01-16 14:10:00',
-                    metric: 'accuracy',
-                    value: '0.82'
-                }
-            ],
-            historyList: [
-                {
-                    time: '2026-01-16 14:32:00',
-                    ruleName: '损失值异常告警',
-                    message: '模型在第100个epoch时损失值异常增高',
-                    severity: '严重',
-                    duration: '8分钟',
-                    value: '1.87',
-                    status: '已解决'
-                },
-                {
-                    time: '2026-01-16 14:25:00',
-                    ruleName: 'GPU内存溢出',
-                    message: 'GPU内存使用率超过阈值',
-                    severity: '严重',
-                    duration: '进行中',
-                    value: '94%',
-                    status: '告警中'
-                },
-                {
-                    time: '2026-01-16 14:10:00',
-                    ruleName: '精确度下降',
-                    message: '验证集精确度下降到0.82',
-                    severity: '警告',
-                    duration: '20分钟',
-                    value: '0.82',
-                    status: '已解决'
-                },
-                {
-                    time: '2026-01-16 12:45:00',
-                    ruleName: '训练速度下降',
-                    message: '平均训练速度低于预期',
-                    severity: '警告',
-                    duration: '45分钟',
-                    value: '45',
-                    status: '已解决'
-                },
-                {
-                    time: '2026-01-16 10:15:00',
-                    ruleName: 'mAP指标预警',
-                    message: 'mAP指标低于设定阈值',
-                    severity: '信息',
-                    duration: '2小时',
-                    value: '0.72',
-                    status: '已解决'
-                },
-                {
-                    time: '2026-01-15 16:30:00',
-                    ruleName: '损失值异常告警',
-                    message: '模型在第50个epoch时损失值波动异常',
-                    severity: '严重',
-                    duration: '15分钟',
-                    value: '1.92',
-                    status: '已解决'
-                }
-            ]
-        };
+  name: "AlarmRule",
+  data() {
+    const integerRange = (minimum, maximum) => (rule, value, callback) => {
+      if (Number.isInteger(value) && value >= minimum && value <= maximum)
+        callback();
+      else callback(new Error(`请输入 ${minimum} 到 ${maximum} 的整数`));
+    };
+    return {
+      types: [],
+      rulesList: [],
+      rulesTotal: 0,
+      active: [],
+      history: [],
+      summary: {},
+      errors: { types: "", rules: "", active: "", history: "", summary: "" },
+      search: "",
+      selected: null,
+      dialog: false,
+      mode: "create",
+      form: {},
+      editing: null,
+      staleChanged: false,
+      busy: null,
+      loading: {
+        types: false,
+        rules: false,
+        active: false,
+        history: false,
+        summary: false,
+      },
+      catalogLoaded: false,
+      rulesLoaded: false,
+      activePage: 1,
+      activePageSize: 20,
+      historyPage: 1,
+      historyPageSize: 20,
+      activeTotal: 0,
+      historyTotal: 0,
+      activeReq: 0,
+      historyReq: 0,
+      filter: { severity: "", ruleType: "", sourceId: "" },
+      appliedFilter: { severity: "", ruleType: "", sourceId: "" },
+      severities: [
+        { value: "critical", label: "严重" },
+        { value: "high", label: "高" },
+        { value: "medium", label: "中" },
+        { value: "low", label: "低" },
+      ],
+      rules: {
+        rule_type: [{ required: true, message: "请选择规则类型" }],
+        name: [{ required: true, whitespace: true, message: "请输入名称" }],
+        severity: [{ required: true, message: "请选择严重级别" }],
+        cooldown_seconds: [
+          { validator: integerRange(0, 86400), trigger: "change" },
+        ],
+        stale_after_seconds: [
+          {
+            validator: (rule, value, callback) =>
+              this.mode === "edit" && !this.staleChanged && value == null
+                ? callback()
+                : integerRange(1, 86400)(rule, value, callback),
+            trigger: "change",
+          },
+        ],
+      },
+    };
+  },
+  computed: {
+    loadingAny() {
+      return Object.values(this.loading).some(Boolean);
     },
-    computed: {
-        filteredRules() {
-            return this.rulesList.filter(rule =>
-                rule.name.toLowerCase().includes(this.searchText.toLowerCase())
-            );
-        },
-        filteredHistory() {
-            return this.historyList.filter(item => {
-                // 严重级别筛选
-                if (this.historyFilter.severity && item.severity !== this.historyFilter.severity) {
-                    return false;
-                }
-                
-                // 日期范围筛选
-                if (this.historyFilter.dateRange && this.historyFilter.dateRange.length === 2) {
-                    const itemDate = new Date(item.time);
-                    const startDate = new Date(this.historyFilter.dateRange[0]);
-                    const endDate = new Date(this.historyFilter.dateRange[1]);
-                    
-                    // 设置结束日期为当天的23:59:59
-                    endDate.setHours(23, 59, 59, 999);
-                    
-                    if (itemDate < startDate || itemDate > endDate) {
-                        return false;
-                    }
-                }
-                
-                return true;
-            });
+    errorMessages() {
+      return Object.values(this.errors).filter(Boolean);
+    },
+    ruleTypeMetaMap() {
+      const metadata = {};
+      this.types.forEach((type) => {
+        metadata[type.rule_type] = type;
+      });
+      return metadata;
+    },
+    existing() {
+      return this.rulesList.map((x) => x.rule_type);
+    },
+    canCreate() {
+      return (
+        this.catalogLoaded &&
+        this.rulesLoaded &&
+        this.types.some((x) => !this.existing.includes(x.rule_type))
+      );
+    },
+    filteredRules() {
+      let q = this.search.toLowerCase();
+      return this.rulesList.filter((x) =>
+        (x.name + " " + this.ruleTypeLabel(x.rule_type))
+          .toLowerCase()
+          .includes(q)
+      );
+    },
+    staleDescription() {
+      return (
+        this.ruleTypeMetaMap.training_run_stale?.config_schema
+          ?.stale_after_seconds?.description || ""
+      );
+    },
+    staleDefault() {
+      const value =
+        this.ruleTypeMetaMap.training_run_stale?.config_schema
+          ?.stale_after_seconds?.default;
+      return value == null ? "" : String(value);
+    },
+  },
+  mounted() {
+    this.bootstrap();
+  },
+  methods: {
+    err(e) {
+      return e?.message || "请求失败";
+    },
+    severityLabel(v) {
+      return this.severities.find((x) => x.value === v)?.label || v;
+    },
+    severityTagType(v) {
+      return (
+        { critical: "danger", high: "warning", medium: "", low: "info" }[v] ||
+        "info"
+      );
+    },
+    ruleTypeLabel(v) {
+      return this.ruleTypeMetaMap[v]?.name || v;
+    },
+    ruleTypeDescription(v) {
+      return this.ruleTypeMetaMap[v]?.description || "";
+    },
+    formatDateTime(v) {
+      if (!v) return "-";
+      let d = new Date(v);
+      return isNaN(d) ? v : d.toLocaleString("zh-CN", { hour12: false });
+    },
+    stale(r) {
+      return r.config?.stale_after_seconds ?? (this.staleDefault || "-");
+    },
+    async bootstrap() {
+      if (this.busy || this.loadingAny) return;
+      await Promise.all([
+        this.loadTypes(),
+        this.loadRules(),
+        this.loadActive(),
+        this.loadHistory(),
+        this.loadSummary(),
+      ]);
+    },
+    async loadTypes() {
+      this.loading.types = true;
+      try {
+        const data = await api.fetchAlarmRuleTypes();
+        this.types = Array.isArray(data) ? data : data.items || [];
+        this.catalogLoaded = true;
+        this.errors.types = "";
+      } catch (error) {
+        this.catalogLoaded = false;
+        this.errors.types = "规则类型加载失败：" + this.err(error);
+      } finally {
+        this.loading.types = false;
+      }
+    },
+    async loadRules() {
+      this.loading.rules = true;
+      try {
+        let d = await api.fetchAlarmRules({ page: 1, pageSize: 500 });
+        this.rulesList = d.items || [];
+        this.rulesTotal = d.meta?.total || 0;
+        this.rulesLoaded = true;
+        this.errors.rules = "";
+        if (this.selected) {
+          this.selected =
+            this.rulesList.find(
+              (item) => item.rule_id === this.selected.rule_id
+            ) || null;
         }
+      } catch (error) {
+        this.rulesLoaded = false;
+        this.errors.rules = "规则加载失败：" + this.err(error);
+      } finally {
+        this.loading.rules = false;
+      }
     },
-    methods: {
-        selectRule(rule) {
-            this.selectedRule = JSON.parse(JSON.stringify(rule));
-        },
-        handleRuleToggle(rule) {
-            const status = rule.enabled ? '启用' : '禁用';
-            this.$message.info(`规则已${status}`);
-        },
-        handleDismissAlert(alert) {
-            this.$confirm(`确认关闭此告警吗？`, '确认操作', {
-                confirmButtonText: '确定',
-                cancelButtonText: '取消',
-                type: 'warning'
-            }).then(() => {
-                const index = this.activeAlerts.findIndex(a => a.id === alert.id);
-                if (index > -1) {
-                    this.activeAlerts.splice(index, 1);
-                }
-                this.$message.success('告警已关闭');
-            }).catch(() => {
-                this.$message.info('已取消操作');
-            });
-        },
-        handleCreateRule() {
-            this.$refs.formRef.validate(valid => {
-                if (valid) {
-                    const newRule = {
-                        id: Math.max(...this.rulesList.map(r => r.id), 0) + 1,
-                        name: this.newRuleForm.name,
-                        severity: this.newRuleForm.severity,
-                        condition: `${this.newRuleForm.metric} ${this.newRuleForm.operator} ${this.newRuleForm.threshold}`,
-                        enabled: true,
-                        triggerCount: 0,
-                        lastTrigger: '从未触发'
-                    };
-                    this.rulesList.push(newRule);
-                    this.$message.success('规则创建成功');
-                    this.dialogFormVisible = false;
-                    this.newRuleForm = {
-                        name: '',
-                        metric: '',
-                        operator: '',
-                        threshold: 0,
-                        severity: '',
-                        notification: [],
-                        description: ''
-                    };
-                    this.$refs.formRef.resetFields();
-                }
-            });
+    async loadActive() {
+      let id = ++this.activeReq;
+      this.loading.active = true;
+      try {
+        let d = await api.fetchActiveAlarms({
+          page: this.activePage,
+          pageSize: this.activePageSize,
+        });
+        if (id !== this.activeReq) return;
+        this.errors.active = "";
+        this.active = d.items || [];
+        this.activeTotal = d.meta?.total || 0;
+        let max = Math.max(
+          1,
+          Math.ceil(this.activeTotal / this.activePageSize)
+        );
+        if (this.activePage > max) {
+          this.activePage = max;
+          return this.loadActive();
         }
+      } catch (error) {
+        if (id === this.activeReq) {
+          this.active = [];
+          this.errors.active = "活跃告警加载失败：" + this.err(error);
+        }
+      } finally {
+        if (id === this.activeReq) this.loading.active = false;
+      }
     },
-    mounted() {
-        this.selectRule(this.rulesList[0]);
-    }
+    async loadHistory() {
+      let id = ++this.historyReq;
+      this.loading.history = true;
+      try {
+        let d = await api.fetchAlarmHistory({
+          page: this.historyPage,
+          pageSize: this.historyPageSize,
+          ...this.appliedFilter,
+        });
+        if (id !== this.historyReq) return;
+        this.errors.history = "";
+        this.history = d.items || [];
+        this.historyTotal = d.meta?.total || 0;
+        let max = Math.max(
+          1,
+          Math.ceil(this.historyTotal / this.historyPageSize)
+        );
+        if (this.historyPage > max) {
+          this.historyPage = max;
+          return this.loadHistory();
+        }
+      } catch (error) {
+        if (id === this.historyReq) {
+          this.history = [];
+          this.errors.history = "告警历史加载失败：" + this.err(error);
+        }
+      } finally {
+        if (id === this.historyReq) this.loading.history = false;
+      }
+    },
+    async loadSummary() {
+      this.loading.summary = true;
+      try {
+        this.summary = await api.fetchAlarmSummary();
+        this.errors.summary = "";
+      } catch (error) {
+        this.summary = {};
+        this.errors.summary = "汇总加载失败：" + this.err(error);
+      } finally {
+        this.loading.summary = false;
+      }
+    },
+    openCreate() {
+      if (this.busy || this.loadingAny || !this.canCreate) return;
+      this.mode = "create";
+      this.staleChanged = false;
+      this.form = {
+        rule_type: "",
+        name: "",
+        description: "",
+        severity: "",
+        enabled: true,
+        cooldown_seconds: 0,
+        stale_after_seconds: undefined,
+      };
+      this.dialog = true;
+      this.$nextTick(() => this.$refs.form.clearValidate());
+    },
+    openEdit(r) {
+      if (this.busy || this.loadingAny) return;
+      this.mode = "edit";
+      this.editing = r.rule_id;
+      this.staleChanged = false;
+      this.form = {
+        rule_type: r.rule_type,
+        name: r.name,
+        description: r.description || "",
+        severity: r.severity,
+        enabled: r.enabled,
+        cooldown_seconds: r.cooldown_seconds,
+        stale_after_seconds: r.config?.stale_after_seconds,
+      };
+      this.dialog = true;
+      this.$nextTick(() => this.$refs.form.clearValidate());
+    },
+    defaults(v) {
+      let m = this.ruleTypeMetaMap[v],
+        s = m?.config_schema || {};
+      Object.assign(this.form, {
+        name: m.name,
+        description: m.description || "",
+        severity: m.default_severity,
+        enabled: m.default_enabled,
+        cooldown_seconds: m.default_cooldown_seconds,
+        stale_after_seconds: s.stale_after_seconds?.default ?? null,
+      });
+      this.staleChanged = v === "training_run_stale";
+    },
+    save() {
+      if (this.busy || this.loadingAny) return;
+      this.$refs.form.validate(async (ok) => {
+        if (!ok || this.busy) return;
+        this.busy = "save";
+        try {
+          let p = {
+            name: this.form.name.trim(),
+            description: this.form.description,
+            severity: this.form.severity,
+            enabled: this.form.enabled,
+            cooldown_seconds: this.form.cooldown_seconds,
+          };
+          if (this.mode === "create")
+            await api.createAlarmRule({
+              rule_type: this.form.rule_type,
+              ...p,
+              config:
+                this.form.rule_type === "training_run_stale"
+                  ? { stale_after_seconds: this.form.stale_after_seconds }
+                  : {},
+            });
+          else {
+            if (this.form.rule_type === "training_run_failed") p.config = {};
+            else if (this.staleChanged)
+              p.config = { stale_after_seconds: this.form.stale_after_seconds };
+            await api.updateAlarmRule(this.editing, p);
+          }
+          this.dialog = false;
+          await this.loadRules();
+          this.$message.success("保存成功");
+        } catch (e) {
+          this.$message.error(this.err(e));
+        } finally {
+          this.busy = null;
+        }
+      });
+    },
+    async toggle(r, v) {
+      if (this.busy || this.loading.rules) return;
+      let old = r.enabled;
+      this.$set(r, "enabled", v);
+      this.busy = r.rule_id;
+      try {
+        await api.updateAlarmRule(r.rule_id, { enabled: v });
+      } catch (e) {
+        this.$set(r, "enabled", old);
+        this.$message.error(this.err(e));
+        this.busy = null;
+        return;
+      }
+      try {
+        await this.loadRules();
+      } catch (e) {
+        this.$message.error("规则已更新，但刷新失败：" + this.err(e));
+      } finally {
+        this.busy = null;
+      }
+    },
+    async remove(r) {
+      if (this.busy || this.loading.rules) return;
+      this.busy = r.rule_id;
+      try {
+        await this.$confirm("确认删除规则“" + r.name + "”吗？", "删除规则", {
+          type: "warning",
+        });
+      } catch (_) {
+        this.busy = null;
+        return;
+      }
+      try {
+        await api.deleteAlarmRule(r.rule_id);
+        if (this.selected?.rule_id === r.rule_id) this.selected = null;
+        await this.loadRules();
+      } catch (e) {
+        this.$message.error(this.err(e));
+      } finally {
+        this.busy = null;
+      }
+    },
+    async evaluate() {
+      if (this.busy || this.loadingAny) return;
+      this.busy = "eval";
+      try {
+        let r = await api.evaluateAlarms({ runIds: [] });
+        await Promise.all([
+          this.loadRules(),
+          this.loadActive(),
+          this.loadHistory(),
+          this.loadSummary(),
+        ]);
+        this.$message.success(
+          `评估完成：新增 ${r.triggered_new || 0}，更新 ${
+            r.touched_active || 0
+          }，恢复 ${r.resolved || 0}`
+        );
+      } catch (e) {
+        this.$message.error(this.err(e));
+      } finally {
+        this.busy = null;
+      }
+    },
+    async ack(a) {
+      if (this.busy || a.acked_at || this.loading.active) return;
+      this.busy = a.alert_id;
+      try {
+        await api.ackAlarmAlert(a.alert_id, { ackedBy: "管理员" });
+        await this.loadActive();
+      } catch (e) {
+        this.$message.error(this.err(e));
+      } finally {
+        this.busy = null;
+      }
+    },
+    filterHistory() {
+      this.appliedFilter = {
+        ...this.filter,
+        sourceId: this.filter.sourceId.trim(),
+      };
+      this.historyPage = 1;
+      return this.loadHistory();
+    },
+    closeDialog(done) {
+      if (!this.busy) done();
+    },
+  },
 };
 </script>
-
 <style scoped>
-.alarm-rule-container {
-    display: flex;
-    flex-direction: column;
-    margin-left: 10px;
-    box-sizing: border-box;
-    width: calc(100% - 20px);
-    min-width: 800px;
-}
-
-.top {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 20px;
-}
-
-.top h3 {
-    font-size: 24px;
-    font-weight: bolder;
-    color: #111f68;
-}
-
-/* 主内容区域 */
-.content-wrapper {
-    display: flex;
-    gap: 20px;
-    width: 100%;
-    height: calc(100vh - 150px);
-}
-
-/* 左侧：规则配置 */
-.config-section {
-    flex: 0 0 35%;
-    max-width: 400px;
-    overflow-y: auto;
-    display: flex;
-    flex-direction: column;
-}
-
-/* 右侧：告警内容 */
-.right-section {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-    min-height: 0;
-    overflow-y: auto;
-}
-
-/* 通用卡片样式 */
-.section-card {
-    background: #ffffff;
-    border-radius: 12px;
-    padding: 20px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-    border: 1px solid #e8ecef;
-    flex-shrink: 0;
-}
-
-.section-title {
-    font-size: 16px;
-    font-weight: 600;
-    color: #111f68;
-    margin: 0 0 16px 0;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.section-title i {
-    font-size: 18px;
-}
-
-.badge-count {
-    margin-left: 8px;
-}
-
-/* 过滤区域 */
-.filter-area {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 16px;
-}
-
-.search-input {
-    width: 100%;
-}
-
-.history-filter {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-}
-
-.filter-select {
-    flex: 0 0 120px;
-}
-
-.filter-date {
-    flex: 1;
-}
-
-/* 规则列表 */
-.rules-container {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    flex: 1;
-    overflow-y: auto;
-    padding-right: 6px;
-}
-
-.rule-item {
-    padding: 12px;
-    border-radius: 8px;
-    background-color: #f9fafb;
-    border: 2px solid #e8ecef;
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.rule-item:hover {
-    background-color: #f0f3f9;
-    border-color: #111f68;
-    transform: translateX(4px);
-}
-
-.rule-item.active {
-    background-color: #e8ecf5;
-    border-color: #111f68;
-    box-shadow: 0 4px 12px rgba(17, 31, 104, 0.15);
-}
-
-.rule-item:not(.enabled) {
-    opacity: 0.6;
-}
-
-.rule-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.rule-info {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.rule-name {
-    font-size: 14px;
-    font-weight: 600;
-    color: #111f68;
-}
-
-.severity-tag {
-    font-size: 11px !important;
-}
-
-.rule-condition {
-    font-size: 12px;
-    color: #6c757d;
-    margin-bottom: 8px;
-    background-color: #f5f7fa;
-    padding: 6px 8px;
-    border-radius: 4px;
-    font-family: monospace;
-}
-
-.rule-stats {
-    display: flex;
-    gap: 12px;
-    font-size: 12px;
-    color: #8e9aaf;
-}
-
-.stat {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.stat i {
-    font-size: 12px;
-}
-
-/* 空状态 */
-.empty-state,
-.empty-alert-state,
-.empty-history-state {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 12px;
-    padding: 40px 20px;
-    color: #8e9aaf;
-    font-size: 14px;
-}
-
-.empty-state i,
-.empty-alert-state i,
-.empty-history-state i {
-    font-size: 32px;
-    color: #d5d5d5;
-}
-
-/* 活跃告警 */
-.alerts-container {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-height: 400px;
-    overflow-y: auto;
-}
-
-.alert-item {
-    padding: 12px;
-    border-radius: 8px;
-    border-left: 4px solid #8e9aaf;
-    background-color: #f9fafb;
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-}
-
-.alert-item.严重 {
-    border-left-color: #f43f5e;
-    background-color: #fef2f2;
-}
-
-.alert-item.警告 {
-    border-left-color: #f59e0b;
-    background-color: #fffbf0;
-}
-
-.alert-item.信息 {
-    border-left-color: #06b6d4;
-    background-color: #f0f9fc;
-}
-
-.alert-severity {
-    font-size: 20px;
-    color: #f43f5e;
-    flex-shrink: 0;
-}
-
-.alert-item.警告 .alert-severity {
-    color: #f59e0b;
-}
-
-.alert-item.信息 .alert-severity {
-    color: #06b6d4;
-}
-
-.alert-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    min-width: 0;
-}
-
-.alert-header {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-}
-
-.alert-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #111f68;
-}
-
-.alert-message {
-    font-size: 13px;
-    color: #6c757d;
-}
-
-.alert-meta {
-    display: flex;
-    gap: 12px;
-    font-size: 12px;
-    color: #8e9aaf;
-}
-
-.meta-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.meta-item i {
-    font-size: 12px;
-}
-
-.alert-actions {
-    flex-shrink: 0;
-}
-
-/* 告警历史 */
-.history-container {
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-height: 350px;
-    overflow-y: auto;
-}
-
-.history-item {
-    padding: 12px;
-    border-radius: 8px;
-    background-color: #f9fafb;
-    border-left: 4px solid #8e9aaf;
-    display: flex;
-    gap: 12px;
-    align-items: flex-start;
-}
-
-.history-item.严重 {
-    border-left-color: #f43f5e;
-    background-color: #fef2f2;
-}
-
-.history-item.警告 {
-    border-left-color: #f59e0b;
-    background-color: #fffbf0;
-}
-
-.history-item.信息 {
-    border-left-color: #06b6d4;
-    background-color: #f0f9fc;
-}
-
-.history-time {
-    font-size: 12px;
-    color: #8e9aaf;
-    flex-shrink: 0;
-    min-width: 140px;
-}
-
-.history-content {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    min-width: 0;
-}
-
-.history-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #111f68;
-}
-
-.history-message {
-    font-size: 12px;
-    color: #6c757d;
-}
-
-.history-stats {
-    display: flex;
-    gap: 12px;
-    font-size: 12px;
-    color: #8e9aaf;
-}
-
-.history-status {
-    flex-shrink: 0;
-}
-
-/* 按钮样式 */
-.custom-primary-btn {
-    background-color: #111f68 !important;
-    border-color: #111f68 !important;
-    color: #fff !important;
-}
-
-.custom-primary-btn:hover {
-    background-color: #0d1554 !important;
-    border-color: #0d1554 !important;
-}
-
-/* 对话框样式 */
-.el-dialog {
-    width: 650px !important;
-}
-
-.dialog-footer {
-    padding: 10px 20px !important;
-}
-.search-input .el-icon-search{
-    margin-top: 13px;
-    margin-left: 2px;
-}
-
-/* 滚动条样式 */
-.rules-container::-webkit-scrollbar,
-.config-section::-webkit-scrollbar,
-.right-section::-webkit-scrollbar,
-.alerts-container::-webkit-scrollbar,
-.history-container::-webkit-scrollbar {
-    width: 6px;
-}
-
-.rules-container::-webkit-scrollbar-track,
-.config-section::-webkit-scrollbar-track,
-.right-section::-webkit-scrollbar-track,
-.alerts-container::-webkit-scrollbar-track,
-.history-container::-webkit-scrollbar-track {
-    background: #f1f5f9;
-    border-radius: 3px;
-}
-
-.rules-container::-webkit-scrollbar-thumb,
-.config-section::-webkit-scrollbar-thumb,
-.right-section::-webkit-scrollbar-thumb,
-.alerts-container::-webkit-scrollbar-thumb,
-.history-container::-webkit-scrollbar-thumb {
-    background: #cbd5e1;
-    border-radius: 3px;
-}
-
-.rules-container::-webkit-scrollbar-thumb:hover,
-.config-section::-webkit-scrollbar-thumb:hover,
-.right-section::-webkit-scrollbar-thumb:hover,
-.alerts-container::-webkit-scrollbar-thumb:hover,
-.history-container::-webkit-scrollbar-thumb:hover {
-    background: #94a3b8;
-}
-
-/* 响应式设计 */
+.alarm {
+  margin: 10px;
+  min-width: 800px;
+}
+header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+header h3 {
+  margin-right: auto;
+  color: #111f68;
+}
+.summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 25px;
+  padding: 14px;
+  background: #fff;
+  border: 1px solid #eee;
+}
+main {
+  display: flex;
+  gap: 20px;
+  margin-top: 15px;
+}
+main > section {
+  width: 35%;
+  max-width: 400px;
+  align-self: flex-start;
+}
+aside {
+  flex: 1;
+  min-width: 0;
+}
+section {
+  background: #fff;
+  border: 1px solid #eee;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  padding: 15px;
+  margin-bottom: 15px;
+}
+article {
+  padding: 12px;
+  margin: 10px 0;
+  background: #f8fafc;
+  border-left: 4px solid #111f68;
+  overflow-wrap: anywhere;
+}
+article.selected {
+  background: #e8ecf5;
+}
+article .el-switch {
+  float: right;
+}
+small {
+  color: #64748b;
+}
+.filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.filters > * {
+  flex: 1;
+}
+.el-pagination {
+  text-align: right;
+}
+.help,
+.timestamps {
+  font-size: 12px;
+  color: #64748b;
+}
 @media (max-width: 1400px) {
-    .content-wrapper {
-        height: auto;
-        flex-direction: column;
-    }
-
-    .config-section {
-        flex: 0 0 auto;
-        max-width: none;
-        max-height: 400px;
-    }
-
-    .right-section {
-        flex: 1;
-    }
-}
-
-@media (max-width: 1024px) {
-    .alarm-rule-container {
-        width: calc(100% - 10px);
-        margin-left: 5px;
-    }
-
-    .history-filter {
-        flex-direction: column;
-    }
-
-    .filter-select {
-        flex: 1;
-    }
-
-    .alerts-container,
-    .history-container {
-        max-height: none;
-    }
+  main {
+    flex-direction: column;
+  }
+  main > section {
+    width: 100%;
+    max-width: none;
+    box-sizing: border-box;
+  }
 }
 </style>
