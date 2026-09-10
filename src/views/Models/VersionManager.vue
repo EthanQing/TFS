@@ -549,8 +549,15 @@ export default {
           token !== this.listRequestToken
         )
           return;
+        const total = Number(data && data.meta && data.meta.total) || 0;
+        const lastPage = Math.max(1, Math.ceil(total / this.pageSize));
+        if (this.page > lastPage) {
+          this.page = lastPage;
+          await this.loadVersions(generation, projectId);
+          return;
+        }
         this.versions = Array.isArray(data && data.items) ? data.items : [];
-        this.total = Number(data && data.meta && data.meta.total) || 0;
+        this.total = total;
         if (this.selectedVersion)
           this.selectedVersion =
             this.versions.find(
@@ -755,6 +762,8 @@ export default {
         await createModelVersion(payload);
         if (!this.isCurrent(generation, projectId)) return;
         this.createVisible = false;
+        this.stageFilter = payload.stage;
+        this.page = 1;
         this.$message.success('模型版本创建成功');
         await this.loadProjectData();
       } catch (error) {
