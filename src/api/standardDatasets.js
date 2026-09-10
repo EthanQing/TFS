@@ -199,7 +199,6 @@ export async function fetchStandardDatasetView(datasetId, { classId = null, page
     const url = `${PREFIX}/${encodeURIComponent(datasetId)}/view?${params.toString()}`;
     const data = await getJson(url);
     return {
-        dataset_id: data.dataset_id,
         categories: data.categories || [],
         items: (data.items || []).map(item => {
             const relPath = String(item.path || item.name || '').trim();
@@ -223,9 +222,6 @@ export async function fetchStandardDatasetView(datasetId, { classId = null, page
             page_size: Number(data?.meta?.page_size || pageSize || 50) || 50,
             total_items: Number(data?.meta?.total_items || 0) || 0,
             total_pages: Number(data?.meta?.total_pages || 0) || 0,
-            thumbnail_status: data?.meta?.thumbnail_status || null,
-            thumbnail_progress: data?.meta?.thumbnail_progress ?? null,
-            view_index_status: data?.meta?.view_index_status || null,
         },
     };
 }

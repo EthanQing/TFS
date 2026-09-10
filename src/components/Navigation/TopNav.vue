@@ -105,7 +105,7 @@ export default {
     },
     isProjectActive() {
       const p = this.$route.path;
-      return p === "/projects" || p.startsWith("/projectsdetail") || p.includes("/projectscharts") || p.includes("/models/modelsstep1");
+      return p === "/projects" || p.startsWith("/projectsdetail") || p.includes("/projectscharts");
     },
     isArchitectureActive() {
       return this.$route.path === "/architecture";

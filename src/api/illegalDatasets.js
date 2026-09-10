@@ -5,9 +5,8 @@
 import {
     API_BASE,
     safeJson, postJson, putJson, deleteJson, getJson,
-    xhrUploadJson,
     chunkedUpload,
-    toAbsUrl, formatMb, normalizeFileArray,
+    formatMb,
     pickErrorMessage,
 } from './apiUtils';
 
@@ -93,7 +92,6 @@ export function uploadIllegalDatasetChunked(datasetId, file, options = {}) {
     const { message, created_by, mode, ...rest } = options;
 
     const extraCreateFields = { mode: mode || 'upload' };
-    if (message) extraCreateFields.message = message;
     if (created_by) extraCreateFields.created_by = created_by;
 
     const extraCompleteFields = {};
@@ -106,56 +104,13 @@ export function uploadIllegalDatasetChunked(datasetId, file, options = {}) {
     });
 }
 
-export function uploadIllegalDatasetImages(datasetId, files, {
-    relativeDir = 'images',
-    labels = [],
-    labelsRelativeDir = null,
-    message = null,
-    createdBy = null,
-    onProgress = null,
-    onUploadDone = null,
-} = {}) {
-    if (!datasetId) return { promise: Promise.reject(new Error('缺少 datasetId')), cancel: () => {} };
-    const imageFiles = normalizeFileArray(files);
-    const labelFiles = normalizeFileArray(labels);
-    if (!imageFiles.length) return { promise: Promise.reject(new Error('请选择要上传的图片')), cancel: () => {} };
-
-    const formData = new FormData();
-    imageFiles.forEach(f => formData.append('files', f));
-    formData.append('relative_dir', relativeDir);
-    if (labelFiles.length > 0) {
-        labelFiles.forEach(l => formData.append('labels', l));
-        if (labelsRelativeDir) formData.append('labels_relative_dir', labelsRelativeDir);
-    }
-    if (message) formData.append('message', message);
-    if (createdBy) formData.append('created_by', createdBy);
-
-    return xhrUploadJson(
-        `${PREFIX}/${encodeURIComponent(datasetId)}/uploads/images`,
-        formData,
-        { onProgress, onUploadDone }
-    );
-}
-
 // ── Versions ──────────────────────────────────────────────────────────────
-
-export async function fetchIllegalDatasetVersions(datasetId, { page = 1, pageSize = 50 } = {}) {
-    const url = `${PREFIX}/${encodeURIComponent(datasetId)}/versions?page=${page}&page_size=${pageSize}`;
-    return getJson(url);
-}
 
 export async function activateIllegalDatasetVersion(datasetId, versionId) {
     return postJson(
         `${PREFIX}/${encodeURIComponent(datasetId)}/versions/${encodeURIComponent(versionId)}/activate`,
         {}
     );
-}
-
-// ── Events ────────────────────────────────────────────────────────────────
-
-export async function fetchIllegalDatasetEvents(datasetId, { page = 1, pageSize = 50 } = {}) {
-    const url = `${PREFIX}/${encodeURIComponent(datasetId)}/events?page=${page}&page_size=${pageSize}`;
-    return getJson(url);
 }
 
 // ── Labels / Mapping ──────────────────────────────────────────────────────
@@ -230,45 +185,7 @@ export async function cancelIllegalDatasetPublishJob(datasetId, jobId) {
     return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/publish-jobs/${encodeURIComponent(jobId)}/cancel`, {});
 }
 
-// ── View / Annotations / Statistics / Files ──────────────────────────────
-
-export async function fetchIllegalDatasetView(datasetId, { versionId = null, classId = null, page = 1, pageSize = 50 } = {}) {
-    const params = new URLSearchParams();
-    if (versionId != null && versionId !== '') params.set('version_id', String(versionId));
-    if (classId != null && classId !== '') params.set('class_id', String(classId));
-    params.set('page', String(page || 1));
-    params.set('page_size', String(pageSize || 50));
-
-    const url = `${PREFIX}/${encodeURIComponent(datasetId)}/view?${params.toString()}`;
-    const data = await getJson(url);
-    return {
-        dataset_id: data.dataset_id,
-        version_id: data.version_id,
-        categories: data.categories || [],
-        items: (data.items || []).map(item => {
-            const relPath = String(item.path || item.name || '').trim();
-            const backendImageUrl = item.image_url || item.url || '';
-            return {
-                ...item,
-                image_name: item.name,
-                image_path: relPath || item.name,
-                image_url: toAbsUrl(backendImageUrl),
-                thumbnail_url: '',
-                objects_count: Number(item.object_count ?? item.classes?.length ?? 0) || 0,
-                classes_in_image: item.classes || [],
-            };
-        }),
-        meta: {
-            page: Number(data?.meta?.page || 1) || 1,
-            page_size: Number(data?.meta?.page_size || pageSize || 50) || 50,
-            total_items: Number(data?.meta?.total_items || 0) || 0,
-            total_pages: Number(data?.meta?.total_pages || 0) || 0,
-            thumbnail_status: data?.meta?.thumbnail_status || null,
-            thumbnail_progress: data?.meta?.thumbnail_progress ?? null,
-            view_index_status: data?.meta?.view_index_status || null,
-        },
-    };
-}
+// ── Statistics ──────────────────────────────
 
 export async function fetchIllegalDatasetStatistics(datasetId, { versionId = null } = {}) {
     const params = new URLSearchParams();

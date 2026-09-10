@@ -444,14 +444,6 @@ export async function fetchTrainingJobsPage(page = 1, pageSize = 20, filters = {
     let url = `${API_BASE}/api/v3/training-runs?page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
     if (filters.project_id) url += `&project_id=${encodeURIComponent(filters.project_id)}`;
     if (filters.status) url += `&status=${encodeURIComponent(filters.status)}`;
-    if (filters.search) {
-      // Note: The backend currently doesn't support search query parameter generically, only specific fields.
-      // If backend doesn't support search, we might need to filter client side or just ignore.
-      // Assuming backend doesn't support 'search' param yet based on previous file reads.
-      // However, to implementing full server side search we would need backend changes.
-      // For now, let's just pass what we can.
-    }
-
     const res = await fetch(url);
     const data = await safeJson(res);
     if (!res.ok) throw new Error(toErrorMessage(data, res));

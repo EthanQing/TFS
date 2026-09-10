@@ -87,6 +87,19 @@ export async function putForm(url, formData) {
     return data || {};
 }
 
+export async function postFormFields(url, fields) {
+    const formData = new FormData();
+    Object.entries(fields || {}).forEach(([key, value]) => {
+        if (value !== null && value !== undefined) {
+            formData.append(key, String(value));
+        }
+    });
+    const res = await fetch(url, { method: 'POST', body: formData });
+    const data = await safeJson(res);
+    if (!res.ok) throw new Error(pickErrorMessage(data, res));
+    return data || {};
+}
+
 export async function deleteJson(url) {
     const res = await fetch(url, { method: 'DELETE' });
     const data = await safeJson(res);
@@ -97,58 +110,6 @@ export async function deleteJson(url) {
         throw err;
     }
     return data;
-}
-
-// ── XHR upload (with progress / cancel) ───────────────────────────────────
-
-export function xhrUploadJson(url, formData, { onProgress = null, onUploadDone = null } = {}) {
-    const xhr = new XMLHttpRequest();
-
-    const promise = new Promise((resolve, reject) => {
-        xhr.open('POST', url, true);
-        xhr.responseType = 'text';
-
-        if (xhr.upload) {
-            xhr.upload.onprogress = (evt) => {
-                if (typeof onProgress !== 'function') return;
-                const loaded = Number(evt && evt.loaded) || 0;
-                const total = Number(evt && evt.total) || 0;
-                const percent = evt && evt.lengthComputable && total > 0 ? Math.round((loaded / total) * 100) : null;
-                onProgress({ loaded, total, percent });
-            };
-            xhr.upload.onload = () => {
-                if (typeof onUploadDone === 'function') onUploadDone();
-            };
-        }
-
-        xhr.onload = () => {
-            const status = Number(xhr.status) || 0;
-            let data = null;
-            try {
-                data = xhr.responseText ? JSON.parse(xhr.responseText) : null;
-            } catch (_) {
-                data = null;
-            }
-
-            if (status >= 200 && status < 300) {
-                resolve(data);
-                return;
-            }
-            reject(new Error(pickErrorMessage(data, { status })));
-        };
-
-        xhr.onerror = () => reject(new Error('Network error'));
-        xhr.onabort = () => reject(new Error('Upload cancelled'));
-
-        xhr.send(formData);
-    });
-
-    return {
-        promise,
-        cancel: () => {
-            try { xhr.abort(); } catch (_) { /* ignore */ }
-        },
-    };
 }
 
 // ── Chunked upload helper ─────────────────────────────────────────────────
@@ -167,8 +128,8 @@ export function xhrUploadJson(url, formData, { onProgress = null, onUploadDone =
  * @param {Function} [options.onStageChange] - (stage, info) => void，上传会话阶段变化
  * @param {Function} [options.onTaskReady] - (taskId) => void，complete 返回 task_id 后回调
  * @param {Function} [options.onSessionCreated] - ({ sessionId, ...info }) => void，会话创建/恢复后回调
- * @param {Object} [options.extraCreateFields] - 创建会话时的额外字段 { message, created_by, mode }
- * @param {Object} [options.extraCompleteFields] - 完成上传时的额外字段 { message }
+ * @param {Object} [options.extraCreateFields] - 创建会话时的额外字段 { created_by, mode }
+ * @param {Object} [options.extraCompleteFields] - 完成上传时以 form fields 提交的额外字段 { message }
  * @param {AbortSignal} [options.signal] - 外部取消信号
  * @param {string} [options.resumeSessionId] - 断点续传：已有会话 ID，跳过已上传分片
  * @returns {{ promise: Promise, cancel: Function }}
@@ -342,10 +303,10 @@ export function chunkedUpload(
             });
         }
 
-        const done = await postJson(
-            `${baseUrl}/upload-sessions/${encodeURIComponent(sessionId)}/complete`,
-            completePayload
-        );
+        const completeUrl = `${baseUrl}/upload-sessions/${encodeURIComponent(sessionId)}/complete`;
+        const done = Object.keys(completePayload).length > 0
+            ? await postFormFields(completeUrl, completePayload)
+            : await postJson(completeUrl, {});
 
         // 5. 通知 task_id
         const taskId = done && done.task_id ? done.task_id : null;
@@ -626,15 +587,6 @@ export function toAbsUrl(url) {
 export function encodePathSegments(p) {
     const s = String(p || '').replace(/\\/g, '/');
     return s.split('/').map(seg => encodeURIComponent(seg)).join('/');
-}
-
-export function normalizeFileArray(input) {
-    if (!input) return [];
-    if (Array.isArray(input)) return input.filter(Boolean);
-    if (typeof File !== 'undefined' && input instanceof File) return [input];
-    if (typeof FileList !== 'undefined' && input instanceof FileList) return Array.from(input).filter(Boolean);
-    if (typeof input.length === 'number') return Array.from(input).filter(Boolean);
-    return [input];
 }
 
 export function formatMb(mb) {
