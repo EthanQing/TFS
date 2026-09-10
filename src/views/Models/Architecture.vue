@@ -105,6 +105,7 @@
       title="自定义模型包"
       :visible.sync="packageDialogVisible"
       width="1000px"
+      append-to-body
       @closed="resetPackageUpload"
     >
       <div class="package-toolbar">
@@ -203,7 +204,12 @@
       </el-table>
     </el-dialog>
 
-    <el-dialog title="注册自定义模型架构" :visible.sync="registerDialogVisible" width="520px">
+    <el-dialog
+      title="注册自定义模型架构"
+      :visible.sync="registerDialogVisible"
+      width="520px"
+      append-to-body
+    >
       <div v-if="selectedPackage" class="selected-package">
         <div><span>模型包：</span>{{ packageName(selectedPackage) }}</div>
         <div><span>Package ID：</span>#{{ selectedPackage.package_id }}</div>
