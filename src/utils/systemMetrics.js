@@ -8,6 +8,7 @@ export const DEFAULT_HISTORY_SYNC_MS = 60000;
 const DEFAULT_HISTORY_WINDOW_MS = DEFAULT_HISTORY_MINUTES * 60 * 1000;
 
 function toNumberOrNull(value) {
+  if (value == null) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }

@@ -52,14 +52,13 @@
     </nav>
     
     <div class="sidebar-footer">
-        <!-- TODO: 性能监控暂时隐藏，需要时取消注释即可恢复
         <div
           class="monitor-entry"
           :class="{ active: isPerformanceMonitorActive }"
           @mouseenter="handleMonitorEnter"
           @mouseleave="handleMonitorLeave"
         >
-            <button type="button" class="monitor-trigger" @click="navigate('/performance-monitor')">
+            <button type="button" class="monitor-trigger" @click="openPerformanceMonitor">
                 <div class="monitor-trigger-main">
                     <i class="el-icon-data-analysis nav-icon monitor-icon"></i>
                     <span>性能监控</span>
@@ -73,7 +72,6 @@
               :error="monitorError"
             />
         </div>
-        -->
         <div class="user-profile">
             <div class="avatar"><i class="el-icon-user-solid"></i></div>
             <div class="user-info">
@@ -86,20 +84,18 @@
 </template>
 
 <script>
-// TODO: 性能监控暂时隐藏，需要时取消注释即可恢复
-// import PerformanceHoverPanel from "@/components/Performance/PerformanceHoverPanel.vue";
-// import { metricsStore, subscribe, unsubscribe } from "@/store/metricsStore";
+import PerformanceHoverPanel from "@/components/Performance/PerformanceHoverPanel.vue";
+import { metricsStore, subscribe, unsubscribe } from "@/store/metricsStore";
 
 export default {
   name: "TopNav",
   components: {
-    // PerformanceHoverPanel,
+    PerformanceHoverPanel,
   },
   data() {
     return {
-      // TODO: 性能监控暂时隐藏
-      // monitorHovered: false,
-      // monitorSubscribed: false,
+      monitorHovered: false,
+      monitorSubscribed: false,
     };
   },
   computed: {
@@ -118,47 +114,49 @@ export default {
       const p = this.$route.path;
       return p === "/deployment" || p.startsWith("/deployment");
     },
-    // TODO: 性能监控暂时隐藏
-    // isPerformanceMonitorActive() {
-    //   const p = this.$route.path;
-    //   return p === "/performance-monitor" || p.startsWith("/performance-monitor");
-    // },
-    // monitorMetric() {
-    //   return metricsStore.summary;
-    // },
-    // monitorLoading() {
-    //   return metricsStore.initialLoading || metricsStore.refreshing;
-    // },
-    // monitorError() {
-    //   return metricsStore.error;
-    // },
+    isPerformanceMonitorActive() {
+      const p = this.$route.path;
+      return p === "/performance-monitor" || p.startsWith("/performance-monitor");
+    },
+    monitorMetric() {
+      return metricsStore.summary;
+    },
+    monitorLoading() {
+      return metricsStore.initialLoading || metricsStore.refreshing;
+    },
+    monitorError() {
+      return metricsStore.error;
+    },
   },
-  // TODO: 性能监控暂时隐藏
-  // beforeDestroy() {
-  //   this.releaseMonitorSubscription();
-  // },
+  beforeDestroy() {
+    this.releaseMonitorSubscription();
+  },
   methods: {
     navigate(path) {
       if (this.$route.path !== path) {
         this.$router.push(path);
       }
     },
-    // TODO: 性能监控暂时隐藏
-    // async handleMonitorEnter() {
-    //   this.monitorHovered = true;
-    //   if (this.monitorSubscribed) return;
-    //   this.monitorSubscribed = true;
-    //   await subscribe();
-    // },
-    // handleMonitorLeave() {
-    //   this.monitorHovered = false;
-    //   this.releaseMonitorSubscription();
-    // },
-    // releaseMonitorSubscription() {
-    //   if (!this.monitorSubscribed) return;
-    //   unsubscribe();
-    //   this.monitorSubscribed = false;
-    // },
+    openPerformanceMonitor() {
+      this.monitorHovered = false;
+      this.releaseMonitorSubscription();
+      this.navigate('/performance-monitor');
+    },
+    async handleMonitorEnter() {
+      this.monitorHovered = true;
+      if (this.monitorSubscribed) return;
+      this.monitorSubscribed = true;
+      await subscribe();
+    },
+    handleMonitorLeave() {
+      this.monitorHovered = false;
+      this.releaseMonitorSubscription();
+    },
+    releaseMonitorSubscription() {
+      if (!this.monitorSubscribed) return;
+      unsubscribe();
+      this.monitorSubscribed = false;
+    },
   },
 };
 </script>

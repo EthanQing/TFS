@@ -148,7 +148,7 @@ export async function subscribe() {
       metricsStore.initialLoading = false;
       _bootstrapped = true;
     }
-    _startTimers();
+    if (_refCount > 0) _startTimers();
   }
 }
 

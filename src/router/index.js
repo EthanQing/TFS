@@ -37,8 +37,7 @@ const AlarmRule = () => import('@/views/Configuration/AlarmRule.vue')
 const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
 const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
-// TODO: 性能监控暂时隐藏，需要时取消注释即可恢复
-// const PerformanceMonitor = () => import('@/views/Monitoring/PerformanceMonitor.vue')
+const PerformanceMonitor = () => import('@/views/Monitoring/PerformanceMonitor.vue')
 
 export default new VueRouter({
     routes: [
@@ -103,11 +102,11 @@ export default new VueRouter({
             path: '/modelformatconversion',
             component: FormatConversion
         },
-        // TODO: 性能监控暂时隐藏，需要时取消注释即可恢复
-        // {
-        //     path: '/performance-monitor',
-        //     component: PerformanceMonitor
-        // },
+        {
+            path: '/performance-monitor',
+            component: PerformanceMonitor,
+            meta: { title: '性能监控' }
+        },
         {
             path: '/training-report',
             name: 'TrainingReport',
