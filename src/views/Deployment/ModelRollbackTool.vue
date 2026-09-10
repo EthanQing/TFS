@@ -6,7 +6,7 @@
         <p>将当前生效的部署回滚到之前成功部署的模型版本。</p>
       </div>
       <div class="tool-actions">
-        <el-button class="action-btn" size="medium" @click="reloadAll" :loading="loading">刷新</el-button>
+        <el-button class="action-btn" size="medium" @click="reloadAll" :loading="loading" :disabled="rollbackContextLocked">刷新</el-button>
       </div>
     </div>
 
@@ -16,6 +16,7 @@
           <label>所属项目</label>
           <el-select
             v-model="projectId"
+            :disabled="rollbackContextLocked"
             filterable
             clearable
             placeholder="选择项目"
@@ -53,7 +54,7 @@
     <el-card shadow="never" class="card-block" v-if="activeDeployment" v-loading="loadingCandidates">
       <div class="card-title">可回滚的候选版本</div>
       <template v-if="candidateList.length">
-        <el-radio-group v-model="targetModelVersionId" class="candidate-list">
+        <el-radio-group v-model="targetModelVersionId" :disabled="rollbackContextLocked" class="candidate-list">
           <el-radio
             v-for="item in candidateList"
             :key="item.model_version_id"
@@ -79,11 +80,11 @@
       <div class="card-title">执行回滚</div>
       <el-form label-position="top" size="small">
         <el-form-item label="操作人">
-          <el-input v-model="operator" placeholder="操作人" />
+          <el-input v-model="operator" :disabled="submitting" placeholder="操作人" />
         </el-form-item>
         <el-form-item label="回滚原因" required>
           <el-input
-            v-model="reason"
+            v-model="reason" :disabled="submitting"
             type="textarea"
             :rows="3"
             placeholder="请简要说明回滚原因"
@@ -166,6 +167,9 @@ export default {
     };
   },
   computed: {
+    rollbackContextLocked() {
+      return this.loading || this.loadingDeployment || this.loadingCandidates || this.loadingHistory || this.submitting;
+    },
     canSubmit() {
       return (
         !!this.activeDeployment &&

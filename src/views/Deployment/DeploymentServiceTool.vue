@@ -6,7 +6,7 @@
         <p>手动部署，包含完整步骤、进度、日志、重试及回滚入口。</p>
       </div>
       <div class="tool-actions">
-        <el-button class="action-btn" size="medium" @click="reloadAll" :loading="loading">刷新</el-button>
+        <el-button class="action-btn" size="medium" @click="reloadAll" :loading="loading" :disabled="deploymentContextLocked">刷新</el-button>
         <el-button class="action-btn" size="medium" type="warning" @click="goRollback" :disabled="!projectId">回滚</el-button>
       </div>
     </div>
@@ -15,7 +15,7 @@
       <div class="card-title">流水线配置</div>
       <el-form label-position="top" size="small" class="form-grid">
         <el-form-item label="所属项目">
-          <el-select v-model="projectId" filterable clearable placeholder="选择项目" @change="onProjectChange">
+          <el-select v-model="projectId" :disabled="deploymentContextLocked" filterable clearable placeholder="选择项目" @change="onProjectChange">
             <el-option
               v-for="p in projectList"
               :key="p.project_id"
@@ -25,7 +25,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="模型版本">
-          <el-select v-model="modelVersionId" filterable clearable placeholder="选择模型版本">
+          <el-select v-model="modelVersionId" :disabled="deploymentContextLocked" filterable clearable placeholder="选择模型版本">
             <el-option
               v-for="mv in modelVersions"
               :key="mv.model_version_id"
@@ -36,7 +36,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="部署名称">
-          <el-input v-model="deploymentName" placeholder="例如 production-gateway" />
+          <el-input v-model="deploymentName" :disabled="deploymentContextLocked" placeholder="例如 production-gateway" />
         </el-form-item>
         <el-form-item label="部署平台">
           <el-select v-model="platform" disabled>
@@ -44,7 +44,7 @@
           </el-select>
         </el-form-item>
         <el-form-item label="复用已有部署 (可选)">
-          <el-select v-model="selectedDeploymentId" clearable placeholder="留空则创建新部署">
+          <el-select v-model="selectedDeploymentId" :disabled="deploymentContextLocked" clearable placeholder="留空则创建新部署">
             <el-option
               v-for="d in deployments"
               :key="d.deployment_id"
@@ -55,13 +55,13 @@
           </el-select>
         </el-form-item>
         <el-form-item label="API Key 轮换">
-          <el-switch v-model="rotateApiKey" active-text="执行并轮换" inactive-text="保留现有" />
+          <el-switch v-model="rotateApiKey" :disabled="deploymentContextLocked" active-text="执行并轮换" inactive-text="保留现有" />
         </el-form-item>
         <el-form-item label="默认置信度">
-          <el-slider v-model="defaults.conf" :min="0" :max="1" :step="0.01" show-input />
+          <el-slider v-model="defaults.conf" :disabled="deploymentContextLocked" :min="0" :max="1" :step="0.01" show-input />
         </el-form-item>
         <el-form-item label="默认 IoU">
-          <el-slider v-model="defaults.iou" :min="0" :max="1" :step="0.01" show-input />
+          <el-slider v-model="defaults.iou" :disabled="deploymentContextLocked" :min="0" :max="1" :step="0.01" show-input />
         </el-form-item>
       </el-form>
     </el-card>
@@ -75,10 +75,10 @@
       </div>
       <el-form label-position="top" size="small" class="trigger-form">
         <el-form-item label="操作人">
-          <el-input v-model="operator" />
+          <el-input v-model="operator" :disabled="deploymentContextLocked" />
         </el-form-item>
         <el-form-item label="部署原因">
-          <el-input v-model="reason" type="textarea" :rows="2" placeholder="选填，部署原因描述" />
+          <el-input v-model="reason" :disabled="deploymentContextLocked" type="textarea" :rows="2" placeholder="选填，部署原因描述" />
         </el-form-item>
       </el-form>
     </el-card>
@@ -222,8 +222,11 @@ export default {
     };
   },
   computed: {
+    deploymentContextLocked() {
+      return this.loading || this.executing || this.cancelLoading || this.isRunning;
+    },
     canExecute() {
-      return !!this.projectId && !!this.selectedTargetSupported && !this.isRunning && !this.loading && !this.executing;
+      return !!this.projectId && !!this.selectedTargetSupported && !this.deploymentContextLocked;
     },
     isRunning() {
       return this.runStatus === "queued" || this.runStatus === "running";
@@ -234,12 +237,11 @@ export default {
         (this.runStatus === "failed" || this.runStatus === "cancelled") &&
         !!this.runDeploymentSupported &&
         Number(this.selectedDeploymentId) === Number(this.runDeploymentId) &&
-        !this.loading &&
-        !this.executing
+        !this.deploymentContextLocked
       );
     },
     canCancel() {
-      return !!this.runId && this.isRunning;
+      return !!this.runId && this.isRunning && !this.cancelLoading;
     },
     progressStatus() {
       return statusToProgressStatus(this.runStatus);
@@ -395,21 +397,18 @@ export default {
       this.deployments = deployments;
       this.validateSelectedDeployment();
     },
-    async ensureDeploymentId() {
-      if (this.selectedDeploymentId) {
-        if (!this.deploymentSupported(this.selectedDeployment)) throw new Error("当前部署不支持执行");
-        return Number(this.selectedDeploymentId);
+    async ensureDeploymentId({ projectId, modelVersionId, selectedDeploymentId, name, platform, generation }) {
+      if (!this.isCurrentLoad(generation) || parseProjectId(this.projectId) !== projectId) {
+        throw new Error("项目已变更，请重新执行");
       }
-      if (!this.selectedModelVersion?.deployment_supported) throw new Error("当前模型版本不支持部署");
-      const projectId = parseProjectId(this.projectId);
-      const modelVersionId = Number(this.modelVersionId);
-      const generation = this.loadGeneration;
-      const payload = {
-        model_version_id: modelVersionId,
-        name: String(this.deploymentName || "").trim() || `deployment-${Date.now()}`,
-        platform: this.platform || "local",
-      };
-      const created = await createDeployment(payload);
+      if (selectedDeploymentId) {
+        const deployment = this.deployments.find((d) => Number(d.deployment_id) === selectedDeploymentId);
+        if (!this.deploymentSupported(deployment)) throw new Error("当前部署不支持执行");
+        return selectedDeploymentId;
+      }
+      const modelVersion = this.modelVersions.find((mv) => Number(mv.model_version_id) === modelVersionId);
+      if (!modelVersion?.deployment_supported) throw new Error("当前模型版本不支持部署");
+      const created = await createDeployment({ model_version_id: modelVersionId, name, platform });
       if (
         !this.isCurrentLoad(generation) ||
         parseProjectId(this.projectId) !== projectId ||
@@ -421,20 +420,37 @@ export default {
       const depId = Number(created?.deployment_id);
       if (!Number.isFinite(depId)) throw new Error("Create deployment failed: missing deployment_id");
       this.selectedDeploymentId = depId;
-      await this.loadDeployments(this.projectId, generation);
+      await this.loadDeployments(projectId, generation);
       return depId;
     },
     async startDeployment() {
       if (!this.canExecute || !this.selectedTargetSupported) return;
       const generation = this.loadGeneration;
       const projectId = parseProjectId(this.projectId);
+      const modelVersionId = Number(this.modelVersionId) || null;
+      const selectedDeploymentId = Number(this.selectedDeploymentId) || null;
+      const action = {
+        projectId,
+        modelVersionId,
+        selectedDeploymentId,
+        generation,
+        name: String(this.deploymentName || "").trim() || `deployment-${Date.now()}`,
+        platform: this.platform || "local",
+      };
+      const executePayload = {
+        operator: String(this.operator || "admin").trim() || "admin",
+        reason: String(this.reason || "").trim() || null,
+        rotate_api_key: !!this.rotateApiKey,
+        conf: Number(this.defaults.conf),
+        iou: Number(this.defaults.iou),
+      };
       this.executing = true;
       this.errorMessage = "";
       this.wsHint = "";
       this.issuedApiKey = "";
       this.apiKeyHint = "";
       try {
-        const depId = await this.ensureDeploymentId();
+        const depId = await this.ensureDeploymentId(action);
         if (
           !this.isCurrentLoad(generation) ||
           parseProjectId(this.projectId) !== projectId ||
@@ -443,14 +459,11 @@ export default {
           throw new Error("项目已变更，请重新执行");
         }
         const deployment = this.deployments.find((d) => Number(d.deployment_id) === depId);
-        if (!this.deploymentSupported(deployment)) throw new Error("当前部署不支持执行");
-        const out = await executeDeployment(depId, {
-          operator: String(this.operator || "admin").trim() || "admin",
-          reason: String(this.reason || "").trim() || null,
-          rotate_api_key: !!this.rotateApiKey,
-          conf: Number(this.defaults.conf),
-          iou: Number(this.defaults.iou),
-        });
+        const matchesTarget = selectedDeploymentId
+          ? depId === selectedDeploymentId
+          : Number(deployment?.model_version_id) === modelVersionId;
+        if (!matchesTarget || !this.deploymentSupported(deployment)) throw new Error("当前部署不支持执行");
+        const out = await executeDeployment(depId, executePayload);
         if (!this.isCurrentLoad(generation) || parseProjectId(this.projectId) !== projectId) return;
         this.runDeploymentId = depId;
         this.applyRun(out?.run || {});
