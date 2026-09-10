@@ -3,7 +3,7 @@
         <div class="tool-header premium-header">
             <div class="header-content">
                 <h3 class="gradient-text"><i class="el-icon-refresh"></i> 模型格式转换</h3>
-                <p>将 PyTorch (.pt) 模型转换为 ONNX 以进行部署。</p>
+                <p>将 PyTorch weights (.pt / .pth) 转换为 ONNX 以进行部署。</p>
             </div>
             <div class="tool-actions">
                 <el-button class="action-btn" size="medium" @click="handleReset" :disabled="converting">
@@ -25,17 +25,13 @@
                 <div class="config-form">
                     <div class="form-row">
                         <label>源格式</label>
-                        <el-radio-group v-model="form.sourceFormat" :disabled="converting" size="small">
-                            <el-radio-button label="pt">PyTorch (.pt)</el-radio-button>
-                            <!-- <el-radio-button label="pdmodel" disabled>Paddle (即将推出)</el-radio-button> -->
-                        </el-radio-group>
+                        <span>PyTorch weights (.pt / .pth)</span>
                     </div>
 
                     <div class="form-row">
                         <label>目标格式</label>
                         <el-radio-group v-model="form.targetFormat" :disabled="converting" size="small">
                             <el-radio-button label="onnx">ONNX</el-radio-button>
-                            <!-- <el-radio-button label="tensorrt" disabled>TensorRT (即将推出)</el-radio-button> -->
                         </el-radio-group>
                     </div>
 
@@ -53,7 +49,7 @@
                         >
                             <div v-if="!uploadFile" class="upload-placeholder">
                                 <i class="el-icon-upload"></i>
-                                <div class="upload-text">拖拽 .pt 文件到此处</div>
+                                <div class="upload-text">拖拽 .pt / .pth 文件到此处</div>
                             </div>
                             <div v-else class="upload-file">
                                 <i class="el-icon-document"></i>
@@ -66,31 +62,11 @@
                     <div class="advanced-grid">
                         <div class="param-item">
                             <span class="label">Opset 版本</span>
-                            <el-input-number v-model="form.opset" :min="9" :max="17" :disabled="converting" size="mini" controls-position="right" />
-                        </div>
-                        <div class="param-item">
-                            <span class="label">精度</span>
-                            <el-select v-model="form.precision" size="mini" :disabled="converting">
-                                <el-option label="FP32" value="FP32" />
-                            <el-option label="FP16" value="FP16" />
-                            <el-option label="INT8" value="INT8" />
-                            </el-select>
+                            <el-input-number v-model="form.opset" :min="1" :precision="0" :disabled="converting" size="mini" controls-position="right" />
                         </div>
                         <div class="param-item switch">
                             <span class="label">动态形状</span>
                             <el-switch v-model="form.dynamicShape" :disabled="converting" />
-                        </div>
-                        <div class="param-item switch">
-                            <span class="label">量化</span>
-                            <el-switch v-model="form.enableQuant" :disabled="converting" />
-                        </div>
-                         <div class="param-item wide">
-                            <span class="label">最小形状</span>
-                            <el-input v-model="form.minShape" size="mini" :disabled="converting" />
-                        </div>
-                        <div class="param-item wide">
-                            <span class="label">最大形状</span>
-                            <el-input v-model="form.maxShape" size="mini" :disabled="converting" />
                         </div>
                     </div>
                 </div>
@@ -173,9 +149,7 @@ export default {
     data() {
         return {
             internalForm: {
-                sourceFormat: 'pt', targetFormat: 'onnx', opset: 12, precision: 'FP32',
-                batchSize: 8, threads: 8, dynamicShape: true, enableQuant: false,
-                minShape: '1x3x640x640', maxShape: '8x3x1280x1280'
+                targetFormat: 'onnx', opset: 12, dynamicShape: true
             },
             internalUploadFile: null, 
             internalConverting: false, 
@@ -258,8 +232,7 @@ export default {
             if (!perf) return;
 
             const pt = (perf && perf.pt) || {};
-            const targetKey = this.form.targetFormat || 'onnx';
-            const target = (perf && perf[targetKey]) || {};
+            const target = (perf && perf.onnx) || {};
 
             const ptLat = this.isNumber(pt.latency_ms) ? this.round(pt.latency_ms, 2) : null;
             const targetLat = this.isNumber(target.latency_ms) ? this.round(target.latency_ms, 2) : null;
@@ -289,7 +262,7 @@ export default {
         },
         handleReset() {
              this.stopPolling();
-             this.form = { ...this.form, sourceFormat: 'pt', targetFormat: 'onnx' };
+             this.form = { ...this.form, targetFormat: 'onnx' };
              this.uploadFile = null; this.result = null; this.logs = []; this.progress = 0;
         },
         async startConversion() {
@@ -303,14 +276,16 @@ export default {
              this.logs = ['正在初始化任务...', '正在上传模型: ' + this.uploadFile.name]; 
              this.progress = 0; 
              this.result = null;
-             
+
              try {
                 console.log('Sending request to API...');
+                const filename = String(this.uploadFile?.name || '').toLowerCase();
+                const sourceFormat = filename.endsWith('.pth') ? 'pth' : 'pt';
                 const job = await createModelConversion({
-                    file: this.uploadFile, 
-                    source_format: this.form.sourceFormat, 
-                    target_format: this.form.targetFormat,
-                    opset: this.form.opset, 
+                    file: this.uploadFile,
+                    source_format: sourceFormat,
+                    target_format: 'onnx',
+                    opset: this.form.opset ?? null,
                     dynamic: this.form.dynamicShape
                 });
                 console.log('Job created:', job);
@@ -502,7 +477,6 @@ export default {
 }
 .param-item { display: flex; flex-direction: column; gap: 0.25rem; }
 .param-item.switch { flex-direction: row; justify-content: space-between; align-items: center; border: 1px solid rgba(0,0,0,0.05); padding: 0.5rem; border-radius: var(--radius-sm); background: rgba(255,255,255,0.3); }
-.param-item.wide { grid-column: 1 / -1; }
 .param-item .label { font-size: 0.75rem; color: var(--text-secondary); }
 
 /* Status Panel */

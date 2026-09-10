@@ -22,7 +22,7 @@
             <i class="el-icon-refresh"></i>
             <div class="tool-info">
               <span class="tool-name">格式转换</span>
-              <span class="tool-desc">导出 ONNX / TensorRT</span>
+              <span class="tool-desc">导出 ONNX</span>
             </div>
           </li>
           <li :class="{ active: activeTool === 'comparison' }" @click="setActiveTool('comparison')">

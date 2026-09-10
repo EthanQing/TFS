@@ -28,15 +28,11 @@ const Configuration = () => import('@/views/Training/Configuration.vue')
 const Preview = () => import('@/views/Training/Preview.vue')
 const TrainLogs = () => import('@/views/Training/TrainLogs.vue')
 
-const DataVersionHistoryComparison = () => import('@/views/Datasets/DataVersionHistoryComparison.vue')
 const TrainingTaskComparison = () => import('@/views/Training/TrainingTaskComparison.vue')
 const VersionManager = () => import('@/views/Models/VersionManager.vue')
-const Hyperparameter = () => import('@/views/Training/Hyperparameter.vue')
-const BaseChart = () => import('@/components/Chart/BaseChart.vue') // Kept as route for now if used as demo
 const AlarmRule = () => import('@/views/Configuration/AlarmRule.vue')
 const DeploymentCenter = () => import('@/views/Deployment/DeploymentCenter.vue')
 const ModelFrameSelect = () => import('@/views/Models/ModelFrameSelect.vue')
-const FormatConversion = () => import('@/views/Models/FormatConversion.vue')
 const PerformanceMonitor = () => import('@/views/Monitoring/PerformanceMonitor.vue')
 
 export default new VueRouter({
@@ -66,21 +62,11 @@ export default new VueRouter({
             component: ProjectDetail
         },
         {
-            //新界面
-            path: '/dataversionhistorycomparison',
-            component: DataVersionHistoryComparison
-        }, {
             path: '/trainingtaskcomparison',
             component: TrainingTaskComparison
         }, {
             path: '/modelversionmanagement',
             component: VersionManager
-        }, {
-            path: '/hyperparameter',
-            component: Hyperparameter
-        }, {
-            path: '/customchart',
-            component: BaseChart
         }, {
             path: '/alarmrule',
             component: AlarmRule
@@ -100,7 +86,7 @@ export default new VueRouter({
         },
         {
             path: '/modelformatconversion',
-            component: FormatConversion
+            redirect: { path: '/deployment', query: { tool: 'conversion' } }
         },
         {
             path: '/performance-monitor',
