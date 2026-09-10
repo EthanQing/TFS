@@ -161,35 +161,54 @@ export default {
       reason: "",
       operator: "管理员",
       historyList: [],
+      loadGeneration: 0,
+      destroyed: false,
     };
   },
   computed: {
     canSubmit() {
       return (
         !!this.activeDeployment &&
-        Number.isFinite(Number(this.targetModelVersionId)) &&
+        Number(this.targetModelVersionId) > 0 &&
+        this.candidateList.some(
+          (item) => Number(item.model_version_id) === Number(this.targetModelVersionId)
+        ) &&
         String(this.reason || "").trim().length > 0 &&
+        !this.loading &&
+        !this.loadingDeployment &&
+        !this.loadingCandidates &&
+        !this.loadingHistory &&
         !this.submitting
       );
     },
   },
   watch: {
-    "$route.query.project_id"() {
-      this.hydrateProjectFromContext();
+    "$route.query.project_id"(raw) {
+      const routeProjectId = parseProjectId(raw);
+      if (routeProjectId === parseProjectId(this.projectId)) return;
+      this.projectId = routeProjectId;
+      this.loadProjectData();
     },
   },
   created() {
     this.bootstrap();
   },
+  beforeDestroy() {
+    this.destroyed = true;
+    this.loadGeneration += 1;
+  },
   methods: {
     async bootstrap() {
       this.loading = true;
+      const generation = this.loadGeneration + 1;
+      this.loadGeneration = generation;
       try {
         await this.loadProjects();
+        if (!this.isCurrentLoad(generation)) return;
         this.hydrateProjectFromContext();
         if (this.projectId) await this.loadProjectData();
       } finally {
-        this.loading = false;
+        if (!this.destroyed) this.loading = false;
       }
     },
     async loadProjects() {
@@ -222,10 +241,14 @@ export default {
     },
     onProjectChange() {
       const pid = parseProjectId(this.projectId);
+      const query = { ...this.$route.query, tool: "rollback" };
       if (pid) {
-        this.$router
-          .replace({ path: "/deployment", query: { ...this.$route.query, tool: "rollback", project_id: pid } })
-          .catch(() => {});
+        query.project_id = pid;
+      } else {
+        delete query.project_id;
+      }
+      if (parseProjectId(this.$route?.query?.project_id) !== pid) {
+        this.$router.replace({ path: "/deployment", query }).catch(() => {});
       }
       this.loadProjectData();
     },
@@ -235,11 +258,16 @@ export default {
       await this.loadProjectData();
     },
     async loadProjectData() {
+      const generation = this.loadGeneration + 1;
+      this.loadGeneration = generation;
       this.activeDeployment = null;
       this.currentModelVersionId = null;
       this.candidateList = [];
       this.targetModelVersionId = null;
       this.historyList = [];
+      this.loadingDeployment = false;
+      this.loadingCandidates = false;
+      this.loadingHistory = false;
 
       const pid = parseProjectId(this.projectId);
       if (!pid) return;
@@ -247,50 +275,64 @@ export default {
       this.loadingDeployment = true;
       try {
         const dep = await fetchActiveDeployment(pid);
+        if (!this.isCurrentLoad(generation) || parseProjectId(this.projectId) !== pid) return;
         this.activeDeployment = dep || null;
       } catch (e) {
-        this.activeDeployment = null;
-        this.$message.error(`Failed to load deployment: ${e.message || e}`);
+        if (this.isCurrentLoad(generation)) {
+          this.activeDeployment = null;
+          this.$message.error(`Failed to load deployment: ${e.message || e}`);
+        }
       } finally {
-        this.loadingDeployment = false;
+        if (this.isCurrentLoad(generation)) this.loadingDeployment = false;
       }
 
-      if (!this.activeDeployment) return;
-      await Promise.all([this.loadCandidates(), this.loadHistory()]);
+      if (!this.isCurrentLoad(generation) || !this.activeDeployment) return;
+      const deployment = this.activeDeployment;
+      await Promise.all([this.loadCandidates(deployment, generation), this.loadHistory(deployment, generation)]);
     },
-    async loadCandidates() {
-      if (!this.activeDeployment) return;
+    async loadCandidates(deployment = this.activeDeployment, generation = this.loadGeneration) {
+      if (!deployment) return;
       this.loadingCandidates = true;
       try {
-        const data = await fetchDeploymentRollbackCandidates(this.activeDeployment.deployment_id);
-        this.currentModelVersionId = Number(data?.current_model_version_id || this.activeDeployment.model_version_id || 0) || null;
+        const data = await fetchDeploymentRollbackCandidates(deployment.deployment_id);
+        if (!this.isCurrentLoad(generation) || this.activeDeployment !== deployment) return;
+        this.currentModelVersionId = Number(data?.current_model_version_id || deployment.model_version_id || 0) || null;
         this.candidateList = Array.isArray(data?.candidates) ? data.candidates : [];
         const keep = Number(this.targetModelVersionId);
         if (!this.candidateList.some((it) => Number(it.model_version_id) === keep)) {
           this.targetModelVersionId = this.candidateList.length ? this.candidateList[0].model_version_id : null;
         }
       } catch (e) {
-        this.$message.error(`Failed to load rollback candidates: ${e.message || e}`);
-        this.candidateList = [];
-        this.targetModelVersionId = null;
+        if (this.isCurrentLoad(generation)) {
+          this.$message.error(`Failed to load rollback candidates: ${e.message || e}`);
+          this.candidateList = [];
+          this.targetModelVersionId = null;
+        }
       } finally {
-        this.loadingCandidates = false;
+        if (this.isCurrentLoad(generation)) this.loadingCandidates = false;
       }
     },
-    async loadHistory() {
-      if (!this.activeDeployment) return;
+    async loadHistory(deployment = this.activeDeployment, generation = this.loadGeneration) {
+      if (!deployment) return;
       this.loadingHistory = true;
       try {
-        this.historyList = await fetchDeploymentRollbackHistory(this.activeDeployment.deployment_id, { limit: 200 });
+        const history = await fetchDeploymentRollbackHistory(deployment.deployment_id, { limit: 200 });
+        if (this.isCurrentLoad(generation) && this.activeDeployment === deployment) this.historyList = history;
       } catch (e) {
-        this.historyList = [];
-        this.$message.error(`Failed to load rollback history: ${e.message || e}`);
+        if (this.isCurrentLoad(generation)) {
+          this.historyList = [];
+          this.$message.error(`Failed to load rollback history: ${e.message || e}`);
+        }
       } finally {
-        this.loadingHistory = false;
+        if (this.isCurrentLoad(generation)) this.loadingHistory = false;
       }
     },
     async submitRollback() {
       if (!this.canSubmit || !this.activeDeployment) return;
+      const projectId = parseProjectId(this.projectId);
+      const deploymentId = Number(this.activeDeployment.deployment_id);
+      const targetModelVersionId = Number(this.targetModelVersionId);
+      const generation = this.loadGeneration;
       try {
         await this.$confirm(
           "回滚操作会将当前生效的部署切换至选定的模型版本。是否继续？",
@@ -301,14 +343,30 @@ export default {
         return;
       }
 
+      if (
+        !this.canSubmit ||
+        !this.isCurrentLoad(generation) ||
+        parseProjectId(this.projectId) !== projectId ||
+        Number(this.activeDeployment?.deployment_id) !== deploymentId ||
+        Number(this.targetModelVersionId) !== targetModelVersionId
+      ) {
+        return;
+      }
       this.submitting = true;
       try {
         const payload = {
-          target_model_version_id: Number(this.targetModelVersionId),
+          target_model_version_id: targetModelVersionId,
           reason: String(this.reason || "").trim(),
           operator: String(this.operator || "").trim() || "管理员",
         };
-        await rollbackDeployment(this.activeDeployment.deployment_id, payload);
+        await rollbackDeployment(deploymentId, payload);
+        if (
+          !this.isCurrentLoad(generation) ||
+          parseProjectId(this.projectId) !== projectId ||
+          Number(this.activeDeployment?.deployment_id) !== deploymentId
+        ) {
+          return;
+        }
         this.$message.success("回滚成功");
         this.reason = "";
         await this.loadProjectData();
@@ -323,6 +381,9 @@ export default {
       const d = new Date(v);
       if (Number.isNaN(d.getTime())) return String(v);
       return d.toLocaleString();
+    },
+    isCurrentLoad(generation) {
+      return !this.destroyed && generation === this.loadGeneration;
     },
   },
 };

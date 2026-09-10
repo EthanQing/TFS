@@ -4,12 +4,12 @@
       <div class="hero-left">
         <div class="hero-eyebrow">生产环境就绪</div>
         <h1 class="hero-title">部署中心</h1>
-        <p class="hero-subtitle">一站式完成模型格式转换、对比、推理测试和指标评估。</p>
+        <p class="hero-subtitle">一站式完成模型转换、验证、部署、运行状态跟踪与版本回滚。</p>
       </div>
       <div class="hero-right">
         <div class="stat-card">
           <div class="stat-label">工具数量</div>
-          <div class="stat-value">4</div>
+          <div class="stat-value">6</div>
         </div>
       </div>
     </header>
@@ -46,6 +46,20 @@
               <span class="tool-desc">Precision / Recall / mAP</span>
             </div>
           </li>
+          <li :class="{ active: activeTool === 'deploy-service' }" @click="setActiveTool('deploy-service')">
+            <i class="el-icon-s-platform"></i>
+            <div class="tool-info">
+              <span class="tool-name">模型部署</span>
+              <span class="tool-desc">部署与运行状态跟踪</span>
+            </div>
+          </li>
+          <li :class="{ active: activeTool === 'rollback' }" @click="setActiveTool('rollback')">
+            <i class="el-icon-refresh-left"></i>
+            <div class="tool-info">
+              <span class="tool-name">模型回滚</span>
+              <span class="tool-desc">回滚至历史成功版本</span>
+            </div>
+          </li>
         </ul>
       </aside>
 
@@ -55,6 +69,8 @@
           <ModelComparison v-else-if="activeTool === 'comparison'" />
           <ModelInferenceTest v-else-if="activeTool === 'inference-test'" />
           <ModelEvaluationTool v-else-if="activeTool === 'model-evaluation'" />
+          <DeploymentServiceTool v-else-if="activeTool === 'deploy-service'" />
+          <ModelRollbackTool v-else-if="activeTool === 'rollback'" />
         </transition>
       </main>
     </section>
@@ -66,13 +82,29 @@ import FormatConversion from "@/views/Models/FormatConversion.vue";
 import ModelComparison from "@/views/Deployment/ModelComparison.vue";
 import ModelInferenceTest from "@/views/Deployment/ModelInferenceTest.vue";
 import ModelEvaluationTool from "@/views/Deployment/ModelEvaluationTool.vue";
+import DeploymentServiceTool from "@/views/Deployment/DeploymentServiceTool.vue";
+import ModelRollbackTool from "@/views/Deployment/ModelRollbackTool.vue";
 
 const DEFAULT_TOOL = "conversion";
-const VALID_TOOLS = new Set([DEFAULT_TOOL, "comparison", "inference-test", "model-evaluation"]);
+const VALID_TOOLS = new Set([
+  DEFAULT_TOOL,
+  "comparison",
+  "inference-test",
+  "model-evaluation",
+  "deploy-service",
+  "rollback",
+]);
 
 export default {
   name: "DeploymentCenter",
-  components: { FormatConversion, ModelComparison, ModelInferenceTest, ModelEvaluationTool },
+  components: {
+    FormatConversion,
+    ModelComparison,
+    ModelInferenceTest,
+    ModelEvaluationTool,
+    DeploymentServiceTool,
+    ModelRollbackTool,
+  },
   data() {
     return {
       activeTool: DEFAULT_TOOL,

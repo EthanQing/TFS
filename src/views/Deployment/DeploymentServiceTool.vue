@@ -29,8 +29,9 @@
             <el-option
               v-for="mv in modelVersions"
               :key="mv.model_version_id"
-              :label="`${mv.version} (#${mv.model_version_id})`"
+              :label="modelVersionLabel(mv)"
               :value="mv.model_version_id"
+              :disabled="!mv.deployment_supported"
             />
           </el-select>
         </el-form-item>
@@ -47,8 +48,9 @@
             <el-option
               v-for="d in deployments"
               :key="d.deployment_id"
-              :label="`${d.name} (#${d.deployment_id}) [${d.status}]`"
+              :label="deploymentLabel(d)"
               :value="d.deployment_id"
+              :disabled="!deploymentSupported(d)"
             />
           </el-select>
         </el-form-item>
@@ -147,7 +149,10 @@
 <script>
 import { API_BASE } from "@/utils/request";
 import { fetchProjects } from "@/api/projects";
+import { FetchTrainingJobDetail } from "@/api/training";
 import { createDeployment, fetchDeployment, fetchDeploymentsPage } from "@/api/deployments";
+import { normalizeModelEngine, supportsDeployment } from "@/utils/modelCapabilities";
+import { resolveFramework } from "@/utils/trainingFramework";
 import {
   cancelDeploymentRun,
   executeDeployment,
@@ -211,17 +216,27 @@ export default {
       issuedApiKey: "",
       apiKeyHint: "",
       deploymentInfo: null,
+      runDeploymentId: null,
+      loadGeneration: 0,
+      destroyed: false,
     };
   },
   computed: {
     canExecute() {
-      return !!this.projectId && (!!this.selectedDeploymentId || !!this.modelVersionId) && !this.isRunning;
+      return !!this.projectId && !!this.selectedTargetSupported && !this.isRunning && !this.loading && !this.executing;
     },
     isRunning() {
       return this.runStatus === "queued" || this.runStatus === "running";
     },
     canRetry() {
-      return !!this.runId && (this.runStatus === "failed" || this.runStatus === "cancelled");
+      return (
+        !!this.runId &&
+        (this.runStatus === "failed" || this.runStatus === "cancelled") &&
+        !!this.runDeploymentSupported &&
+        Number(this.selectedDeploymentId) === Number(this.runDeploymentId) &&
+        !this.loading &&
+        !this.executing
+      );
     },
     canCancel() {
       return !!this.runId && this.isRunning;
@@ -229,25 +244,54 @@ export default {
     progressStatus() {
       return statusToProgressStatus(this.runStatus);
     },
+    selectedModelVersion() {
+      return this.modelVersions.find((mv) => Number(mv.model_version_id) === Number(this.modelVersionId)) || null;
+    },
+    selectedDeployment() {
+      return this.deployments.find((d) => Number(d.deployment_id) === Number(this.selectedDeploymentId)) || null;
+    },
+    selectedTargetSupported() {
+      return this.selectedDeploymentId
+        ? this.deploymentSupported(this.selectedDeployment)
+        : !!this.selectedModelVersion?.deployment_supported;
+    },
+    runDeploymentSupported() {
+      const deployment = this.deployments.find((d) => Number(d.deployment_id) === Number(this.runDeploymentId));
+      return this.deploymentSupported(deployment);
+    },
+  },
+  watch: {
+    "$route.query.project_id"(raw) {
+      const routeProjectId = parseProjectId(raw);
+      if (routeProjectId === parseProjectId(this.projectId)) return;
+      this.projectId = routeProjectId;
+      this.loadProjectData();
+    },
   },
   created() {
     this.bootstrap();
   },
   beforeDestroy() {
+    this.destroyed = true;
+    this.loadGeneration += 1;
     this.stopStream();
     this.stopPolling();
   },
   methods: {
     async bootstrap() {
       this.loading = true;
+      const generation = this.loadGeneration + 1;
+      this.loadGeneration = generation;
       try {
-        this.projectList = await fetchProjects(1, 500);
+        const projects = await fetchProjects(1, 500);
+        if (!this.isCurrentLoad(generation)) return;
+        this.projectList = projects;
         this.hydrateProjectFromContext();
         if (this.projectId) await this.loadProjectData();
       } catch (e) {
         this.$message.error(`Failed to load project context: ${e.message || e}`);
       } finally {
-        this.loading = false;
+        if (this.isCurrentLoad(generation)) this.loading = false;
       }
     },
     hydrateProjectFromContext() {
@@ -270,51 +314,120 @@ export default {
     },
     async onProjectChange() {
       const pid = parseProjectId(this.projectId);
-      if (!pid) return;
-      this.$router.replace({ path: "/deployment", query: { ...this.$route.query, tool: "deploy-service", project_id: pid } }).catch(() => {});
+      const query = { ...this.$route.query, tool: "deploy-service" };
+      if (pid) query.project_id = pid;
+      else delete query.project_id;
+      if (parseProjectId(this.$route?.query?.project_id) !== pid) {
+        this.$router.replace({ path: "/deployment", query }).catch(() => {});
+      }
       await this.loadProjectData();
     },
     async loadProjectData() {
       const pid = parseProjectId(this.projectId);
-      if (!pid) return;
+      const generation = this.loadGeneration + 1;
+      this.loadGeneration = generation;
+      this.loading = true;
       this.stopStream();
       this.stopPolling();
       this.resetRunState();
-
-      await Promise.all([this.loadModelVersions(pid), this.loadDeployments(pid)]);
-      if (!this.modelVersionId && this.modelVersions.length) this.modelVersionId = this.modelVersions[0].model_version_id;
+      this.modelVersionId = null;
+      this.selectedDeploymentId = null;
+      this.modelVersions = [];
+      this.deployments = [];
+      if (!pid) {
+        this.loading = false;
+        return;
+      }
+      try {
+        const [modelVersions, deployments] = await Promise.all([
+          this.loadModelVersions(pid),
+          this.fetchDeployments(pid),
+        ]);
+        if (!this.isCurrentLoad(generation) || parseProjectId(this.projectId) !== pid) return;
+        this.modelVersions = modelVersions;
+        this.deployments = deployments;
+        const firstSupported = modelVersions.find((mv) => mv.deployment_supported);
+        this.modelVersionId = firstSupported ? firstSupported.model_version_id : null;
+        this.validateSelectedDeployment();
+      } catch (e) {
+        if (this.isCurrentLoad(generation)) this.$message.error(`Failed to load project data: ${e.message || e}`);
+      } finally {
+        if (this.isCurrentLoad(generation)) this.loading = false;
+      }
     },
     async loadModelVersions(projectId) {
       const url = `${API_BASE}/api/v3/model-versions?project_id=${encodeURIComponent(projectId)}&page=1&page_size=500`;
       const res = await fetch(url);
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data?.detail || data?.message || "Failed to load model versions");
-      this.modelVersions = Array.isArray(data?.items) ? data.items : [];
+      const modelVersions = Array.isArray(data?.items) ? data.items : [];
+      const runIds = [...new Set(modelVersions.map((mv) => String(mv.run_id || "").trim()).filter(Boolean))];
+      const jobEntries = await Promise.all(
+        runIds.map(async (runId) => {
+          try {
+            return [runId, await FetchTrainingJobDetail(runId)];
+          } catch (_) {
+            return [runId, null];
+          }
+        })
+      );
+      const jobsByRunId = new Map(jobEntries);
+      return modelVersions.map((mv) => {
+        const job = jobsByRunId.get(String(mv.run_id || "").trim()) || null;
+        const engine = normalizeModelEngine(job?.engine);
+        const framework = resolveFramework(engine);
+        return {
+          ...mv,
+          engine,
+          framework_key: framework.frameworkKey,
+          framework_label: framework.frameworkLabel,
+          deployment_supported: supportsDeployment(engine),
+        };
+      });
     },
-    async loadDeployments(projectId) {
+    async fetchDeployments(projectId) {
       const page = await fetchDeploymentsPage({ projectId, page: 1, pageSize: 500 });
-      this.deployments = Array.isArray(page?.items) ? page.items : [];
-      if (this.selectedDeploymentId && !this.deployments.some((d) => Number(d.deployment_id) === Number(this.selectedDeploymentId))) {
-        this.selectedDeploymentId = null;
-      }
+      return Array.isArray(page?.items) ? page.items : [];
+    },
+    async loadDeployments(projectId, generation = this.loadGeneration) {
+      const deployments = await this.fetchDeployments(projectId);
+      if (!this.isCurrentLoad(generation) || parseProjectId(this.projectId) !== parseProjectId(projectId)) return;
+      this.deployments = deployments;
+      this.validateSelectedDeployment();
     },
     async ensureDeploymentId() {
-      if (this.selectedDeploymentId) return Number(this.selectedDeploymentId);
-      if (!this.modelVersionId) throw new Error("Please select model version");
+      if (this.selectedDeploymentId) {
+        if (!this.deploymentSupported(this.selectedDeployment)) throw new Error("当前部署不支持执行");
+        return Number(this.selectedDeploymentId);
+      }
+      if (!this.selectedModelVersion?.deployment_supported) throw new Error("当前模型版本不支持部署");
+      const projectId = parseProjectId(this.projectId);
+      const modelVersionId = Number(this.modelVersionId);
+      const generation = this.loadGeneration;
       const payload = {
-        model_version_id: Number(this.modelVersionId),
+        model_version_id: modelVersionId,
         name: String(this.deploymentName || "").trim() || `deployment-${Date.now()}`,
         platform: this.platform || "local",
       };
       const created = await createDeployment(payload);
+      if (
+        !this.isCurrentLoad(generation) ||
+        parseProjectId(this.projectId) !== projectId ||
+        Number(this.modelVersionId) !== modelVersionId ||
+        this.selectedDeploymentId
+      ) {
+        throw new Error("项目或模型版本已变更，请重新执行");
+      }
       const depId = Number(created?.deployment_id);
       if (!Number.isFinite(depId)) throw new Error("Create deployment failed: missing deployment_id");
       this.selectedDeploymentId = depId;
-      await this.loadDeployments(this.projectId);
+      await this.loadDeployments(this.projectId, generation);
       return depId;
     },
     async startDeployment() {
-      if (!this.canExecute) return;
+      if (!this.canExecute || !this.selectedTargetSupported) return;
+      const generation = this.loadGeneration;
+      const projectId = parseProjectId(this.projectId);
       this.executing = true;
       this.errorMessage = "";
       this.wsHint = "";
@@ -322,6 +435,15 @@ export default {
       this.apiKeyHint = "";
       try {
         const depId = await this.ensureDeploymentId();
+        if (
+          !this.isCurrentLoad(generation) ||
+          parseProjectId(this.projectId) !== projectId ||
+          Number(this.selectedDeploymentId) !== depId
+        ) {
+          throw new Error("项目已变更，请重新执行");
+        }
+        const deployment = this.deployments.find((d) => Number(d.deployment_id) === depId);
+        if (!this.deploymentSupported(deployment)) throw new Error("当前部署不支持执行");
         const out = await executeDeployment(depId, {
           operator: String(this.operator || "admin").trim() || "admin",
           reason: String(this.reason || "").trim() || null,
@@ -329,50 +451,65 @@ export default {
           conf: Number(this.defaults.conf),
           iou: Number(this.defaults.iou),
         });
+        if (!this.isCurrentLoad(generation) || parseProjectId(this.projectId) !== projectId) return;
+        this.runDeploymentId = depId;
         this.applyRun(out?.run || {});
         this.issuedApiKey = String(out?.issued_api_key || "");
         this.apiKeyHint = String(out?.api_key_hint || "");
-        this.startStream(this.runId);
-        await this.refreshDeploymentInfo(depId);
+        this.startStream(this.runId, generation);
+        await this.refreshDeploymentInfo(depId, generation);
       } catch (e) {
-        this.errorMessage = e.message || String(e);
-        this.$message.error(`Execute failed: ${this.errorMessage}`);
+        if (this.isCurrentLoad(generation)) {
+          this.errorMessage = e.message || String(e);
+          this.$message.error(`Execute failed: ${this.errorMessage}`);
+        }
       } finally {
         this.executing = false;
       }
     },
     async retryDeployment() {
       if (!this.canRetry || !this.runId) return;
+      const generation = this.loadGeneration;
+      const retryRunId = this.runId;
+      const deploymentId = Number(this.runDeploymentId);
+      if (!this.runDeploymentSupported) return;
       this.executing = true;
       this.errorMessage = "";
       this.wsHint = "";
       try {
-        const out = await retryDeploymentRun(this.runId, {
+        const out = await retryDeploymentRun(retryRunId, {
           operator: String(this.operator || "admin").trim() || "admin",
           reason: String(this.reason || "").trim() || null,
           rotate_api_key: !!this.rotateApiKey,
           conf: Number(this.defaults.conf),
           iou: Number(this.defaults.iou),
         });
+        if (!this.isCurrentLoad(generation) || this.runId !== retryRunId) return;
         this.logs = [];
         this.lastSeq = 0;
         this.applyRun(out?.run || {});
         this.issuedApiKey = String(out?.issued_api_key || "");
         this.apiKeyHint = String(out?.api_key_hint || "");
-        this.startStream(this.runId);
-        if (this.selectedDeploymentId) await this.refreshDeploymentInfo(this.selectedDeploymentId);
+        this.runDeploymentId = deploymentId;
+        this.startStream(this.runId, generation);
+        await this.refreshDeploymentInfo(deploymentId, generation);
       } catch (e) {
-        this.errorMessage = e.message || String(e);
-        this.$message.error(`Retry failed: ${this.errorMessage}`);
+        if (this.isCurrentLoad(generation) && this.runId === retryRunId) {
+          this.errorMessage = e.message || String(e);
+          this.$message.error(`Retry failed: ${this.errorMessage}`);
+        }
       } finally {
         this.executing = false;
       }
     },
     async cancelRun() {
       if (!this.runId || !this.canCancel) return;
+      const generation = this.loadGeneration;
+      const runId = this.runId;
       this.cancelLoading = true;
       try {
-        const run = await cancelDeploymentRun(this.runId);
+        const run = await cancelDeploymentRun(runId);
+        if (!this.isCurrentLoad(generation) || this.runId !== runId) return;
         this.applyRun(run || {});
       } catch (e) {
         this.$message.error(`Cancel failed: ${e.message || e}`);
@@ -384,6 +521,33 @@ export default {
       const pid = parseProjectId(this.projectId);
       if (!pid) return;
       this.$router.replace({ path: "/deployment", query: { ...this.$route.query, tool: "rollback", project_id: pid } }).catch(() => {});
+    },
+    isCurrentLoad(generation) {
+      return !this.destroyed && generation === this.loadGeneration;
+    },
+    modelVersionForDeployment(deployment) {
+      if (!deployment) return null;
+      return this.modelVersions.find(
+        (mv) => Number(mv.model_version_id) === Number(deployment.model_version_id)
+      ) || null;
+    },
+    deploymentSupported(deployment) {
+      return !!this.modelVersionForDeployment(deployment)?.deployment_supported;
+    },
+    modelVersionLabel(modelVersion) {
+      const suffix = modelVersion.deployment_supported ? "" : " · 不支持部署";
+      return `${modelVersion.version} (#${modelVersion.model_version_id}) · ${modelVersion.framework_label}${suffix}`;
+    },
+    deploymentLabel(deployment) {
+      const modelVersion = this.modelVersionForDeployment(deployment);
+      const frameworkLabel = modelVersion?.framework_label || "Engine: unknown";
+      const suffix = this.deploymentSupported(deployment) ? "" : " · 不支持部署";
+      return `${deployment.name} (#${deployment.deployment_id}) [${deployment.status}] · ${frameworkLabel}${suffix}`;
+    },
+    validateSelectedDeployment() {
+      if (this.selectedDeploymentId && !this.deploymentSupported(this.selectedDeployment)) {
+        this.selectedDeploymentId = null;
+      }
     },
     applyRun(run) {
       if (!run || !run.run_id) return;
@@ -413,24 +577,32 @@ export default {
       });
       if (this.logs.length > 1000) this.logs = this.logs.slice(this.logs.length - 1000);
     },
-    startStream(runId) {
+    startStream(runId, generation = this.loadGeneration) {
       this.stopStream();
       this.stopPolling();
       if (!runId) return;
       this.streamHandle = openDeploymentRunStream(
         runId,
         {
-          onSnapshot: (data) => this.applyRun(data),
-          onProgress: (data) => this.applyRun(data),
-          onLog: (row) => this.appendLog(row),
+          onSnapshot: (data) => {
+            if (this.isCurrentLoad(generation) && this.runId === String(runId)) this.applyRun(data);
+          },
+          onProgress: (data) => {
+            if (this.isCurrentLoad(generation) && this.runId === String(runId)) this.applyRun(data);
+          },
+          onLog: (row) => {
+            if (this.isCurrentLoad(generation) && this.runId === String(runId)) this.appendLog(row);
+          },
           onDone: async () => {
+            if (!this.isCurrentLoad(generation) || this.runId !== String(runId)) return;
             this.stopStream();
             this.stopPolling();
-            if (this.selectedDeploymentId) await this.refreshDeploymentInfo(this.selectedDeploymentId);
+            if (this.runDeploymentId) await this.refreshDeploymentInfo(this.runDeploymentId, generation);
           },
           onError: () => {
+            if (!this.isCurrentLoad(generation) || this.runId !== String(runId)) return;
             this.wsHint = "Realtime stream disconnected, fallback polling enabled.";
-            this.startPolling();
+            this.startPolling(generation);
           },
           onOpen: () => {
             this.wsHint = "";
@@ -448,13 +620,16 @@ export default {
       }
       this.streamHandle = null;
     },
-    startPolling() {
+    startPolling(generation = this.loadGeneration) {
       if (!this.runId || this.pollTimer) return;
+      const runId = this.runId;
       this.pollTimer = setInterval(async () => {
         try {
-          const run = await fetchDeploymentRun(this.runId);
+          const run = await fetchDeploymentRun(runId);
+          if (!this.isCurrentLoad(generation) || this.runId !== runId) return;
           this.applyRun(run || {});
-          const rows = await fetchDeploymentRunLogs(this.runId, { fromSeq: this.lastSeq, limit: 500 });
+          const rows = await fetchDeploymentRunLogs(runId, { fromSeq: this.lastSeq, limit: 500 });
+          if (!this.isCurrentLoad(generation) || this.runId !== runId) return;
           rows.forEach((r) => this.appendLog(r));
           if (TERMINAL.has(String(this.runStatus || "").toLowerCase())) this.stopPolling();
         } catch (_) {
@@ -479,6 +654,7 @@ export default {
       this.issuedApiKey = "";
       this.apiKeyHint = "";
       this.deploymentInfo = null;
+      this.runDeploymentId = null;
       this.steps = [
         { key: "validate_artifacts", name: "校验产物", status: "pending" },
         { key: "materialize_runtime", name: "准备环境", status: "pending" },
@@ -486,11 +662,14 @@ export default {
         { key: "activate", name: "激活生效", status: "pending" },
       ];
     },
-    async refreshDeploymentInfo(depId) {
+    async refreshDeploymentInfo(depId, generation = this.loadGeneration) {
       try {
-        this.deploymentInfo = await fetchDeployment(depId);
+        const deploymentInfo = await fetchDeployment(depId);
+        if (this.isCurrentLoad(generation) && Number(this.runDeploymentId) === Number(depId)) {
+          this.deploymentInfo = deploymentInfo;
+        }
       } catch (_) {
-        this.deploymentInfo = null;
+        if (this.isCurrentLoad(generation)) this.deploymentInfo = null;
       }
     },
     async copyIssuedKey() {
