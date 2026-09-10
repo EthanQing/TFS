@@ -126,9 +126,6 @@
                   :loading="splitSubmitting || splitLoading" @click="openSplitDialog">
                   数据集划分
                 </el-button>
-                <el-button size="small" type="success" plain @click="openAugmentationDialog">
-                  <i class="el-icon-magic-stick"></i> 样本扩增
-                </el-button>
               </div>
             </div>
 
@@ -226,10 +223,6 @@
       </div>
     </el-dialog>
 
-    <el-dialog title="样本扩增" :visible.sync="showAugmentationDialog" width="1000px" append-to-body
-      class="augmentation-dialog preview-enabled">
-      <ManualAugmentationPanel v-if="showAugmentationDialog" :dataset-id="datasetId" @published="handlePublished" />
-    </el-dialog>
     <MountedImportDialog
       :visible.sync="mountedImportVisible"
       :dataset-id="datasetId"
@@ -242,7 +235,6 @@
 
 <script>
 import UploadZip from '@/components/Upload/index.vue';
-import ManualAugmentationPanel from '@/views/Datasets/components/ManualAugmentationPanel.vue';
 import MountedImportDialog from '@/views/Datasets/components/MountedImportDialog.vue';
 import {
   fetchStandardDatasetAnnotations,
@@ -256,7 +248,7 @@ import { formatMb } from '@/api/apiUtils';
 
 export default {
   name: 'StandardDatasetDetail',
-  components: { UploadZip, ManualAugmentationPanel, MountedImportDialog },
+  components: { UploadZip, MountedImportDialog },
   data() {
     return {
       datasetId: this.$route.query.id || '',
@@ -275,7 +267,6 @@ export default {
       viewTotalCount: 0,
       viewTotalPages: 0,
       viewCurrentPage: 0,
-      showAugmentationDialog: false,
       showSplitDialog: false,
       showImagePreview: false,
       previewImage: null,
@@ -375,7 +366,6 @@ export default {
         if (sourceId) return `原始数据集 #${sourceId}`;
         return '原始数据集发布';
       }
-      if (sourceType === 'augmentation_publish') return '数据增强发布';
       if (sourceType) return sourceType;
       return '直接上传';
     },
@@ -806,10 +796,6 @@ export default {
         this.closeImagePreview();
       }
     },
-    openAugmentationDialog() {
-      if (this.isEmpty) return;
-      this.showAugmentationDialog = true;
-    },
     handleUploadSuccess() {
       this.uploadFile = null;
       this.uploading = false;
@@ -829,14 +815,6 @@ export default {
     handleUploadCancel(error) {
       const title = error && error.title ? error.title : '已取消上传';
       this.$message.info(title);
-    },
-    handlePublished(payload) {
-      this.showAugmentationDialog = false;
-      const nextId = payload && payload.standard_dataset_id;
-      this.$message.success(`增强结果已发布为新的标准数据集 #${nextId}`);
-      if (nextId) {
-        this.$router.push({ path: '/standard-dataset-detail', query: { id: nextId } });
-      }
     },
   },
 };

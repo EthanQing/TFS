@@ -3,11 +3,11 @@
  * All endpoints target /api/v3/standard-datasets
  */
 import {
-    API_BASE, WS_BASE,
+    API_BASE,
     safeJson, postJson, deleteJson, getJson,
     chunkedUpload,
     toAbsUrl, encodePathSegments, formatMb,
-    pickErrorMessage, createReconnectingWs,
+    pickErrorMessage,
 } from './apiUtils';
 
 const PREFIX = `${API_BASE}/api/v3/standard-datasets`;
@@ -268,95 +268,4 @@ export async function fetchStandardDatasetFiles(datasetId, { page = 1, pageSize 
 
     const url = `${PREFIX}/${encodeURIComponent(datasetId)}/files?${params.toString()}`;
     return getJson(url);
-}
-
-// ── Augmentation (Standard datasets) ──────────────────────────────────────
-
-export async function previewStandardAugmentation(datasetId, payload) {
-    const res = await fetch(`${PREFIX}/${encodeURIComponent(datasetId)}/augmentations/preview`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload || {}),
-    });
-    const data = await safeJson(res);
-    if (!res.ok) throw new Error(pickErrorMessage(data, res));
-    return data;
-}
-
-export async function createStandardAugmentationJob(datasetId, payload) {
-    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/augmentations`, payload);
-}
-
-export async function fetchStandardAugmentationJob(datasetId, jobId) {
-    return getJson(`${PREFIX}/${encodeURIComponent(datasetId)}/augmentations/${encodeURIComponent(jobId)}`);
-}
-
-export async function cancelStandardAugmentationJob(datasetId, jobId) {
-    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/augmentations/${encodeURIComponent(jobId)}/cancel`, {});
-}
-
-export async function publishStandardAugmentationJob(datasetId, jobId, payload) {
-    return postJson(`${PREFIX}/${encodeURIComponent(datasetId)}/augmentations/${encodeURIComponent(jobId)}/publish`, payload);
-}
-
-function buildStandardAugmentationWsUrl(datasetId, jobId, query = {}) {
-    const dsId = encodeURIComponent(String(datasetId || '').trim());
-    const jId = encodeURIComponent(String(jobId || '').trim());
-    const qs = new URLSearchParams();
-    Object.keys(query || {}).forEach((k) => {
-        const v = query[k];
-        if (v === null || v === undefined) return;
-        const s = String(v).trim();
-        if (!s) return;
-        qs.set(k, s);
-    });
-    const base = String(WS_BASE || API_BASE || '').replace(/\/+$/, '');
-    const tail = qs.toString();
-    return `${base}/api/v3/standard-datasets/${dsId}/augmentations/${jId}/stream${tail ? `?${tail}` : ''}`;
-}
-
-export function openStandardAugmentationStream(datasetId, jobId, handlers = {}, options = {}) {
-    const onSnapshot = typeof handlers.onSnapshot === 'function' ? handlers.onSnapshot : () => {};
-    const onProgress = typeof handlers.onProgress === 'function' ? handlers.onProgress : () => {};
-    const onItem = typeof handlers.onItem === 'function' ? handlers.onItem : () => {};
-    const onDone = typeof handlers.onDone === 'function' ? handlers.onDone : () => {};
-    const onError = typeof handlers.onError === 'function' ? handlers.onError : () => {};
-
-    let fromSeq = options.fromSeq ?? null;
-    let fromResultId = options.fromResultId ?? null;
-
-    return createReconnectingWs(
-        () => buildStandardAugmentationWsUrl(datasetId, jobId, { from_seq: fromSeq, from_result_id: fromResultId }),
-        {
-            onOpen: handlers.onOpen,
-            onClose: handlers.onClose,
-            onError,
-            onReconnect: handlers.onReconnect,
-            onMessage: (payload, helpers) => {
-                const type = String(payload?.type || '');
-                const data = payload?.data || {};
-                if (type === 'snapshot') {
-                    if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
-                    if (Number.isFinite(Number(data.last_result_id))) fromResultId = Number(data.last_result_id);
-                    onSnapshot(data);
-                } else if (type === 'progress') {
-                    if (Number.isFinite(Number(data.seq))) fromSeq = Number(data.seq);
-                    if (Number.isFinite(Number(data.last_result_id))) fromResultId = Number(data.last_result_id);
-                    onProgress(data);
-                } else if (type === 'item') {
-                    if (Number.isFinite(Number(data.result_id))) {
-                        const rid = Number(data.result_id);
-                        if (fromResultId === null || rid > fromResultId) fromResultId = rid;
-                    }
-                    onItem(data);
-                } else if (type === 'done') {
-                    onDone(data);
-                    helpers.close();
-                } else if (type === 'error') {
-                    onError(data?.message || 'stream error');
-                }
-            },
-        },
-        options
-    );
 }
