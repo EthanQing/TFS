@@ -1,4 +1,5 @@
 import { API_BASE } from '@/utils/request';
+import { createModelVersion, fetchModelVersionsPage } from './modelVersions';
 
 async function safeJson(res) {
     try {
@@ -14,13 +15,6 @@ function toErrorMessage(data, res) {
     if (typeof msg === 'string' && msg.trim()) return msg;
     if (msg && typeof msg === 'object') return JSON.stringify(msg);
     return `Request failed: ${res?.status || 'unknown'}`;
-}
-
-function pickPageItems(data) {
-    if (Array.isArray(data)) return data;
-    if (data && Array.isArray(data.items)) return data.items;
-    if (data && Array.isArray(data.data)) return data.data;
-    return [];
 }
 
 // FetchArchitectureDetail 获取架构信息接口
@@ -72,36 +66,13 @@ export async function fetchModelVersionsByRunId(runId, page = 1, pageSize = 20) 
     const id = String(runId || '').trim();
     if (!id) throw new Error('Missing run_id');
 
-    const url = `${API_BASE}/api/v3/model-versions?run_id=${encodeURIComponent(id)}&page=${encodeURIComponent(page)}&page_size=${encodeURIComponent(pageSize)}`;
-    const res = await fetch(url);
-    const data = await safeJson(res);
-    if (!res.ok) {
-        throw new Error(toErrorMessage(data, res));
-    }
-    return pickPageItems(data);
+    const data = await fetchModelVersionsPage({ runId: id, page, pageSize });
+    return Array.isArray(data && data.items) ? data.items : [];
 }
 
 // registerModelVersionFromRun ???? run ???????????
 export async function registerModelVersionFromRun({ run_id, version, stage = 'development', description = null } = {}) {
-    const payload = {
-        run_id: run_id,
-        version: version,
-        stage: stage,
-        description: description || undefined,
-    };
-
-    const res = await fetch(`${API_BASE}/api/v3/model-versions`, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-    });
-    const data = await safeJson(res);
-    if (!res.ok) {
-        throw new Error(toErrorMessage(data, res));
-    }
-    return data;
+    return createModelVersion({ runId: run_id, version, stage, description });
 }
 
 // GetInferenceResult 获取推理结果接口
