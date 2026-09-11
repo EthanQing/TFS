@@ -51,6 +51,13 @@ export default {
     return {
       chartInstance: null,
       isEmpty: false,
+      layoutActive: false,
+      componentDestroyed: false,
+      pendingOption: null,
+      layoutScheduled: false,
+      layoutFrame: null,
+      layoutGeneration: 0,
+      resizeObserver: null,
       containerStyle: {
         width: "90%",
         height: "350px",
@@ -83,12 +90,27 @@ export default {
     }
   },
   mounted() {
+    this.layoutActive = true;
     this.updateContainerStyle();
-    this.initChart();
+    this.startLayoutListeners();
     this.updateChart();
   },
+  activated() {
+    if (this.componentDestroyed) return;
+    this.layoutActive = true;
+    this.startLayoutListeners();
+    this.scheduleChartLayout();
+  },
+  deactivated() {
+    this.layoutActive = false;
+    this.stopLayoutListeners();
+    this.cancelScheduledLayout();
+  },
   beforeDestroy() {
-    window.removeEventListener("resize", this.resizeChart);
+    this.componentDestroyed = true;
+    this.layoutActive = false;
+    this.stopLayoutListeners();
+    this.cancelScheduledLayout();
     if (this.chartInstance) {
       this.chartInstance.dispose();
       this.chartInstance = null;
@@ -111,12 +133,95 @@ export default {
         margin: "0 auto"
       };
     },
-    initChart() {
-      const echarts = this.$echarts;
-      if (!echarts || !this.$refs.chartContainer) return;
+    startLayoutListeners() {
+      if (!this.layoutActive || this.componentDestroyed) return;
+      window.addEventListener("resize", this.scheduleChartLayout);
 
-      this.chartInstance = echarts.init(this.$refs.chartContainer);
-      window.addEventListener("resize", this.resizeChart);
+      const container = this.$refs.chartContainer;
+      if (typeof ResizeObserver !== "undefined" && container) {
+        if (!this.resizeObserver) {
+          this.resizeObserver = new ResizeObserver(() => {
+            this.scheduleChartLayout();
+          });
+        }
+        this.resizeObserver.disconnect();
+        this.resizeObserver.observe(container);
+      }
+    },
+    stopLayoutListeners() {
+      window.removeEventListener("resize", this.scheduleChartLayout);
+      if (this.resizeObserver) {
+        this.resizeObserver.disconnect();
+      }
+    },
+    cancelScheduledLayout() {
+      this.layoutGeneration += 1;
+      this.layoutScheduled = false;
+      if (this.layoutFrame !== null) {
+        cancelAnimationFrame(this.layoutFrame);
+        this.layoutFrame = null;
+      }
+    },
+    scheduleChartLayout() {
+      if (!this.layoutActive || this.componentDestroyed || this.layoutScheduled) return;
+
+      this.layoutScheduled = true;
+      const generation = this.layoutGeneration;
+      this.$nextTick(() => {
+        if (
+          generation !== this.layoutGeneration ||
+          !this.layoutActive ||
+          this.componentDestroyed
+        ) {
+          return;
+        }
+
+        this.layoutFrame = requestAnimationFrame(() => {
+          this.layoutFrame = null;
+          if (
+            generation !== this.layoutGeneration ||
+            !this.layoutActive ||
+            this.componentDestroyed
+          ) {
+            return;
+          }
+          this.layoutScheduled = false;
+          this.applyChartLayout();
+        });
+      });
+    },
+    applyChartLayout() {
+      const container = this.$refs.chartContainer;
+      if (
+        !container ||
+        !container.isConnected ||
+        this.isEmpty ||
+        container.clientWidth <= 0 ||
+        container.clientHeight <= 0
+      ) {
+        return;
+      }
+
+      if (!this.chartInstance) {
+        if (!this.$echarts) return;
+        this.chartInstance = this.$echarts.init(container);
+      } else if (
+        this.chartInstance.getWidth() !== container.clientWidth ||
+        this.chartInstance.getHeight() !== container.clientHeight
+      ) {
+        this.chartInstance.resize({
+          width: container.clientWidth,
+          height: container.clientHeight
+        });
+      }
+
+      if (this.pendingOption) {
+        this.chartInstance.setOption(this.pendingOption, {
+          notMerge: false,
+          lazyUpdate: true
+        });
+        this.pendingOption = null;
+      }
     },
     _seriesHasFinitePoint(seriesData) {
       if (!Array.isArray(seriesData)) return false;
@@ -135,21 +240,8 @@ export default {
       const option = this.getChartOption();
       const hasData = this._hasAnyFiniteSeries(option.series || []);
       this.isEmpty = !hasData;
-
-      if (this.isEmpty) {
-        return;
-      }
-
-      this.$nextTick(() => {
-        if (!this.chartInstance) {
-          this.initChart();
-        }
-        if (!this.chartInstance) return;
-        this.chartInstance.setOption(option, {
-          notMerge: false,
-          lazyUpdate: true,
-        });
-      });
+      this.pendingOption = option;
+      this.scheduleChartLayout();
     },
     _inferMaxLen(data) {
       try {
@@ -418,15 +510,10 @@ export default {
         dataZoom: [
           {
             type: "inside",
-            xAxisIndex: 0,
-            start: 0,
-            end: 100
+            xAxisIndex: 0
           }
         ]
       };
-    },
-    resizeChart() {
-      if (this.chartInstance) this.chartInstance.resize();
     },
     handleExport(command) {
       if (command === "png") this.exportAsPng();
